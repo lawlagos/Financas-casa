@@ -65,7 +65,7 @@ Todas as abas têm cabeçalho na linha 1 e um `id` (UUID curto) na coluna A. Val
 | `Receitas` | id, nome, rendimento_un, tempo_preparo_min, markup, preco_venda_atual, preco_definido_em |
 | `ReceitaItens` | receita_id, ingrediente_id, quantidade (unidade base) |
 | `Config` | chave, valor (salário produtora, dias/horas de trabalho, despesas fixas mensais do pudim, conta Hotmart, conta Meta, início da semana de apuração = sábado, modo de custo = ultimo/media30) |
-| `Dizimo` | id, semana_inicio (domingo), lucro_semana, prejuizo_carregado_entrada, base, dizimo, pago_em, lancamento_id |
+| `Dizimo` | id, semana_inicio (sábado), lucro_semana, prejuizo_carregado_entrada, base, dizimo, pago_em, lancamento_id |
 | `Sessoes` | token, email, aparelho, criada_em, ultimo_uso |
 | `Webhooks` | recebido_em, rota, id_externo, payload (bruto), status (ok/duplicado/erro), erro |
 
