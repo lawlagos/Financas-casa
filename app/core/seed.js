@@ -1,6 +1,6 @@
 // Dados iniciais: contas e categorias reais do casal, mais exemplos para o modo demonstração.
-import { addDays, monthKey, addMonthsKey, businessWeekStart } from './dates.js';
-import { CATEGORIA_DIZIMO } from './tithe.js';
+import { addDays, monthKey, addMonthsKey } from './dates.js';
+import { CATEGORIA_DIZIMO, businessWeeks, refSemana, monthlyTithe, refMes } from './tithe.js';
 
 export function baseContas(dataSaldo) {
   const c = (id, nome, dono, grupo, cor, saldo = 0) => ({ id, nome, dono, grupo, saldo_inicial: saldo, data_saldo_inicial: dataSaldo, cor, ativa: true });
@@ -58,7 +58,7 @@ export function demoTables(hoje) {
   const mesAnterior = addMonthsKey(monthKey(hoje), -1);
   const dataSaldo = `${mesAnterior}-01`;
   const contas = baseContas(dataSaldo);
-  const saldos = { c6: 18240, inter: 6350.4, mp: 1210, hotmart: 2890, itau: 4120.55, nubank: 980, bradesco: 310, 'nubank-pf': 640, 'nubank-pj': 1450 };
+  const saldos = { c6: 2240, inter: 1350.4, mp: 310, hotmart: 690, itau: 3120.55, nubank: 480, bradesco: 120, 'nubank-pf': 340, 'nubank-pj': 450 };
   for (const c of contas) c.saldo_inicial = saldos[c.id] || 0;
 
   let n = 0;
@@ -77,6 +77,7 @@ export function demoTables(hoje) {
     L(d + 5, 'saida', 64.9, 'Embalagens Plastilânia', 'nubank-pj', 'cat-embalagem', 'Pudim');
     L(d + 2, 'entrada', 1180 + (w % 2) * 640, 'Vendas Hotmart', 'hotmart', 'cat-venda-hotmart', 'Hotmart');
     L(d + 2, 'saida', 610 + w * 25, 'Anúncios Meta (semana)', 'c6', 'cat-anuncio', 'Hotmart');
+    L(d, 'transferencia', 1200, 'Saque Hotmart', 'hotmart', '', '', { conta_destino_id: 'c6' });
   }
   L(9, 'entrada', 4500, 'Salário', 'itau', 'cat-salario', 'Salario');
   L(6, 'entrada', 2000, 'Katsuhiro', 'inter', 'cat-consultoria', 'Consultoria', { previsto_id: 'demo-kat' });
@@ -117,7 +118,12 @@ export function demoTables(hoje) {
       if (k === mesAnterior || (passou && id !== 'demo-danilo')) B(id, ref);
     }
   }
-  // dízimo da semana passada já pago
-  const semanaPassada = addDays(businessWeekStart(hoje), -7);
-  return { contas, categorias: baseCategorias(), lancamentos: lancs, previstos, baixas, config: baseConfig(), _semanaPassada: semanaPassada };
+  // Dízimos antigos já pagos; a semana fechada mais recente fica a pagar, para mostrar o fluxo.
+  const fechadas = businessWeeks(lancs, hoje).filter((w) => w.fim < hoje && w.dizimo > 0);
+  for (const w of fechadas.slice(0, -1)) {
+    lancs.push({ id: `demo-l${++n}`, data: w.pagarEm, tipo: 'saida', valor: w.dizimo / 100, descricao: 'Dízimo dos negócios', conta_id: 'itau', conta_destino_id: '', categoria_id: CATEGORIA_DIZIMO, origem: 'Casa', canal: 'manual', id_externo: refSemana(w.inicio), criado_por: 'demo', criado_em: w.pagarEm });
+  }
+  const mt = monthlyTithe(lancs, mesAnterior);
+  if (mt.dizimo > 0) lancs.push({ id: `demo-l${++n}`, data: `${monthKey(hoje)}-01`, tipo: 'saida', valor: mt.dizimo / 100, descricao: 'Dízimo do mês', conta_id: 'itau', conta_destino_id: '', categoria_id: CATEGORIA_DIZIMO, origem: 'Casa', canal: 'manual', id_externo: refMes(mesAnterior), criado_por: 'demo', criado_em: hoje });
+  return { contas, categorias: baseCategorias(), lancamentos: lancs, previstos, baixas, config: baseConfig() };
 }

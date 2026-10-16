@@ -26,6 +26,11 @@ export function brl(cents) {
   return fmt.format(toReais(cents)).replace(/ /g, ' ');
 }
 
+// Só o número, sem "R$": para tabelas apertadas.
+export function num(cents) {
+  return (Math.round(cents) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export function brlSigned(cents) {
   return (cents > 0 ? '+' : '') + brl(cents);
 }

@@ -81,7 +81,8 @@ export function fmtDay(iso) {
 }
 
 export function fmtDayLong(iso) {
-  return `${DIAS[weekday(iso)]}, ${Number(iso.slice(8, 10))} de ${monthName(iso)}`;
+  const d = DIAS[weekday(iso)];
+  return `${d[0].toUpperCase()}${d.slice(1)}, ${Number(iso.slice(8, 10))} de ${monthName(iso)}`;
 }
 
 export function fmtMonthYear(iso) {

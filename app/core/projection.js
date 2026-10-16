@@ -32,6 +32,7 @@ export function plannedItems(occs, hoje) {
       ref: o.ref,
       conta_id: p.conta_id,
       conta_destino_id: p.conta_destino_id,
+      occ: o,
     };
     items.push({ ...base, tipo: p.tipo, valor: o.valor, descricao: p.descricao, variavel: p.natureza === 'variavel' });
     if (p.tipo === 'entrada' && ORIGENS_MENSAIS.includes(p.origem)) {
