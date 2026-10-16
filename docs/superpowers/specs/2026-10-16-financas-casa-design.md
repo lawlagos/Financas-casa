@@ -61,7 +61,7 @@ Todas as abas têm cabeçalho na linha 1 e um `id` (UUID curto) na coluna A. Val
 | `Categorias` | id, nome, tipo (entrada/saida), origem_padrao, ativa |
 | `Lancamentos` | id, data, tipo (entrada/saida/transferencia), valor, descricao, conta_id, conta_destino_id, categoria_id, origem (Casa/Pudim/Hotmart/Salario/Consultoria), canal (manual/voz/foto/hotmart/meta), id_externo, foto_id, grupo_id, previsto_id, criado_por, criado_em, editado_em |
 | `Liberacoes` | id, lancamento_id, valor, disponivel_em (só vendas Hotmart: 90% em D+2, 10% em D+30) |
-| `Previstos` | id, descricao, tipo, valor, conta_id, conta_destino_id, categoria_id, origem, recorrencia (unica/mensal/semanal), dia (do mês ou da semana), data_unica, inicio, fim, ativo |
+| `Previstos` | id, descricao, natureza (fixo/parcelado/variavel/unico), tipo, valor (fixo/parcela, ou estimativa inicial do variável), conta_id, conta_destino_id, categoria_id, origem, recorrencia (mensal/semanal), dia (do mês ou da semana), data_unica, inicio, parcelas_total, parcela_no_inicio, fim (calculado no parcelado), ativo |
 | `PrevistosBaixas` | previsto_id, data_ocorrencia, lancamento_id (ou `pulado`) |
 | `Ingredientes` | id, nome, unidade_base (g/ml/un), tipo (ingrediente/embalagem) |
 | `Produtos` | id, ingrediente_id, marca, tamanho (na unidade base) |
@@ -203,6 +203,18 @@ Uma saída para a soma dos itens Pudim (categoria Ingrediente pudim/Embalagem, o
 - Baixa: ao salvar um lançamento real, o app procura um previsto aberto com a mesma conta/categoria, valor ±10% e data ±5 dias
   e pergunta "É o <previsto> do dia X?". Se sim, grava `previsto_id` e a baixa. Transferências previstas não afetam o saldo "Tudo".
 - Resultado: série diária (data, entradas, saídas, diário, saldo), mínimo (valor e data) e "precisa fazer" = max(0, reserva − mínimo).
+
+### 7B. Tipos de previsto e Compromissos
+
+- **Fixo:** mesmo valor todo período, sem fim (aluguel, internet).
+- **Parcelado:** valor da parcela + `parcelas_total` + `parcela_no_inicio` (número da parcela na data `inicio`).
+  Ocorrência n exibe "k/N"; após a última, para sozinho. "Falta pagar" = parcelas sem baixa × valor.
+- **Variável:** valor projetado = média dos lançamentos reais dos últimos 3 meses com baixa nesse previsto; enquanto não houver
+  histórico, usa a estimativa inicial. Exibido com "≈".
+- **Único:** uma data só (IPVA, matrícula).
+- Baixa (7A) grava o valor real; nos variáveis ela alimenta a média, nos parcelados avança o contador.
+- **Tela Compromissos** (em Mais → Previstos): total comprometido por mês, dividido em Fixos, Parcelas e Variáveis; lista de
+  parcelados com k/N, falta pagar e mês de término; linha do tempo de alívio ("em <mês> sobram +R$ X/mês").
 
 ## 8. Erros e casos-limite
 
