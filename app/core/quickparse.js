@@ -6,6 +6,14 @@ import { parseBRL } from './money.js';
 import { addDays } from './dates.js';
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const escapar = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const palavraRe = (p) => new RegExp(`(^|[^a-z0-9])${escapar(p)}($|[^a-z0-9])`);
+// Procura a palavra (ou expressão) inteira: "gas" não casa com "gastei".
+const tem = (t, p) => palavraRe(p).test(t);
+const posicao = (t, p) => {
+  const m = palavraRe(p).exec(t);
+  return m ? m.index + m[1].length : -1;
+};
 
 const PALAVRAS_ENTRADA = ['recebi', 'entrou', 'ganhei', 'vendi', 'venda', 'caiu', 'pagou', 'pagaram', 'me pagou'];
 const PALAVRAS_TRANSF = ['transferi', 'passei', 'mandei da', 'saquei', 'saque', 'transferencia'];
@@ -28,8 +36,8 @@ export function parseQuick(texto, { contas = [], categorias = [], hoje }) {
   if (mil) out.valor = parseBRL(mil[1]) * 1000;
   else if (num) out.valor = parseBRL(num[1]);
 
-  if (PALAVRAS_TRANSF.some((p) => t.includes(p))) out.tipo = 'transferencia';
-  else if (PALAVRAS_ENTRADA.some((p) => t.includes(p))) out.tipo = 'entrada';
+  if (PALAVRAS_TRANSF.some((p) => tem(t, p))) out.tipo = 'transferencia';
+  else if (PALAVRAS_ENTRADA.some((p) => tem(t, p))) out.tipo = 'entrada';
   else if (out.valor !== null) out.tipo = 'saida';
 
   if (/\bontem\b/.test(t)) out.data = addDays(hoje, -1);
@@ -40,13 +48,14 @@ export function parseQuick(texto, { contas = [], categorias = [], hoje }) {
   for (const c of contas) {
     const nome = norm(c.nome);
     const base = nome.split(' ')[0];
-    let pos = t.indexOf(nome);
-    if (pos < 0) pos = t.indexOf(base);
-    if (pos >= 0) achadas.push({ c, pos, exato: t.includes(nome) });
+    let pos = posicao(t, nome);
+    if (pos < 0) pos = posicao(t, base);
+    if (pos >= 0) achadas.push({ c, pos, exato: tem(t, nome) });
   }
   const escolher = (lista) => {
     if (!lista.length) return null;
-    const exatos = lista.filter((x) => x.exato);
+    const exatos = lista.filter((x) => x.exato).sort((a, b) => b.c.nome.length - a.c.nome.length);
+    if (exatos.length && norm(exatos[0].c.nome).includes(' ')) return exatos[0].c;
     if (exatos.length === 1) return exatos[0].c;
     const candidatos = exatos.length ? exatos : lista;
     const dela = /\bdela\b|\besposa\b|\bmulher\b/.test(t);
@@ -71,7 +80,7 @@ export function parseQuick(texto, { contas = [], categorias = [], hoje }) {
   }
 
   for (const [origem, palavras] of DICAS_ORIGEM) {
-    if (palavras.some((p) => t.includes(p))) {
+    if (palavras.some((p) => tem(t, p))) {
       out.origem = origem;
       break;
     }
@@ -80,8 +89,8 @@ export function parseQuick(texto, { contas = [], categorias = [], hoje }) {
   if (out.tipo && out.tipo !== 'transferencia') {
     const doTipo = categorias.filter((c) => c.tipo === out.tipo && c.ativa !== false);
     const cat =
-      doTipo.find((c) => t.includes(norm(c.nome))) ||
-      doTipo.find((c) => norm(c.nome).split(' ').some((w) => w.length > 3 && t.includes(w))) ||
+      doTipo.find((c) => tem(t, norm(c.nome))) ||
+      doTipo.find((c) => norm(c.nome).split(/[^a-z0-9]+/).some((w) => w.length > 3 && tem(t, w))) ||
       (out.origem ? doTipo.find((c) => c.origem_padrao === out.origem) : null);
     if (cat) {
       out.categoria_id = cat.id;
@@ -90,16 +99,19 @@ export function parseQuick(texto, { contas = [], categorias = [], hoje }) {
   }
   if (!out.origem && out.tipo === 'saida') out.origem = 'Casa';
 
-  out.descricao = descricao(texto);
+  const nomesContas = achadas.flatMap((x) => norm(x.c.nome).split(' '));
+  out.descricao = descricao(texto, nomesContas);
   return out;
 }
 
-function descricao(texto) {
-  const limpo = String(texto || '')
-    .replace(/r\$\s*/gi, '')
-    .replace(/\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?(\s*mil)?(\s*reais)?/gi, '')
-    .replace(/\b(gastei|paguei|recebi|entrou|comprei|transferi|passei|hoje|ontem|anteontem|no|na|de|do|da|pro|pra|para|com|em|reais|conto|contos)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+const DESCARTAR = new Set(('gastei paguei recebi entrou comprei transferi passei mandei saquei hoje ontem anteontem no na nos nas de do da dos das ' +
+  'pro pra para com em e o a os as um uma reais real conto contos mil r$ dela dele pj pf conta minha meu').split(' '));
+
+function descricao(texto, nomesContas) {
+  const fora = new Set([...DESCARTAR, ...nomesContas]);
+  const palavras = String(texto || '')
+    .split(/\s+/)
+    .filter((w) => w && !/\d/.test(w) && !fora.has(norm(w).replace(/[^a-z0-9$]/g, '')));
+  const limpo = palavras.join(' ').trim();
   return limpo ? limpo[0].toUpperCase() + limpo.slice(1) : '';
 }

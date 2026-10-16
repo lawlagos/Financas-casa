@@ -39,3 +39,17 @@ test('sem conta reconhecida fica vazio para a tela perguntar', () => {
   assert.equal(r.conta_id, null);
   assert.equal(r.origem, 'Casa');
 });
+
+test('palavra inteira: "gastei" não vira categoria Gás; nome mais específico de conta vence', () => {
+  const r = parseQuick('gastei 87,50 no assaí pro pudim no nubank pj', ctx);
+  assert.equal(nome(r.conta_id), 'Nubank PJ');
+  assert.equal(categorias.find((c) => c.id === r.categoria_id)?.nome, 'Ingrediente');
+  assert.equal(r.origem, 'Pudim');
+  assert.equal(r.descricao, 'Assaí pudim');
+});
+
+test('categoria pelo nome quando citada', () => {
+  const r = parseQuick('paguei 120 de luz no itaú', ctx);
+  assert.equal(categorias.find((c) => c.id === r.categoria_id)?.nome, 'Luz');
+  assert.equal(nome(r.conta_id), 'Itaú');
+});
