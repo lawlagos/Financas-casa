@@ -12,6 +12,8 @@ instalável no celular, com dados na nuvem, usado pelo casal. Resolve:
 - Calcular o **lucro semanal dos negócios** (Pudim + Hotmart, somados) e o **dízimo** automaticamente.
 - Puxar automaticamente as vendas da Hotmart e o gasto de anúncio da Meta.
 - Manter **histórico de preços dos ingredientes por marca**, com gráfico de tendência, e custo das receitas atualizado.
+- **Projetar o saldo dia a dia até uma data futura** (padrão 31/12), como a planilha atual faz, mostrando o ponto mais baixo
+  e quanto é preciso fazer até lá.
 
 Fora do escopo: cartão de crédito (não usam), integração bancária automática (Open Finance), Google Ads/TikTok,
 webhook do Mercado Pago (vendas do MP serão lançadas manualmente ou por print).
@@ -57,7 +59,10 @@ Todas as abas têm cabeçalho na linha 1 e um `id` (UUID curto) na coluna A. Val
 |---|---|
 | `Contas` | id, nome, dono (Marido/Esposa), grupo (Pessoal/Empresa/Pudim), saldo_inicial, data_saldo_inicial, ativa |
 | `Categorias` | id, nome, tipo (entrada/saida), origem_padrao, ativa |
-| `Lancamentos` | id, data, tipo (entrada/saida/transferencia), valor, descricao, conta_id, conta_destino_id, categoria_id, origem (Casa/Pudim/Hotmart/Salario/Consultoria), canal (manual/voz/foto/hotmart/meta), id_externo, foto_id, grupo_id, criado_por, criado_em, editado_em |
+| `Lancamentos` | id, data, tipo (entrada/saida/transferencia), valor, descricao, conta_id, conta_destino_id, categoria_id, origem (Casa/Pudim/Hotmart/Salario/Consultoria), canal (manual/voz/foto/hotmart/meta), id_externo, foto_id, grupo_id, previsto_id, criado_por, criado_em, editado_em |
+| `Liberacoes` | id, lancamento_id, valor, disponivel_em (só vendas Hotmart: 90% em D+2, 10% em D+30) |
+| `Previstos` | id, descricao, tipo, valor, conta_id, conta_destino_id, categoria_id, origem, recorrencia (unica/mensal/semanal), dia (do mês ou da semana), data_unica, inicio, fim, ativo |
+| `PrevistosBaixas` | previsto_id, data_ocorrencia, lancamento_id (ou `pulado`) |
 | `Ingredientes` | id, nome, unidade_base (g/ml/un), tipo (ingrediente/embalagem) |
 | `Produtos` | id, ingrediente_id, marca, tamanho (na unidade base) |
 | `Precos` | id, data, produto_id, mercado, quantidade, preco_unitario, preco_por_base, lancamento_id |
@@ -75,7 +80,7 @@ Um comprovante de mercado gera até 2 lançamentos (parte Pudim e parte Casa) li
 
 ### 3.1 Dados iniciais
 
-- 8 contas: C6, Inter, Mercado Pago (Marido, Empresa); Itaú, Nubank, Bradesco (Marido, Pessoal); Nubank PF (Esposa, Pessoal);
+- 9 contas: C6, Inter, Mercado Pago, Hotmart (Marido, Empresa; Hotmart = saldo dentro da plataforma); Itaú, Nubank, Bradesco (Marido, Pessoal); Nubank PF (Esposa, Pessoal);
   Nubank PJ (Esposa, Pudim). Saldos iniciais informados pelo usuário na configuração.
 - Categorias iniciais derivadas das planilhas (Mercado casa, Ingrediente pudim, Embalagem, Gás, Luz, Água, Internet, MEI/Contador,
   Anúncio Meta, Taxa Hotmart, Venda pudim, Venda Hotmart, Salário, Consultoria, Dízimo, Outros).
@@ -85,13 +90,17 @@ Um comprovante de mercado gera até 2 lançamentos (parte Pudim e parte Casa) li
 
 ## 4. Telas
 
-Navegação inferior: **Início · Lançamentos · ＋ · Negócios · Mais**.
+Navegação inferior: **Início · Lançamentos · ＋ · Futuro · Negócios**. "Mais" (⚙️) fica no topo da tela Início.
 
 - **Início:** saldo total e por conta (agrupado Pessoal/Empresa/Pudim); card "Dízimo desta semana" (acumulado até agora);
   card "Dízimo do mês" (salário + consultoria); entradas × saídas do mês contra o mês anterior; botão 🔄 Sincronizar com a hora da última sincronização.
 - **＋ Lançar:** três modos (🎤 falar, 📷 foto/print, ⌨️ digitar). Todos terminam num **cartão de rascunho** editável → Confirmar.
 - **Lançamentos:** lista por dia; filtros mês/conta/origem/categoria; busca; tocar = editar, arrastar = apagar (com desfazer).
   Ícone do canal (🤖 para Hotmart/Meta) e quem lançou.
+- **Futuro:** ver seção 7A. Seletor de data-limite (padrão 31/12) e de grupo (Tudo/Pessoal/Empresa/Pudim); destaque do
+  ponto mais baixo e "quanto preciso fazer até DD/MM" (para zero e para a reserva mínima de `Config`); gráfico do saldo
+  com área negativa em vermelho; tabela rolável Data · Entra · Sai · Diário · Saldo (real em preto, previsto em cinza,
+  saldo negativo em vermelho, previstos atrasados com ⚠️). Gestão de previstos (criar/editar/pular uma ocorrência).
 - **Negócios:** semana atual (sáb–sex, paga no sábado): colunas Hotmart (vendas − taxas − anúncio) e Pudim (vendas − custos), lucro do casal,
   prejuízo carregado, dízimo a pagar; botão "Marcar dízimo como pago" (gera saída categoria Dízimo); gráfico das semanas anteriores.
 - **Mais → Pudim:**
@@ -155,7 +164,8 @@ Uma saída para a soma dos itens Pudim (categoria Ingrediente pudim/Embalagem, o
 
 - URL: `<webapp>/exec?rota=hotmart&chave=<SEGREDO>` cadastrada no Postback 2.0 da Hotmart. Requisição sem a chave correta → ignorada.
 - Eventos: `PURCHASE_APPROVED` → entrada (origem Hotmart, categoria Venda Hotmart) com a **comissão líquida do produtor**,
-  na conta configurada para Hotmart, data = data de aprovação. `PURCHASE_REFUNDED` / `PURCHASE_CHARGEBACK` → saída de estorno
+  na conta **Hotmart**, data = data de aprovação (vale para lucro e dízimo). Gera 2 `Liberacoes`: 90% em D+2 e 10% em D+30
+  (prazos em `Config`). O saque para um banco é uma transferência lançada pelo usuário. `PURCHASE_REFUNDED` / `PURCHASE_CHARGEBACK` → saída de estorno
   com o mesmo valor, na data do evento.
 - Idempotência: `id_externo` = `transacao:evento`; se já existe em `Lancamentos`, marca `duplicado` em `Webhooks` e não grava.
   Necessário porque o Apps Script responde com redirecionamento 302 e a Hotmart pode reenviar.
@@ -179,6 +189,18 @@ Uma saída para a soma dos itens Pudim (categoria Ingrediente pudim/Embalagem, o
   - `base` = `lucro_semana` + `prejuizo_carregado_entrada` (≤ 0).
   - Se `base` > 0: `dizimo` = 10% da base, e nada é carregado. Senão: `dizimo` = 0, e carrega `base` para a semana seguinte.
   - Recalculado sempre que um lançamento da semana (ou de semanas anteriores) muda; semanas já pagas mostram aviso se o valor mudar depois.
+
+## 7A. Projeção (Futuro)
+
+- Ponto de partida: saldo real de hoje das contas do grupo escolhido. Na conta Hotmart, só entra o valor já liberado;
+  cada `Liberacao` futura entra como entrada na sua data `disponivel_em`.
+- Para cada dia de amanhã até a data-limite, somar: ocorrências de `Previstos` ativos sem baixa; dízimo previsto
+  (10% de cada previsto com origem Salário/Consultoria, no mesmo dia); e o **gasto diário estimado** (`Config`, ex.: R$ 75).
+- **Não** se projetam vendas futuras de Hotmart ou Pudim (cenário só com o que é certo).
+- Previsto com data passada e sem baixa = atrasado: aparece com ⚠️ e é contado no dia de hoje.
+- Baixa: ao salvar um lançamento real, o app procura um previsto aberto com a mesma conta/categoria, valor ±10% e data ±5 dias
+  e pergunta "É o <previsto> do dia X?". Se sim, grava `previsto_id` e a baixa. Transferências previstas não afetam o saldo "Tudo".
+- Resultado: série diária (data, entradas, saídas, diário, saldo), mínimo (valor e data) e "precisa fazer" = max(0, reserva − mínimo).
 
 ## 8. Erros e casos-limite
 
@@ -207,4 +229,13 @@ E-mails do casal; saldo atual de cada conta; conta onde cai o saque Hotmart; con
 1. **Base:** planilha + Apps Script + auth + contas/categorias/lançamentos + lançamento manual + Início/Lançamentos + dízimo.
 2. **IA:** voz, foto/print, rascunho com dúvidas, apelidos.
 3. **Pudim:** ingredientes/produtos/preços (importação), bolsa de preços, receitas e custos.
-4. **Integrações:** webhook Hotmart, sincronização Meta.
+4. **Integrações:** webhook Hotmart (com liberações), sincronização Meta.
+
+A tela Futuro (7A) entra na Etapa 1, já que usa só lançamentos e previstos; as liberações da Hotmart passam a aparecer na Etapa 4.
+
+### Etapas futuras (escopo resumido; cada uma terá sua própria especificação)
+
+5. **Estoque do pudim:** entradas e saídas de estoque com validade; "dinheiro potencial" (valor do estoque) e
+   "dinheiro perdido" (itens vencidos).
+6. **Radar de ofertas:** a cada 3 dias, buscar preços dos ingredientes críticos mais comprados e mostrar ofertas.
+   Precisa definir a fonte de preços conforme a região onde compram.
