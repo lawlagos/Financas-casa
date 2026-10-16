@@ -1,0 +1,10 @@
+{
+  "name": "financas-casa",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/core/*.test.js tests/apps-script/*.test.js",
+    "test:e2e": "node --test --test-concurrency=1 tests/e2e/*.test.js",
+    "serve": "npx http-server app -p 8080 -c-1"
+  }
+}
