@@ -176,9 +176,18 @@ function lerTema() {
   }
 }
 
+// "auto" só desfaz o que o próprio app marcou, sem apagar um tema definido por quem hospeda a página.
 export function aplicarTema(t = lerTema()) {
-  if (t === 'auto') delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = t;
+  const raiz = document.documentElement;
+  if (t === 'auto') {
+    if (raiz.dataset.temaApp) {
+      delete raiz.dataset.theme;
+      delete raiz.dataset.temaApp;
+    }
+    return;
+  }
+  raiz.dataset.theme = t;
+  raiz.dataset.temaApp = '1';
 }
 
 export function TelaAjustes() {
