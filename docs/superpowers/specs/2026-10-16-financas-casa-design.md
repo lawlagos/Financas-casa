@@ -69,7 +69,7 @@ Todas as abas têm cabeçalho na linha 1 e um `id` (UUID curto) na coluna A. Val
 | `Apelidos` | texto_nota (normalizado), produto_id, origem_fixa (vazio/Pudim/Casa), vezes_pudim, vezes_casa |
 | `Receitas` | id, nome, rendimento_un, tempo_preparo_min, markup, preco_venda_atual, preco_definido_em |
 | `ReceitaItens` | receita_id, ingrediente_id, quantidade (unidade base) |
-| `Config` | chave, valor (salário produtora, dias/horas de trabalho, despesas fixas mensais do pudim, conta Hotmart, conta Meta, início da semana de apuração = sábado, modo de custo = ultimo/media30) |
+| `Config` | chave, valor (salário produtora, dias/horas de trabalho, despesas fixas mensais do pudim, conta Hotmart, conta Meta, início da semana de apuração = sábado, modo de custo = ultimo/media30, gasto diário estimado, reserva mínima, prazos de liberação Hotmart D+2/90% e D+30/10%) |
 | `Dizimo` | id, semana_inicio (sábado), lucro_semana, prejuizo_carregado_entrada, base, dizimo, pago_em, lancamento_id |
 | `Sessoes` | token, email, aparelho, criada_em, ultimo_uso |
 | `Webhooks` | recebido_em, rota, id_externo, payload (bruto), status (ok/duplicado/erro), erro |
@@ -108,7 +108,7 @@ Navegação inferior: **Início · Lançamentos · ＋ · Futuro · Negócios**.
   - *Ingrediente:* gráfico de R$/base por marca ao longo do tempo; tabela por marca (compras, qtd total, média, último preço/mercado);
     dica de marca mais barata no último mês; filtro por mercado.
   - *Receitas:* custo por unidade, preço sugerido (markup), lucro com o preço atual; alerta quando o custo sobe ≥5% desde `preco_definido_em`.
-- **Mais → Contas, Categorias, Configurações** (aparelhos conectados, parâmetros do pudim, contas de Hotmart/Meta).
+- **Mais → Contas, Categorias, Previstos, Configurações** (aparelhos conectados, parâmetros do pudim, contas de Hotmart/Meta).
 
 ## 5. Lançamento com IA
 
