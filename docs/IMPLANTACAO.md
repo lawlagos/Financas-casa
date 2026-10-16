@@ -24,10 +24,10 @@ Enquanto isso não estiver pronto, o app funciona em **modo demonstração**, co
 
 1. Abra **console.cloud.google.com**, crie um projeto chamado **Finanças da Casa**.
 2. **APIs e serviços > Tela de consentimento OAuth** (ou "Google Auth Platform"): tipo **Externo**, nome **Finanças da Casa**, seu e-mail como suporte e contato. Em **Público-alvo / Usuários de teste**, adicione os dois e-mails (o seu e o da sua esposa).
-3. **Credenciais > Criar credenciais > ID do cliente OAuth**: tipo **Aplicativo da Web**. Em **Origens JavaScript autorizadas**, adicione o endereço do app (Parte 4), por exemplo `https://SEU-USUARIO.github.io`. Salve e copie o **ID do cliente** (termina em `.apps.googleusercontent.com`).
+3. **Credenciais > Criar credenciais > ID do cliente OAuth**: tipo **Aplicativo da Web**. Em **Origens JavaScript autorizadas**, adicione o endereço do app (Parte 4), ou seja `https://lawlagos.github.io`. Salve e copie o **ID do cliente** (termina em `.apps.googleusercontent.com`).
 4. De volta ao Apps Script: **Configurações do projeto > Propriedades do script > Adicionar propriedade**:
    - `GOOGLE_CLIENT_ID` = o ID do cliente copiado
-   - `EMAILS_AUTORIZADOS` = `seu@gmail.com,esposa@gmail.com`
+   - `EMAILS_AUTORIZADOS` = os e-mails Google de vocês dois, separados por vírgula (um e-mail fora do Gmail só funciona se tiver uma Conta Google criada com ele)
 
 ## Parte 3: publicar o servidor
 
@@ -47,7 +47,7 @@ Sempre que o código do servidor mudar: **Implantar > Gerenciar implantações >
    };
    ```
 2. **Settings > Pages > Source: GitHub Actions**. A cada mudança no `main`, o workflow `Publicar app` roda os testes e publica a pasta `app/`.
-3. O endereço fica em **Settings > Pages** (algo como `https://SEU-USUARIO.github.io/financas-casa/`). Confira se a origem `https://SEU-USUARIO.github.io` está nas origens autorizadas da Parte 2.
+3. O endereço fica em **Settings > Pages** (`https://lawlagos.github.io/Financas-casa/`). Confira se a origem `https://lawlagos.github.io` está nas origens autorizadas da Parte 2.
 4. No celular, abra o endereço no **Chrome** (Android) ou **Safari** (iPhone), entre com o Google e use **Adicionar à tela inicial**. Pronto: vira um app com ícone.
 5. Faça o mesmo no celular da sua esposa.
 
