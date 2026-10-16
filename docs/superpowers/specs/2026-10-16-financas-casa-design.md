@@ -165,7 +165,9 @@ Uma saída para a soma dos itens Pudim (categoria Ingrediente pudim/Embalagem, o
 - URL: `<webapp>/exec?rota=hotmart&chave=<SEGREDO>` cadastrada no Postback 2.0 da Hotmart. Requisição sem a chave correta → ignorada.
 - Eventos: `PURCHASE_APPROVED` → entrada (origem Hotmart, categoria Venda Hotmart) com a **comissão líquida do produtor**,
   na conta **Hotmart**, data = data de aprovação (vale para lucro e dízimo). Gera 2 `Liberacoes`: 90% em D+2 e 10% em D+30
-  (prazos em `Config`). O saque para um banco é uma transferência lançada pelo usuário. `PURCHASE_REFUNDED` / `PURCHASE_CHARGEBACK` → saída de estorno
+  (prazos em `Config`).
+- A conta Hotmart funciona como qualquer conta: compras no cartão Hotmart são saídas dela; saque para um banco é transferência
+  (opcional). O saldo dela é exibido em **disponível** (saldo − parcelas ainda não liberadas) e **a liberar** (com as datas). `PURCHASE_REFUNDED` / `PURCHASE_CHARGEBACK` → saída de estorno
   com o mesmo valor, na data do evento.
 - Idempotência: `id_externo` = `transacao:evento`; se já existe em `Lancamentos`, marca `duplicado` em `Webhooks` e não grava.
   Necessário porque o Apps Script responde com redirecionamento 302 e a Hotmart pode reenviar.
