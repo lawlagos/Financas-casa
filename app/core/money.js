@@ -14,6 +14,7 @@ export function parseBRL(text) {
   if (typeof text === 'number') return text;
   let s = String(text || '').replace(/[^\d,.-]/g, '');
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }

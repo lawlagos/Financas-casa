@@ -24,6 +24,8 @@ test('dinheiro: parse e formato brasileiro', () => {
   assert.equal(parseBRL('1.234,56'), 1234.56);
   assert.equal(parseBRL('R$ 87,50'), 87.5);
   assert.equal(parseBRL('1234.5'), 1234.5);
+  assert.equal(parseBRL('1.500'), 1500);
+  assert.equal(parseBRL('12.50'), 12.5);
   assert.equal(toCents(0.1 + 0.2), 30);
   assert.equal(brl(123456), 'R$ 1.234,56');
   assert.equal(brl(-500), '-R$ 5,00');
