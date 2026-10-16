@@ -8,7 +8,7 @@ Substituir a planilha "Termômetro" (controle diário da casa) e a planilha "Pud
 instalável no celular, com dados na nuvem, usado pelo casal. Resolve:
 
 - Lançar entradas e saídas sem atrito: digitando, falando ou mandando print/foto.
-- Separar o dinheiro por **conta** (8 contas) e por **origem** (Casa, Pudim, Hotmart, Salário, Consultoria).
+- Separar o dinheiro por **conta** (8 contas) e por **origem** (Casa, Pudim, Hotmart, Salário, Consultoria, YouTube).
 - Calcular o **lucro semanal dos negócios** (Pudim + Hotmart, somados) e o **dízimo** automaticamente.
 - Puxar automaticamente as vendas da Hotmart e o gasto de anúncio da Meta.
 - Manter **histórico de preços dos ingredientes por marca**, com gráfico de tendência, e custo das receitas atualizado.
@@ -59,9 +59,9 @@ Todas as abas têm cabeçalho na linha 1 e um `id` (UUID curto) na coluna A. Val
 |---|---|
 | `Contas` | id, nome, dono (Marido/Esposa), grupo (Pessoal/Empresa/Pudim), saldo_inicial, data_saldo_inicial, ativa |
 | `Categorias` | id, nome, tipo (entrada/saida), origem_padrao, ativa |
-| `Lancamentos` | id, data, tipo (entrada/saida/transferencia), valor, descricao, conta_id, conta_destino_id, categoria_id, origem (Casa/Pudim/Hotmart/Salario/Consultoria), canal (manual/voz/foto/hotmart/meta), id_externo, foto_id, grupo_id, previsto_id, criado_por, criado_em, editado_em |
+| `Lancamentos` | id, data, tipo (entrada/saida/transferencia), valor, descricao, conta_id, conta_destino_id, categoria_id, origem (Casa/Pudim/Hotmart/Salario/Consultoria/YouTube), canal (manual/voz/foto/hotmart/meta), id_externo, foto_id, grupo_id, previsto_id, criado_por, criado_em, editado_em |
 | `Liberacoes` | id, lancamento_id, valor, disponivel_em (só vendas Hotmart: 90% em D+2, 10% em D+30) |
-| `Previstos` | id, descricao, natureza (fixo/parcelado/variavel/unico), tipo, valor (fixo/parcela, ou estimativa inicial do variável), conta_id, conta_destino_id, categoria_id, origem, recorrencia (mensal/semanal), dia (do mês ou da semana), data_unica, inicio, parcelas_total, parcela_no_inicio, fim (calculado no parcelado), ativo |
+| `Previstos` | id, descricao, natureza (fixo/parcelado/variavel/unico), tipo, valor (fixo/parcela, ou estimativa inicial do variável), conta_id, conta_destino_id, categoria_id, origem, recorrencia (semanal ou a cada N meses: 1=mensal, 2, 3, 12=anual), mes_ancora (mês de referência para N>1), dia_inicio, dia_fim (janela; projeta em dia_fim), dia_semana, data_unica, confianca (certo/provavel), renovacao (sim/não), pessoa, inicio, parcelas_total, parcela_no_inicio, fim (calculado no parcelado), ativo |
 | `PrevistosBaixas` | previsto_id, data_ocorrencia, lancamento_id (ou `pulado`) |
 | `Ingredientes` | id, nome, unidade_base (g/ml/un), tipo (ingrediente/embalagem) |
 | `Produtos` | id, ingrediente_id, marca, tamanho (na unidade base) |
@@ -183,7 +183,7 @@ Uma saída para a soma dos itens Pudim (categoria Ingrediente pudim/Embalagem, o
 
 ## 7. Dízimo
 
-- **Salário e Consultoria:** 10% de cada entrada com essas origens; agregado por mês civil.
+- **Salário, Consultoria e YouTube (AdSense):** 10% de cada entrada com essas origens; agregado por mês civil.
 - **Negócios (casal, Pudim + Hotmart somados):** a semana de apuração vai de **sábado 00:00 a sexta 23:59**
   (movimentos de sábado já contam para a semana seguinte); o dízimo da semana é pago no sábado seguinte ao fechamento.
   `semana_inicio` = o sábado em que a apuração começa.
@@ -197,12 +197,14 @@ Uma saída para a soma dos itens Pudim (categoria Ingrediente pudim/Embalagem, o
 - Ponto de partida: saldo real de hoje das contas do grupo escolhido. Na conta Hotmart, só entra o valor já liberado;
   cada `Liberacao` futura entra como entrada na sua data `disponivel_em`.
 - Para cada dia de amanhã até a data-limite, somar: ocorrências de `Previstos` ativos sem baixa; dízimo previsto
-  (10% de cada previsto com origem Salário/Consultoria, no mesmo dia); e o **gasto diário estimado** (`Config`, ex.: R$ 75).
+  (10% de cada previsto com origem Salário/Consultoria/YouTube, no mesmo dia); e o **gasto diário estimado** (`Config`, ex.: R$ 75).
 - **Não** se projetam vendas futuras de Hotmart ou Pudim (cenário só com o que é certo).
 - Previsto com data passada e sem baixa = atrasado: aparece com ⚠️ e é contado no dia de hoje.
 - Baixa: ao salvar um lançamento real, o app procura um previsto aberto com a mesma conta/categoria, valor ±10% e data ±5 dias
   e pergunta "É o <previsto> do dia X?". Se sim, grava `previsto_id` e a baixa. Transferências previstas não afetam o saldo "Tudo".
-- Resultado: série diária (data, entradas, saídas, diário, saldo), mínimo (valor e data) e "precisa fazer" = max(0, reserva − mínimo).
+- Duas séries: **certo** (só previstos `certo`) e **com prováveis** (certo + `provavel`). Mínimo e "precisa fazer"
+  = max(0, reserva − mínimo) vêm sempre da série certo; a outra aparece como "se os prováveis entrarem".
+- Resultado: série diária (data, entradas, saídas, diário, saldo) por cenário, mínimo (valor e data) e "precisa fazer".
 
 ### 7B. Tipos de previsto e Compromissos
 
@@ -212,6 +214,14 @@ Uma saída para a soma dos itens Pudim (categoria Ingrediente pudim/Embalagem, o
 - **Variável:** valor projetado = média dos lançamentos reais dos últimos 3 meses com baixa nesse previsto; enquanto não houver
   histórico, usa a estimativa inicial. Exibido com "≈".
 - **Único:** uma data só (IPVA, matrícula).
+- Valem para entradas também. Frequência a cada N meses (mensal, bimestral, trimestral, anual) com janela de dias
+  (ex.: Katsuhiro dia 8–10 → projeta no dia 10) e confiança certo/provável.
+- **Renovação** (anual de consultoria): 30 dias antes, lembrete "X renova em <mês>. Confirmou?" → [Renovou] vira `certo`;
+  [Não renovou] desativa e sai da projeção. Até a resposta, conta como `provavel`.
+- **Atraso de recebimento:** passou `dia_fim` sem baixa → destaque com [Recebi] (abre lançamento pré-preenchido),
+  [Ainda vai pagar] (nova data) e [Não vai pagar] (pula a ocorrência).
+- **Seção "A receber"** (card no Início e aba em Compromissos): próximos 60 dias separados em Certo e Provável, atrasados no topo,
+  e lista de renovações do ano.
 - Baixa (7A) grava o valor real; nos variáveis ela alimenta a média, nos parcelados avança o contador.
 - **Tela Compromissos** (em Mais → Previstos): total comprometido por mês, dividido em Fixos, Parcelas e Variáveis; lista de
   parcelados com k/N, falta pagar e mês de término; linha do tempo de alívio ("em <mês> sobram +R$ X/mês").
