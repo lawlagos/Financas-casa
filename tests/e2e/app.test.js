@@ -561,18 +561,19 @@ test('estoque de ingredientes: produção desconta pela receita, apagar devolve,
   await page.goto(`${base}/?demo#/pudim?aba=ingredientes`);
   assert.equal(await emCasa('Leite condensado'), '2,37 kg');
 
-  // contagem: só 1 lata em casa → falta para o mínimo (3 latas) e vai para a lista
+  // contagem: só 1 lata em casa → falta para o mínimo e vai para a lista. Mínimo: (2 fornadas do 150 + 1 do 1100)
+  // em São Roque e metade disso em Ibiúna = 4,5 fornadas × 395 g = 4,5 latas → comprar 4
   await page.getByRole('button', { name: 'Contar o que tem em casa' }).click();
   await page.getByLabel('Quantas embalagens de Leite condensado').fill('1');
   await page.getByRole('button', { name: 'Salvar 1 contagem' }).click();
   await toast().filter({ hasText: 'Contagem de 1 ingrediente salva' }).waitFor();
   assert.equal(await emCasa('Leite condensado'), '395 g');
   const painel = page.locator('.painel', { hasText: 'Estoque de ingredientes' });
-  await painel.getByText('comprar 2').waitFor();
+  await painel.getByText('comprar 4').waitFor();
   await painel.getByRole('button', { name: 'Pôr na lista de compras' }).click();
   await toast().filter({ hasText: '1 ingrediente na lista de compras' }).waitFor();
   await page.goto(`${base}/?demo#/lista`);
-  assert.match(await page.locator('.item-lista', { hasText: 'Leite condensado' }).innerText(), /Leite condensado\s*2/);
+  assert.match(await page.locator('.item-lista', { hasText: 'Leite condensado' }).innerText(), /Leite condensado\s*4/);
   // aviso na tela inicial
   await page.goto(`${base}/?demo#/inicio`);
   await page.locator('a.aviso-minimo', { hasText: 'ingrediente faltando' }).waitFor();
@@ -591,5 +592,78 @@ test('preparo (calda) entra no custo e no gasto de ingredientes de outra receita
   await page.locator('.ing-linha', { hasText: 'g' }).last().getByText('R$ 0,38').waitFor();
   await page.getByRole('button', { name: 'Salvar sabor' }).click();
   await toast().filter({ hasText: 'Sabor salvo' }).waitFor();
+  assert.deepEqual(erros, []);
+});
+
+test('dois locais: lote com vários sabores, envio para Ibiúna, perda lançada em Ibiúna corrigida para São Roque', async () => {
+  await page.goto(`${base}/?demo#/pudim`);
+  await page.getByText('Pronto para vender').waitFor();
+  const local = async (nome) => {
+    await page.getByRole('group', { name: 'Local' }).getByRole('button', { name: nome, exact: true }).click();
+    await page.locator('.hero-pudim .rot-mercado').first().filter({ hasText: nome === 'Todos' ? /^Pronto para vender$/ : `em ${nome}` }).waitFor();
+  };
+  const pudins = async () => Number((await page.locator('.hero-pudim .num-mercado').innerText()).match(/\d+/)[0]);
+  // Espera a tela mostrar o número (ela redesenha logo depois do clique).
+  const temPudins = (n) => page.locator('.hero-pudim .num-mercado', { hasText: new RegExp(`^${n} pudi`) }).waitFor();
+  await local('São Roque');
+  const sr0 = await pudins();
+  await local('Ibiúna');
+  await temPudins(0);
+  await local('Todos');
+
+  // lote: 12 tradicionais 150 e 2 ninho 1100, mesma validade
+  await page.getByRole('button', { name: 'Novo lote' }).click();
+  await folha().getByLabel('Quantos Pudim tradicional 150').fill('12');
+  await folha().getByLabel('Quantos Pudim ninho com Nutella 1100').fill('2');
+  await folha().getByLabel('Vence em').fill('2099-01-05');
+  await page.getByRole('button', { name: 'Pôr 14 no estoque' }).click();
+  await toast().filter({ hasText: 'Lote com 14 pudins no estoque de São Roque, vence 05/01' }).waitFor();
+  await page.getByRole('list', { name: 'Lotes' }).locator('.item', { hasText: '2 Pudim ninho com Nutella 1100, 12 Pudim tradicional 150' }).waitFor();
+
+  // envio de 6 para Ibiúna
+  await page.getByRole('button', { name: 'Enviar', exact: true }).click();
+  await folha().getByLabel('Quantos Pudim tradicional 150').fill('6');
+  await page.getByRole('button', { name: 'Enviar 6 para Ibiúna' }).click();
+  await toast().filter({ hasText: '6 pudins enviados de São Roque para Ibiúna' }).waitFor();
+  await local('Ibiúna');
+  await temPudins(6);
+  await local('São Roque');
+  await temPudins(sr0 + 14 - 6);
+
+  // perdeu 3 em Ibiúna... mas era de São Roque
+  await local('Ibiúna');
+  await page.getByRole('button', { name: 'Perdi' }).click();
+  await folha().getByLabel('Qual pudim').selectOption({ label: 'Pudim tradicional 150' });
+  await page.locator('#mov-quantidade').fill('3');
+  // "quebrou" sai dos que estão na validade (perda por vencimento sairia primeiro dos vencidos)
+  await folha().getByRole('group', { name: 'Motivo' }).getByRole('button', { name: 'Quebrou ou estragou' }).click();
+  await page.getByRole('button', { name: 'Registrar perda' }).click();
+  await toast().filter({ hasText: 'Perda registrada' }).waitFor();
+  await temPudins(3);
+  await page.locator('.item-btn', { hasText: 'Perdeu 3 Pudim tradicional 150' }).click();
+  await folha().getByRole('group', { name: 'Saiu de' }).getByRole('button', { name: 'São Roque' }).click();
+  await folha().getByText('Voltam 3 para Ibiúna e saem 3 de São Roque.').waitFor();
+  await page.getByRole('button', { name: 'Salvar' }).click();
+  await toast().filter({ hasText: 'Corrigido' }).waitFor();
+  await temPudins(6);
+  await local('São Roque');
+  await temPudins(sr0 + 14 - 6 - 3);
+
+  // validade corrigida no lote inteiro (os dois sabores, e o que foi para Ibiúna vai junto)
+  await local('Todos');
+  await page.getByRole('list', { name: 'Lotes' }).locator('.item', { hasText: '2 Pudim ninho com Nutella 1100' }).filter({ hasText: '05/01' }).click();
+  await folha().getByText('Local, dia e validade valem para o lote inteiro (2 sabores)').waitFor();
+  await folha().getByLabel('Vence em').fill('2099-01-03');
+  await page.getByRole('button', { name: 'Salvar' }).click();
+  await toast().filter({ hasText: 'Movimento corrigido' }).waitFor();
+  const lotes = page.getByRole('list', { name: 'Lotes' });
+  await lotes.locator('.item', { hasText: '2 Pudim ninho com Nutella 1100' }).filter({ hasText: '03/01' }).waitFor();
+  await lotes.locator('.item', { hasText: 'Ibiúna' }).filter({ hasText: '03/01' }).waitFor();
+  assert.equal(await lotes.locator('.item', { hasText: '05/01' }).count(), 0);
+
+  // Ibiúna não vende geladinho e o PDV abre no local escolhido
+  await page.goto(`${base}/?demo#/pudim/vender?local=ibiuna`);
+  await page.getByRole('group', { name: 'Local' }).getByRole('button', { name: 'Ibiúna', pressed: true }).waitFor();
+  await page.getByRole('button', { name: 'Adicionar Pudim tradicional 150' }).locator('.pdv-estoque', { hasText: '6 prontos' }).waitFor();
   assert.deepEqual(erros, []);
 });

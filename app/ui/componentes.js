@@ -108,14 +108,20 @@ export function Arrastavel({ onApagar, children }) {
     }
     if (ini.current.moveu) setDx(Math.min(0, d));
   };
+  // O clique que vem logo depois de arrastar não abre o item.
+  const arrastou = useRef(false);
   const up = () => {
+    if (ini.current?.moveu) {
+      arrastou.current = true;
+      setTimeout(() => (arrastou.current = false), 50);
+    }
     if (ini.current?.moveu && dx < -110) onApagar();
     ini.current = null;
     setAtivo(false);
     setDx(0);
   };
   const clickCapture = (e) => {
-    if (ativo || dx !== 0) {
+    if (ativo || dx !== 0 || arrastou.current) {
       e.stopPropagation();
       e.preventDefault();
     }

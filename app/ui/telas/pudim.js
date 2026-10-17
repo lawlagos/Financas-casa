@@ -6,7 +6,7 @@ import { useStore, abrirFolha, salvarVarias, toast, config } from '../../data/st
 import { apagarMovimento } from '../../data/pudim-acoes.js';
 import { brl, brlSigned } from '../../core/money.js';
 import { fmtDay, addDays, businessWeekStart } from '../../core/dates.js';
-import { custoReceita, processarEstoque, estoqueAtual, semanaPudim, custoInsumo, lerCustos, valorMinuto, ehSabor, ehPreparo } from '../../core/pudim.js';
+import { custoReceita, processarEstoque, estoqueAtual, lotesNaGeladeira, lerLocais, localDe, semanaPudim, custoInsumo, lerCustos, valorMinuto, ehSabor, ehPreparo } from '../../core/pudim.js';
 import { saldos, minimos, faltas, pudinsAbaixo, baseDe, embalagemBase } from '../../core/estoqueinsumos.js';
 import { porId } from '../derivados.js';
 import { chaveProduto } from '../../core/mercado.js';
@@ -30,15 +30,20 @@ export function dadosPudim(s) {
   const custos = {};
   for (const r of s.tables.receitas || []) custos[r.id] = custoReceita(r, insumosPorId, itens, custosFixos, receitasPorId);
   const movimentos = s.tables.estoque || [];
-  const { lotes, saidas } = processarEstoque(movimentos, (id) => ({ direto: custos[id]?.porUnidade || 0, fixo: custos[id]?.fixoUnidade || 0 }));
+  // Locais do estoque (São Roque e Ibiúna, a não ser que a config diga outros).
+  const locais = lerLocais(config('locais_estoque', ''));
+  const locaisPorId = porId(locais);
+  const { lotes, saidas } = processarEstoque(movimentos, (id) => ({ direto: custos[id]?.porUnidade || 0, fixo: custos[id]?.fixoUnidade || 0 }), locais);
   const estoque = estoqueAtual(lotes, receitasPorId, s.hoje);
+  // Pronto (na validade) em cada local: { local: { receita_id: unidades } }.
+  const prontos = Object.fromEntries(locais.map((l) => [l.id, {}]));
+  for (const x of estoque.lista) for (const [loc, q] of Object.entries(x.porLocal)) if (q.quantidade) (prontos[loc] ||= {})[x.receita_id] = q.quantidade;
   // Estoque de ingredientes e mínimos (em fornadas, no produto).
   const { saldo, contadoEm } = saldos(s.tables.estoque_insumos || []);
-  const minimo = minimos(receitas, receitasPorId);
-  const prontos = Object.fromEntries(estoque.lista.map((x) => [x.receita_id, x.quantidade]));
+  const minimo = minimos(receitas, receitasPorId, locais);
   return {
-    insumosPorId, receitas, sabores, preparos, receitasPorId, custos, custosFixos, movimentos, saidas, estoque, itens,
-    saldo, contadoEm, minimo, faltas: faltas({ saldo, minimo, insumosPorId }), abaixo: pudinsAbaixo(receitas, prontos),
+    insumosPorId, receitas, sabores, preparos, receitasPorId, custos, custosFixos, movimentos, saidas, estoque, itens, lotes, locais, locaisPorId, prontos,
+    saldo, contadoEm, minimo, faltas: faltas({ saldo, minimo, insumosPorId }), abaixo: pudinsAbaixo(receitas, prontos, locais),
   };
 }
 
@@ -55,7 +60,7 @@ export const embalagensTxt = (q, insumo) => {
   return e > 1 ? `${(Math.round((q / e) * 10) / 10).toLocaleString('pt-BR')} emb. de ${fmtQtd(e, insumo)}` : '';
 };
 
-const ROTULO_MOV = { producao: 'Produziu', venda: 'Vendeu', perda: 'Perdeu' };
+const ROTULO_MOV = { producao: 'Produziu', venda: 'Vendeu', perda: 'Perdeu', transferencia: 'Enviou' };
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
 function Linha({ rot, valor, classe = '', forte }) {
@@ -68,26 +73,44 @@ function AbaEstoque({ s, d }) {
     const inicio = businessWeekStart(s.hoje);
     return d.movimentos.some((m) => m.data >= inicio) ? s.hoje : addDays(inicio, -1);
   });
-  const e = d.estoque;
+  // Local escolhido ('' = todos). O de cima de tudo vale para os botões (Produzi, Vender, Perdi...).
+  const [local, setLocal] = useState('');
+  const nomeLocal = (id) => d.locaisPorId[id]?.nome || id || d.locais[0].nome;
+  const e = local ? estoqueAtual(d.lotes, d.receitasPorId, s.hoje, local) : d.estoque;
+  const lotes = lotesNaGeladeira(d.lotes, s.hoje, local || null);
+  const abaixo = local ? d.abaixo.filter((x) => x.local.id === local) : d.abaixo;
   const sem = semanaPudim({ movimentos: d.movimentos, saidas: d.saidas, lancamentos: s.tables.lancamentos, data });
   const atual = sem.inicio === businessWeekStart(s.hoje);
+  // Baixa dos vencidos sai de cada local onde eles estão.
   const darBaixa = async () => {
-    const linhas = e.lista.filter((x) => x.vencidos > 0).map((x) => ({
-      data: s.hoje, receita_id: x.receita_id, tipo: 'perda', quantidade: x.vencidos, custo_unitario: '', preco_unitario: '', validade: '', lancamento_id: '', obs: 'vencido', criado_em: new Date().toISOString(),
-    }));
+    const agora = new Date().toISOString();
+    const linhas = e.lista.flatMap((x) => Object.entries(x.porLocal).filter(([loc, q]) => q.vencidos > 0 && (!local || loc === local)).map(([loc, q]) => ({
+      data: s.hoje, local: loc, receita_id: x.receita_id, tipo: 'perda', quantidade: q.vencidos, custo_unitario: '', preco_unitario: '', validade: '', lancamento_id: '', obs: 'vencido', criado_em: agora,
+    })));
     await salvarVarias('estoque', linhas);
     toast(`Baixa de ${plural(e.vencidos, 'pudim vencido', 'pudins vencidos')}`);
   };
-  const recentes = [...d.movimentos].sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : String(b.criado_em) < String(a.criado_em) ? -1 : 1)).slice(0, 30);
+  const doLocal = (m) => !local || localDe(m, d.locais) === local || (m.tipo === 'transferencia' && (m.local_destino || d.locais[0].id) === local);
+  const recentes = d.movimentos.filter(doLocal).sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : String(b.criado_em) < String(a.criado_em) ? -1 : 1)).slice(0, 30);
   const apagarMov = async (m) => {
     const r = await apagarMovimento(m);
     toast(r.lancamentos ? `Venda apagada${r.itens > 1 ? ` (${r.itens} itens)` : ''}, e o lançamento no caixa também` : 'Movimento apagado');
   };
+  const ondeMov = (m) => (m.tipo === 'transferencia' ? `${nomeLocal(m.local)} → ${nomeLocal(m.local_destino)}` : nomeLocal(m.local));
+  // Lote na geladeira → abre a produção dele para corrigir validade ou local.
+  const abrirLote = (g) => {
+    const m = d.movimentos.find((x) => x.tipo === 'producao' && (x.lote_id || x.id) === g.lote);
+    if (m) abrirFolha('editar-movimento', { id: m.id });
+  };
+  const resumoLote = (g) => Object.entries(g.itens).filter(([, q]) => q > 0).map(([id, q]) => `${q} ${d.receitasPorId[id]?.nome || '?'}`).sort((a, b) => a.replace(/^\d+ /, '').localeCompare(b.replace(/^\d+ /, ''))).join(', ');
+  const opLocal = local || d.locais[0].id;
 
   return html`
-    <div class="painel painel-pad hero-pudim">
-      <div class="rot-mercado">Pronto para vender</div>
+    ${d.locais.length > 1 && html`<${Segmento} rotulo="Local" opcoes=${[['', 'Todos'], ...d.locais.map((l) => [l.id, l.nome])]} valor=${local} onChange=${setLocal} />`}
+    <div class="painel painel-pad hero-pudim" style=${d.locais.length > 1 ? 'margin-top:10px' : ''}>
+      <div class="rot-mercado">Pronto para vender${local ? ` em ${nomeLocal(local)}` : ''}</div>
       <div class="num-mercado">${plural(e.quantidade, 'pudim', 'pudins')}</div>
+      ${!local && d.locais.length > 1 && html`<div class="muted" style="font-size:13px">${d.locais.map((l) => `${l.nome}: ${Object.values(d.prontos[l.id] || {}).reduce((t, q) => t + q, 0)}`).join(' · ')}</div>`}
       <div class="dupla" style="margin-top:10px">
         <div><div class="rot-mercado">Se vender tudo</div><strong style="font-size:18px">${brl(e.potencial)}</strong></div>
         <div><div class="rot-mercado">Lucro potencial</div><strong style="font-size:18px" class=${e.lucroPotencial < 0 ? 'neg' : 'pos'}>${brlSigned(e.lucroPotencial)}</strong></div>
@@ -98,25 +121,31 @@ function AbaEstoque({ s, d }) {
 
     ${e.vencidos > 0 && html`<div class="painel painel-pad aviso-vencido" role="alert">
       <div><strong>${plural(e.vencidos, 'pudim venceu', 'pudins venceram')}</strong>
-        <div class="muted" style="font-size:13px">${brl(e.custoVencido)} em ingredientes. ${e.lista.filter((x) => x.vencidos).map((x) => `${x.vencidos} ${x.receita?.nome || ''}`).join(', ')}</div></div>
+        <div class="muted" style="font-size:13px">${brl(e.custoVencido)} em ingredientes. ${e.lista.flatMap((x) => Object.entries(x.porLocal).filter(([loc, q]) => q.vencidos && (!local || loc === local)).map(([loc, q]) => `${q.vencidos} ${x.receita?.nome || ''}${local ? '' : ` (${nomeLocal(loc)})`}`)).join(', ')}</div></div>
       <button class="btn btn-perigo btn-mini" style="white-space:nowrap" onClick=${darBaixa}>Dar baixa</button>
     </div>`}
 
-    ${(d.abaixo.length > 0 || d.faltas.length > 0) && html`<div class="painel painel-pad aviso-minimo" role="alert" aria-label="Estoque mínimo">
-      ${d.abaixo.length > 0 && html`<div class="rot-mercado">Abaixo do mínimo</div>
-        <ul class="lista-minimo">${d.abaixo.map((x) => html`<li>
-          <div><strong>${x.receita.nome}</strong><div class="muted" style="font-size:12.5px">tem ${x.tem}, mínimo ${x.minimo}</div></div>
-          <button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('movimento', { tipo: 'producao', receita_id: x.receita.id, quantidade: x.fornadas * (Number(x.receita.rendimento) || 1) })}>Fazer ${x.fornadas} fornada${x.fornadas > 1 ? 's' : ''}</button>
+    ${(abaixo.length > 0 || d.faltas.length > 0) && html`<div class="painel painel-pad aviso-minimo" role="alert" aria-label="Estoque mínimo">
+      ${abaixo.length > 0 && html`<div class="rot-mercado">Abaixo do mínimo</div>
+        <ul class="lista-minimo">${abaixo.map((x) => html`<li>
+          <div><strong>${x.receita.nome}</strong><div class="muted" style="font-size:12.5px">${d.locais.length > 1 ? `${x.local.nome}: ` : ''}tem ${x.tem}, mínimo ${x.minimo}</div></div>
+          ${x.enviarDe
+            ? html`<button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('envio', { de: x.enviarDe.local.id, para: x.local.id, quantidades: { [x.receita.id]: x.enviarDe.quantidade } })}>Enviar ${x.enviarDe.quantidade} de ${x.enviarDe.local.nome}</button>`
+            : html`<button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('movimento', { tipo: 'producao', receita_id: x.receita.id, quantidade: x.fornadas * (Number(x.receita.rendimento) || 1), local: x.local.id })}>Fazer ${x.fornadas} fornada${x.fornadas > 1 ? 's' : ''}</button>`}
         </li>`)}</ul>`}
-      ${d.faltas.length > 0 && html`<a class="link" href="#/pudim?aba=ingredientes" style="display:block;margin-top:${d.abaixo.length ? 10 : 0}px">Faltam ${d.faltas.length} ingrediente${d.faltas.length > 1 ? 's' : ''} para o estoque mínimo →</a>`}
+      ${d.faltas.length > 0 && html`<a class="link" href="#/pudim?aba=ingredientes" style="display:block;margin-top:${abaixo.length ? 10 : 0}px">Faltam ${d.faltas.length} ingrediente${d.faltas.length > 1 ? 's' : ''} para o estoque mínimo →</a>`}
     </div>`}
 
     <div class="acoes acoes-pudim">
-      <button class="btn btn-pri" onClick=${() => abrirFolha('movimento', { tipo: 'producao' })}>Produzi</button>
-      <a class="btn btn-sec" href="#/pudim/vender">Vender</a>
-      <button class="btn btn-sec" onClick=${() => abrirFolha('movimento', { tipo: 'perda' })}>Perdi</button>
+      <button class="btn btn-pri" onClick=${() => abrirFolha('movimento', { tipo: 'producao', local: opLocal })}>Produzi</button>
+      <a class="btn btn-sec" href=${`#/pudim/vender${local ? `?local=${local}` : ''}`}>Vender</a>
+      <button class="btn btn-sec" onClick=${() => abrirFolha('movimento', { tipo: 'perda', local: opLocal })}>Perdi</button>
     </div>
-    <button class="btn btn-sec btn-larga" style="margin-top:8px" onClick=${() => abrirFolha('voz-estoque', {})}><${Icone} n="mic" />Falar o que produziu, vendeu ou perdeu</button>
+    <div class="acoes acoes-pudim" style="margin-top:8px">
+      <button class="btn btn-sec" onClick=${() => abrirFolha('lote', { local: opLocal })}>Novo lote</button>
+      ${d.locais.length > 1 && html`<button class="btn btn-sec" onClick=${() => abrirFolha('envio', { de: local && local !== d.locais[0].id ? local : d.locais[0].id })}>Enviar</button>`}
+    </div>
+    <button class="btn btn-sec btn-larga" style="margin-top:8px" onClick=${() => abrirFolha('voz-estoque', { local })}><${Icone} n="mic" />Falar o que produziu, vendeu ou perdeu</button>
 
     <${Secao} titulo=${atual ? 'Esta semana' : `Semana de ${fmtDay(sem.inicio)}`}>
       <div class="painel painel-pad">
@@ -146,20 +175,32 @@ function AbaEstoque({ s, d }) {
     ${e.lista.length > 0 && html`<${Secao} titulo="Na geladeira">
       <ul class="lista painel">
         ${e.lista.map((x) => html`<li class="item"><div class="corpo"><div class="tit">${x.receita?.nome || 'Receita apagada'}</div>
-          <div class="meta">${x.quantidade ? `${plural(x.quantidade, 'unidade', 'unidades')}, vence ${fmtDay(x.proximaValidade)}` : ''}${x.vencidos ? html`${x.quantidade ? ', ' : ''}<span class="neg">${x.vencidos} vencido${x.vencidos > 1 ? 's' : ''}</span>` : ''}</div></div>
+          <div class="meta">${x.quantidade ? `${plural(x.quantidade, 'unidade', 'unidades')}, vence ${fmtDay(x.proximaValidade)}` : ''}${x.vencidos ? html`${x.quantidade ? ', ' : ''}<span class="neg">${x.vencidos} vencido${x.vencidos > 1 ? 's' : ''}</span>` : ''}</div>
+          ${!local && Object.keys(x.porLocal).length > 1 && html`<div class="meta">${Object.entries(x.porLocal).map(([loc, q]) => `${nomeLocal(loc)}: ${q.quantidade}${q.vencidos ? ` (+${q.vencidos} vencido${q.vencidos > 1 ? 's' : ''})` : ''}`).join(' · ')}</div>`}
+          ${!local && Object.keys(x.porLocal).length === 1 && d.locais.length > 1 && html`<div class="meta">${nomeLocal(Object.keys(x.porLocal)[0])}</div>`}</div>
           <div class="valor">${brl(x.potencial)}<small>custo ${brl(x.custo)}</small></div></li>`)}
+      </ul>
+    <//>`}
+
+    ${lotes.length > 0 && html`<${Secao} titulo="Validade dos lotes">
+      <ul class="lista painel" aria-label="Lotes">
+        ${lotes.map((g) => html`<li><button class="item item-btn" onClick=${() => abrirLote(g)}><div class="corpo">
+          <div class="tit">Lote de ${fmtDay(g.produzidoEm)}${d.locais.length > 1 ? ` · ${nomeLocal(g.local)}` : ''}</div>
+          <div class="meta">${resumoLote(g)}</div></div>
+          <div class=${`valor ${g.vencido ? 'neg' : g.validade <= addDays(s.hoje, 1) ? 'atencao' : ''}`}>${g.vencido ? 'venceu' : 'vence'}<small>${fmtDay(g.validade)}</small></div>
+        </button></li>`)}
       </ul>
     <//>`}
 
     <${Secao} titulo="Movimentos">
       <ul class="lista painel">
-        ${recentes.map((m) => html`<li><${Arrastavel} onApagar=${() => apagarMov(m)}><div class="item">
+        ${recentes.map((m) => html`<li><${Arrastavel} onApagar=${() => apagarMov(m)}><button class="item item-btn" onClick=${() => abrirFolha('editar-movimento', { id: m.id })}>
           <div class="corpo"><div class="tit">${ROTULO_MOV[m.tipo] || m.tipo} ${m.quantidade} ${d.receitasPorId[m.receita_id]?.nome || 'receita apagada'}</div>
-            <div class="meta">${fmtDay(m.data)}${m.tipo === 'producao' && m.validade ? `, vence ${fmtDay(m.validade)}` : ''}${m.canal === 'ifood' ? ', iFood' : ''}${m.obs ? `, ${m.obs}` : ''}${m.lancamento_id ? ', lançado no caixa' : ''}</div></div>
-          <div class=${`valor ${m.tipo === 'venda' ? 'pos' : m.tipo === 'perda' ? 'neg' : ''}`}>${m.tipo === 'venda' ? brl(Math.round(Number(m.quantidade) * Math.round(Number(m.preco_unitario || 0) * 100))) : m.tipo === 'producao' ? brl(Math.round(Number(m.quantidade) * Math.round(Number(m.custo_unitario || 0) * 100))) : brl(d.saidas[m.id]?.custo || 0)}
+            <div class="meta">${fmtDay(m.data)}${d.locais.length > 1 ? `, ${ondeMov(m)}` : ''}${m.tipo === 'producao' && m.validade ? `, vence ${fmtDay(m.validade)}` : ''}${m.canal === 'ifood' ? ', iFood' : ''}${m.obs ? `, ${m.obs}` : ''}${m.lancamento_id ? ', lançado no caixa' : ''}</div></div>
+          <div class=${`valor ${m.tipo === 'venda' ? 'pos' : m.tipo === 'perda' ? 'neg' : ''}`}>${m.tipo === 'venda' ? brl(Math.round(Number(m.quantidade) * Math.round(Number(m.preco_unitario || 0) * 100))) : m.tipo === 'producao' ? brl(Math.round(Number(m.quantidade) * Math.round(Number(m.custo_unitario || 0) * 100))) : m.tipo === 'transferencia' ? brl(d.saidas[m.id]?.transferido || 0) : brl(d.saidas[m.id]?.custo || 0)}
             <small>${m.tipo === 'venda' ? 'venda' : 'custo'}</small></div>
-        </div><//></li>`)}
-        ${!recentes.length && html`<li class="item muted">Registre o que produzir, vender ou perder pelos botões acima. Arraste um movimento para a esquerda para apagar.</li>`}
+        </button><//></li>`)}
+        ${!recentes.length && html`<li class="item muted">Registre o que produzir, vender ou perder pelos botões acima. Toque num movimento para corrigir; arraste para a esquerda para apagar.</li>`}
       </ul>
     <//>`;
 }

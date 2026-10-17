@@ -19,7 +19,7 @@ import { TelaPudim } from './telas/pudim.js';
 import { TelaPdv } from './telas/pdv.js';
 import { TelaCompras } from './telas/compras.js';
 import { TelaLista } from './telas/lista.js';
-import { FolhaMovimento, FolhaReceita, FolhaInsumo, FolhaVozEstoque, FolhaCustosPudim, FolhaContagem } from './folhas/pudim.js';
+import { FolhaMovimento, FolhaReceita, FolhaInsumo, FolhaVozEstoque, FolhaCustosPudim, FolhaContagem, FolhaLote, FolhaEnvio, FolhaEditarMovimento } from './folhas/pudim.js';
 
 const TELAS = {
   '/inicio': TelaInicio,
@@ -55,6 +55,9 @@ const FOLHAS = {
   'voz-estoque': FolhaVozEstoque,
   'custos-pudim': FolhaCustosPudim,
   contagem: FolhaContagem,
+  lote: FolhaLote,
+  envio: FolhaEnvio,
+  'editar-movimento': FolhaEditarMovimento,
 };
 
 function lerRota() {

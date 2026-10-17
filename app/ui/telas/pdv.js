@@ -14,14 +14,17 @@ import { contasAtivas } from '../derivados.js';
 import { SelectConta } from '../folhas/lancamento.js';
 import { CampoFala } from '../voz.js';
 import { dadosPudim } from './pudim.js';
+import { locaisDoProduto } from '../../core/estoqueinsumos.js';
 import { FaixaDemo } from './inicio.js';
 
 const qtdTxt = (n) => String(n).replace('.', ',');
 const valorTxt = (cents) => (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function TelaPdv() {
+export function TelaPdv({ params = {} }) {
   const s = useStore();
   const d = dadosPudim(s);
+  // De onde sai a venda (São Roque ou Ibiúna). Ibiúna não tem geladinho.
+  const [local, setLocal] = useState(d.locaisPorId[params.local] ? params.local : d.locais[0].id);
   const contas = contasAtivas(s);
   const ultimaDireta = [...s.tables.lancamentos].reverse().find((l) => l.categoria_id === 'cat-venda-pudim' && l.conta_id !== 'ifood');
   const [canal, setCanal] = useState('direta');
@@ -39,11 +42,12 @@ export function TelaPdv() {
   const [duvidas, setDuvidas] = useState([]); // trechos falados sem receita certa: [{ trecho, quantidade, candidatos }]
   const taxaPct = taxaIfood();
 
-  const naGeladeira = Object.fromEntries(d.estoque.lista.map((x) => [x.receita_id, x.quantidade]));
+  const naGeladeira = d.prontos[local] || {};
+  const doLocal = d.receitas.filter((r) => locaisDoProduto(r, d.locais).some((l) => l.id === local));
   const desde = addDays(s.hoje, -60);
   const vendas60 = {};
   for (const m of d.movimentos) if (m.tipo === 'venda' && m.data >= desde) vendas60[m.receita_id] = (vendas60[m.receita_id] || 0) + Number(m.quantidade || 0);
-  const ordenadas = [...d.receitas].sort((a, b) => (naGeladeira[b.id] || 0) - (naGeladeira[a.id] || 0) || (vendas60[b.id] || 0) - (vendas60[a.id] || 0) || a.nome.localeCompare(b.nome));
+  const ordenadas = [...doLocal].sort((a, b) => (naGeladeira[b.id] || 0) - (naGeladeira[a.id] || 0) || (vendas60[b.id] || 0) - (vendas60[a.id] || 0) || a.nome.localeCompare(b.nome));
   const termo = busca.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const filtradas = termo ? ordenadas.filter((r) => r.nome.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(termo)) : ordenadas;
   const principais = filtradas.filter((r) => naGeladeira[r.id] || vendas60[r.id]);
@@ -67,6 +71,12 @@ export function TelaPdv() {
   const t = totaisCarrinho(linhas, canal, taxaPct);
   const semPreco = linhas.filter((l) => !l.preco);
 
+  // Trocar de local tira do carrinho o que o novo local não tem (geladinho em Ibiúna).
+  const trocarLocal = (l) => {
+    setLocal(l);
+    const pode = new Set(d.receitas.filter((r) => locaisDoProduto(r, d.locais).some((x) => x.id === l)).map((r) => r.id));
+    setCarrinho((c) => Object.fromEntries(Object.entries(c).filter(([id]) => pode.has(id))));
+  };
   const mudar = (id, delta) => {
     soltarQtd(id);
     setCarrinho((c) => ({ ...c, [id]: Math.max(0, Math.round(((c[id] || 0) + delta) * 100) / 100) }));
@@ -88,7 +98,8 @@ export function TelaPdv() {
   });
 
   const ouvido = (texto) => {
-    const r = interpretarEstoque(texto, { receitas: d.receitas, hoje: s.hoje, estoque: naGeladeira });
+    const r = interpretarEstoque(texto, { receitas: doLocal, hoje: s.hoje, estoque: naGeladeira, locais: d.locais });
+    if (r.local && r.local !== local) trocarLocal(r.local);
     const vendas = r.itens.filter((i) => i.tipo !== 'producao' && i.tipo !== 'perda');
     const certos = vendas.filter((i) => i.receita_id);
     if (/\bi\s?food\b/i.test(texto)) setCanal('ifood');
@@ -111,7 +122,7 @@ export function TelaPdv() {
     if (!linhas.length || semPreco.length || (lancar && canal === 'direta' && !conta_id)) return;
     setSalvando(true);
     try {
-      const r = await registrarVenda({ linhas, canal, data, conta_id, lancar });
+      const r = await registrarVenda({ linhas, canal, data, conta_id, lancar, local });
       setCarrinho({});
       setPrecos({});
       setQtdTexto({});
@@ -126,7 +137,8 @@ export function TelaPdv() {
   return html`<main class="pdv">
     <${Topo} titulo="Vender" sub="Toque no pudim para pôr no carrinho" voltar="#/pudim" direita=${html`<button class="btn btn-sec btn-mini" aria-pressed=${String(falando)} onClick=${() => setFalando(!falando)}><${Icone} n="mic" />Falar</button>`} />
     <${FaixaDemo} />
-    <${Segmento} rotulo="Canal" opcoes=${[['direta', CANAIS.direta], ['ifood', CANAIS.ifood]]} valor=${canal} onChange=${setCanal} />
+    ${d.locais.length > 1 && html`<${Segmento} rotulo="Local" classe="pdv-local" opcoes=${d.locais.map((l) => [l.id, l.nome])} valor=${local} onChange=${trocarLocal} />`}
+    <${Segmento} rotulo="Canal" classe=${d.locais.length > 1 ? 'mt8' : ''} opcoes=${[['direta', CANAIS.direta], ['ifood', CANAIS.ifood]]} valor=${canal} onChange=${setCanal} />
     ${canal === 'ifood' && html`<p class="muted" style="font-size:12.5px;margin:6px 2px 0">Preços do iFood; a taxa de ${qtdTxt(taxaPct)}% sai do valor da venda.</p>`}
     ${falando && html`<div style="margin-top:10px"><${CampoFala} id="pdv-frase" rotulo="O que vendeu" frase=${frase} setFrase=${setFrase} onPronto=${ouvido} placeholder="Ex.: 3 tradicionais 1100 e 2 de ninho com nutella" /></div>`}
 
@@ -158,7 +170,7 @@ export function TelaPdv() {
           ${linhas.map((l) => html`<li>
             <div class="pdv-linha-nome">${l.receita.nome}
               ${naGeladeira[l.receita.id] !== undefined && l.quantidade > (naGeladeira[l.receita.id] || 0) && html`<div class="neg" style="font-size:12px">Só ${naGeladeira[l.receita.id] || 0} no estoque</div>`}
-              ${!(l.receita.id in naGeladeira) && html`<div class="muted" style="font-size:12px">Sem produção registrada</div>`}</div>
+              ${!(l.receita.id in naGeladeira) && html`<div class="muted" style="font-size:12px">Nenhum pronto${d.locais.length > 1 ? ` em ${d.locaisPorId[local].nome}` : ''}</div>`}</div>
             <div class="pdv-contador">
               <button class="icone-btn" aria-label=${`Menos ${l.receita.nome}`} onClick=${() => mudar(l.receita.id, -1)}>−</button>
               <input aria-label=${`Quantidade de ${l.receita.nome}`} inputmode="decimal" value=${qtdTexto[l.receita.id] ?? qtdTxt(l.quantidade)} onInput=${(e) => digitarQtd(l.receita.id, e.target.value)} onBlur=${() => soltarQtd(l.receita.id)} />

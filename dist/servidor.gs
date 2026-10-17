@@ -308,7 +308,7 @@ var ESQUEMA = {
     'produto', 'marca', 'tamanho', 'tamanho_unidade'],
   insumos: ['id', 'nome', 'tipo', 'marca', 'qtd_embalagem', 'unidade', 'preco_embalagem', 'data_preco', 'produto', 'ativo'],
   receitas: ['id', 'nome', 'rendimento', 'validade_dias', 'preco_venda', 'preco_sugerido', 'custo_ref', 'ingredientes', 'ativo', 'preco_ifood', 'tempo_preparo', 'markup', 'tipo', 'sabor_id', 'porcao', 'estoque_minimo'],
-  estoque: ['id', 'data', 'receita_id', 'tipo', 'quantidade', 'custo_unitario', 'preco_unitario', 'validade', 'lancamento_id', 'obs', 'criado_em', 'canal', 'taxa_unitaria', 'custo_fixo_unitario'],
+  estoque: ['id', 'data', 'receita_id', 'tipo', 'quantidade', 'custo_unitario', 'preco_unitario', 'validade', 'lancamento_id', 'obs', 'criado_em', 'canal', 'taxa_unitaria', 'custo_fixo_unitario', 'local', 'local_destino', 'lote_id'],
   lista: ['id', 'nome', 'quantidade', 'unidade', 'origem', 'preco_estimado', 'preco_pago', 'comprado', 'texto', 'criado_em', 'criado_por', 'comprado_em'],
   estoque_insumos: ['id', 'data', 'insumo_id', 'tipo', 'quantidade', 'origem', 'ref', 'obs', 'criado_em']
 };
@@ -709,7 +709,7 @@ function instrucoesLeitura_(ctx) {
 // Ponto de entrada do Web App. O app manda POST com {acao, sessao, dados}.
 
 // Mude a cada atualização do servidor: abrir o endereço /exec no navegador mostra este número.
-var VERSAO_SERVIDOR = '2026-10-17.12';
+var VERSAO_SERVIDOR = '2026-10-17.13';
 
 function doPost(e) {
   var resposta;

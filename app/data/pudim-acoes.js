@@ -68,7 +68,7 @@ export function registrarVenda(args) {
   return tudoOuNada((feitos) => gravarVenda(args, feitos));
 }
 
-async function gravarVenda({ linhas, canal, data, conta_id, lancar }, feitos) {
+async function gravarVenda({ linhas, canal, data, conta_id, lancar, local = '' }, feitos) {
   const itens = linhas.filter((l) => l.receita && l.quantidade > 0);
   if (!itens.length) return null;
   const taxaPct = taxaIfood();
@@ -94,19 +94,23 @@ async function gravarVenda({ linhas, canal, data, conta_id, lancar }, feitos) {
       feitos.push({ tabela: 'lancamentos', id: taxa.id });
     }
   }
-  await salvarVarias('estoque', itens.map((l) => ({
-    data, receita_id: l.receita.id, tipo: 'venda', quantidade: l.quantidade, custo_unitario: '', preco_unitario: reais(l.preco),
+  const salvos = await salvarVarias('estoque', itens.map((l) => ({
+    data, local: l.local || local, receita_id: l.receita.id, tipo: 'venda', quantidade: l.quantidade, custo_unitario: '', preco_unitario: reais(l.preco),
     taxa_unitaria: canal === 'ifood' ? Math.round(taxaUnitaria(l.preco, taxaPct) * 100) / 10000 : '', canal, validade: '', lancamento_id, obs: '', criado_em: agora,
   })));
+  for (const x of salvos) feitos.push({ tabela: 'estoque', id: x.id });
   return { ...t, lancado: !!lancamento_id };
 }
 
-// Produção e perda (vários de uma vez, como vêm da fala).
-// itens: [{ tipo, receita, quantidade, custo (ingredientes e embalagem), fixo (mão de obra e despesas), em centavos por unidade }].
-export async function registrarMovimentos(itens, { data, motivo = 'vencido' }, feitos = null) {
+// Produção, perda e envio entre locais (vários de uma vez, como vêm da fala).
+// itens: [{ tipo, receita, quantidade, custo (ingredientes e embalagem), fixo (mão de obra e despesas), em centavos por unidade,
+//   local (opcional, senão o de `opcoes`), validade (produção), para (envio: local de destino) }].
+// Lote: produções gravadas com o mesmo `lote_id` e a mesma validade (vários sabores na mesma leva).
+export async function registrarMovimentos(itens, { data, motivo = 'vencido', local = '', lote_id = '' }, feitos = null) {
   const agora = new Date().toISOString();
-  const linhas = itens.filter((i) => i.receita && i.quantidade > 0 && (i.tipo === 'producao' || i.tipo === 'perda')).map((i) => ({
-    data, receita_id: i.receita.id, tipo: i.tipo, quantidade: i.quantidade,
+  const linhas = itens.filter((i) => i.receita && i.quantidade > 0 && ['producao', 'perda', 'transferencia'].includes(i.tipo)).map((i) => ({
+    data, local: i.local || local, local_destino: i.tipo === 'transferencia' ? i.para : '', lote_id: i.tipo === 'producao' ? lote_id : '',
+    receita_id: i.receita.id, tipo: i.tipo, quantidade: i.quantidade,
     custo_unitario: i.tipo === 'producao' ? reais(i.custo || 0) : '', custo_fixo_unitario: i.tipo === 'producao' ? reais(i.fixo || 0) : '', preco_unitario: '',
     validade: i.tipo === 'producao' ? i.validade || addDays(data, Number(i.receita.validade_dias) || VALIDADE_PADRAO) : '',
     lancamento_id: '', obs: i.tipo === 'perda' ? motivo : '', criado_em: agora, canal: '', taxa_unitaria: '',
@@ -118,12 +122,75 @@ export async function registrarMovimentos(itens, { data, motivo = 'vencido' }, f
   return salvos;
 }
 
-// Produção/perda e venda ditas na mesma frase: se a venda falhar, a produção e a perda também são desfeitas.
-export function registrarFala({ movimentos, venda, data, motivo }) {
+// Produção/perda/envio e venda ditos na mesma frase: se a venda falhar, o resto também é desfeito.
+export function registrarFala({ movimentos, venda, data, motivo, local = '' }) {
   return tudoOuNada(async (feitos) => {
-    const salvos = await registrarMovimentos(movimentos, { data, motivo }, feitos);
-    const v = venda ? await gravarVenda({ ...venda, data }, feitos) : null;
+    const salvos = await registrarMovimentos(movimentos, { data, motivo, local }, feitos);
+    const v = venda ? await gravarVenda({ local, ...venda, data }, feitos) : null;
     return { movimentos: salvos.length, venda: v };
+  });
+}
+
+// Um lote: vários sabores feitos juntos, no mesmo local e com a mesma validade.
+export function registrarLote({ itens, data, validade, local }) {
+  const lote_id = uid('lote');
+  return tudoOuNada((feitos) => registrarMovimentos(itens.map((i) => ({ ...i, tipo: 'producao', validade })), { data, local, lote_id }, feitos));
+}
+
+// Envio de pudins de um local para outro (levam a validade e o custo dos lotes de onde saíram).
+export function registrarEnvio({ itens, de, para, data }) {
+  return tudoOuNada((feitos) => registrarMovimentos(itens.map((i) => ({ ...i, tipo: 'transferencia', local: de, para })), { data }, feitos));
+}
+
+// Venda do mesmo carrinho: mesmo lançamento no caixa ou, sem lançamento, gravada junto (mesmo dia e mesma hora).
+export function itensDaVenda(m) {
+  if (m.tipo !== 'venda') return [m];
+  return state.tables.estoque.filter((x) => x.tipo === 'venda' && (m.lancamento_id ? x.lancamento_id === m.lancamento_id : !x.lancamento_id && x.data === m.data && x.criado_em === m.criado_em));
+}
+// Produções do mesmo lote.
+export const itensDoLote = (m) => (m.tipo === 'producao' && m.lote_id ? state.tables.estoque.filter((x) => x.tipo === 'producao' && x.lote_id === m.lote_id) : [m]);
+
+// Corrige um movimento. Os saldos são refeitos a partir dos movimentos, então trocar o local de uma saída
+// devolve ao local antigo e tira do novo, sem lançar nada a mais.
+// mudancas: { local, local_destino, data, quantidade, validade, obs, loteTodo (validade/local/dia valem para o lote inteiro) }.
+// Venda: só o local muda (vale para o carrinho inteiro); quantidade e dia estão ligados ao valor no caixa.
+export async function editarMovimento(m, mudancas) {
+  const { loteTodo, ...mud } = mudancas;
+  return tudoOuNada(async (feitos) => {
+    const anteriores = [];
+    const apagados = [];
+    const gravar = async (linhas) => {
+      for (const l of linhas) anteriores.push(state.tables.estoque.find((x) => x.id === l.id));
+      return salvarVarias('estoque', linhas);
+    };
+    try {
+      if (m.tipo === 'venda') {
+        await gravar(itensDaVenda(m).map((x) => ({ ...x, local: mud.local ?? x.local ?? '' })));
+        return;
+      }
+      const atual = { ...m, ...mud };
+      const grupo = m.tipo === 'producao' && loteTodo ? itensDoLote(m) : [m];
+      const comuns = {};
+      for (const k of ['local', 'validade', 'data']) if (k in mud) comuns[k] = mud[k];
+      const linhas = grupo.map((x) => (x.id === m.id ? atual : { ...x, ...comuns }));
+      await gravar(linhas);
+      // Produção com outra quantidade ou outro dia: refaz a saída de ingredientes dela.
+      for (const x of linhas.filter((l) => l.tipo === 'producao')) {
+        const antes = grupo.find((g) => g.id === x.id);
+        if (Number(antes.quantidade) === Number(x.quantidade) && antes.data === x.data) continue;
+        for (const e of (state.tables.estoque_insumos || []).filter((e) => e.ref === x.id && e.origem === 'producao')) {
+          await apagar('estoque_insumos', e.id);
+          apagados.push(e);
+        }
+        await saidasDaProducao([x], feitos);
+      }
+    } catch (e) {
+      // Volta as linhas que já tinham sido regravadas.
+      const voltar = anteriores.filter(Boolean);
+      if (voltar.length) await salvarVarias('estoque', voltar).catch(() => {});
+      if (apagados.length) await salvarVarias('estoque_insumos', apagados).catch(() => {});
+      throw e;
+    }
   });
 }
 
@@ -131,7 +198,7 @@ export function registrarFala({ movimentos, venda, data, motivo }) {
 export async function apagarMovimento(m) {
   if (!m.lancamento_id) {
     // Venda sem lançamento no caixa: os itens do mesmo carrinho foram gravados juntos (mesmo dia e mesma hora).
-    const juntos = m.tipo === 'venda' ? state.tables.estoque.filter((x) => x.tipo === 'venda' && !x.lancamento_id && x.data === m.data && x.criado_em === m.criado_em) : [m];
+    const juntos = itensDaVenda(m);
     for (const x of juntos) await apagar('estoque', x.id);
     // Produção apagada devolve os ingredientes que ela tinha gastado.
     if (m.tipo === 'producao') for (const x of (state.tables.estoque_insumos || []).filter((e) => e.ref === m.id && e.origem === 'producao')) await apagar('estoque_insumos', x.id);

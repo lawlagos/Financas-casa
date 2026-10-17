@@ -96,3 +96,18 @@ test('revisão: "mini", "pequeno", "grande" não escondem receitas antigas sem t
   assert.deepEqual(res('vendi 3 geladinhos'), [['venda', 3, 'gel']]);
   assert.deepEqual(res('vendi 2 tradicionais mini'), [['venda', 2, 'mt']]);
 });
+
+test('local e envio: "em Ibiúna", "mandei pra Ibiúna", "de São Roque"', () => {
+  const rs = [R('t150', 'Pudim tradicional 150', 6), R('b150', 'Pudim brigadeirão 150', 6)];
+  const l = (t) => interpretarEstoque(t, { receitas: rs, hoje });
+  const res = (r) => r.itens.map((i) => [i.tipo, i.quantidade, i.receita_id, i.local, i.para]);
+  assert.deepEqual(res(l('vendi 3 tradicionais 150 em Ibiúna')), [['venda', 3, 't150', 'ibiuna', '']]);
+  assert.equal(l('em ibiúna vendi 3 tradicionais 150 e 2 brigadeirão 150').local, 'ibiuna');
+  assert.deepEqual(res(l('em ibiúna vendi 3 tradicionais 150 e 2 brigadeirão 150')), [['venda', 3, 't150', 'ibiuna', ''], ['venda', 2, 'b150', 'ibiuna', '']]);
+  assert.deepEqual(res(l('mandei 6 tradicionais 150 pra Ibiúna e 4 brigadeirão 150')), [['transferencia', 6, 't150', 'sao-roque', 'ibiuna'], ['transferencia', 4, 'b150', 'sao-roque', 'ibiuna']]);
+  assert.deepEqual(res(l('levei 2 brigadeirão 150 de ibiuna para são roque')), [['transferencia', 2, 'b150', 'ibiuna', 'sao-roque']]);
+  // Sem local dito: vazio (a tela usa o local escolhido).
+  assert.deepEqual(res(l('vendi 1 tradicional 150')), [['venda', 1, 't150', '', '']]);
+  // Local dito no trecho não atrapalha herdar o pudim anterior.
+  assert.deepEqual(res(l('vendi 5 tradicional 150 em são roque e perdi 2 em ibiúna')), [['venda', 5, 't150', 'sao-roque', ''], ['perda', 2, 't150', 'ibiuna', '']]);
+});

@@ -193,65 +193,125 @@ export function produtosDoSabor(sabor, insumos, tamanhos = TAMANHOS_PADRAO) {
   }));
 }
 
-// Repassa os movimentos em ordem e devolve os lotes que sobraram e o custo de cada venda/perda.
+// Locais de estoque de pudim pronto. A produção é num local; dá para mandar pudins de um para o outro.
+// fator: quanto do mínimo de cada produto o local precisa ter (Ibiúna vende metade de São Roque);
+// soPudim: o local não trabalha com geladinho.
+export const LOCAIS_PADRAO = [
+  { id: 'sao-roque', nome: 'São Roque', fator: 1, soPudim: false },
+  { id: 'ibiuna', nome: 'Ibiúna', fator: 0.5, soPudim: true },
+];
+export function lerLocais(v) {
+  let l = v;
+  if (typeof v === 'string') {
+    try {
+      l = JSON.parse(v || '[]');
+    } catch {
+      l = [];
+    }
+  }
+  return Array.isArray(l) && l.length ? l : LOCAIS_PADRAO;
+}
+export const ehGeladinho = (r) => /geladinho/i.test(`${r?.porcao || ''} ${r?.nome || ''}`);
+// Movimento antigo, sem local, é do primeiro local (onde se produz).
+export const localDe = (m, locais = LOCAIS_PADRAO) => m?.local || locais[0].id;
+
+// Repassa os movimentos em ordem e devolve os lotes que sobraram (por local) e o custo de cada saída.
 // `custoAtual(receita_id)` dá o custo de hoje para saídas sem produção registrada antes.
-// Venda sai do que ainda está na validade, o que vence primeiro; perda por vencimento sai do que já venceu.
-// No mesmo dia, a produção conta antes das vendas e perdas, em qualquer ordem que tenham sido lançadas.
-export function processarEstoque(movimentos, custoAtual = () => 0) {
-  const peso = (m) => (m.tipo === 'producao' ? 0 : 1);
+// Venda sai do que ainda está na validade, o que vence primeiro; envio leva os mais novos; perda por vencimento sai do que já venceu.
+// No mesmo dia: produção, depois envios entre locais, depois vendas e perdas, em qualquer ordem que tenham sido lançadas.
+// Envio (tipo "transferencia", de `local` para `local_destino`) leva os lotes com a validade e o custo deles.
+export function processarEstoque(movimentos, custoAtual = () => 0, locais = LOCAIS_PADRAO) {
+  const peso = (m) => (m.tipo === 'producao' ? 0 : m.tipo === 'transferencia' ? 1 : 2);
   const ordem = [...movimentos].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : peso(a) - peso(b) || (String(a.criado_em || '') < String(b.criado_em || '') ? -1 : 1)));
   const lotes = [];
   const saidas = {};
-  // Saída sem lote (venda com data antes da produção): a próxima produção da receita já nasce descontada.
+  // Saída sem lote (venda com data antes da produção): a próxima produção da receita naquele local já nasce descontada.
   const devendo = {};
-  for (const m of ordem) {
-    const qtd = Number(m.quantidade) || 0;
-    if (m.tipo === 'producao') {
-      const desconta = Math.min(devendo[m.receita_id] || 0, qtd);
-      if (desconta) devendo[m.receita_id] -= desconta;
-      lotes.push({ mov: m, receita_id: m.receita_id, restante: qtd - desconta, custo: toCents(m.custo_unitario || 0), fixo: toCents(m.custo_fixo_unitario || 0), validade: m.validade || m.data });
-      continue;
-    }
-    let falta = qtd;
-    let custo = 0;
-    let fixo = 0;
+  const chave = (receita, local) => `${receita}|${local}`;
+  const custoHoje = (id) => {
+    const h = custoAtual(id);
+    return { direto: typeof h === 'number' ? h : h?.direto || 0, fixo: typeof h === 'number' ? 0 : h?.fixo || 0 };
+  };
+  // Tira `qtd` do local, pela ordem certa; devolve o que tirou (por lote) e o que faltou.
+  const tirar = (m, local, qtd) => {
     const vencido = (l) => (l.validade < m.data ? 1 : 0);
     const primeiroVencidos = m.tipo === 'perda' && (m.obs || 'vencido') === 'vencido';
+    // Envio leva os mais novos: o outro local vende menos e o que vence logo fica onde sai mais.
+    const envio = m.tipo === 'transferencia';
     const fila = lotes
-      .filter((l) => l.receita_id === m.receita_id && l.restante)
-      .sort((a, b) => (primeiroVencidos ? vencido(b) - vencido(a) : vencido(a) - vencido(b)) || (a.validade < b.validade ? -1 : a.validade > b.validade ? 1 : 0));
+      .filter((l) => l.receita_id === m.receita_id && l.local === local && l.restante)
+      .sort((a, b) => (primeiroVencidos ? vencido(b) - vencido(a) : vencido(a) - vencido(b)) || (a.validade < b.validade ? -1 : a.validade > b.validade ? 1 : 0) * (envio ? -1 : 1));
+    let falta = qtd;
+    const pegou = [];
     for (const l of fila) {
       if (!falta) break;
       const usa = Math.min(l.restante, falta);
       l.restante -= usa;
       falta -= usa;
-      custo += usa * l.custo;
-      fixo += usa * l.fixo;
+      pegou.push({ lote: l, quantidade: usa });
     }
+    return { pegou, falta };
+  };
+  for (const m of ordem) {
+    const qtd = Number(m.quantidade) || 0;
+    const local = localDe(m, locais);
+    if (m.tipo === 'producao') {
+      const k = chave(m.receita_id, local);
+      const desconta = Math.min(devendo[k] || 0, qtd);
+      if (desconta) devendo[k] -= desconta;
+      lotes.push({ mov: m, lote: m.lote_id || m.id, produzidoEm: m.data, local, receita_id: m.receita_id, restante: qtd - desconta, custo: toCents(m.custo_unitario || 0), fixo: toCents(m.custo_fixo_unitario || 0), validade: m.validade || m.data });
+      continue;
+    }
+    const { pegou, falta } = tirar(m, local, qtd);
+    let custo = pegou.reduce((s, p) => s + p.quantidade * p.lote.custo, 0);
+    let fixo = pegou.reduce((s, p) => s + p.quantidade * p.lote.fixo, 0);
     if (falta) {
-      devendo[m.receita_id] = (devendo[m.receita_id] || 0) + falta;
-      const hoje = custoAtual(m.receita_id);
-      custo += falta * (typeof hoje === 'number' ? hoje : hoje?.direto || 0);
-      fixo += falta * (typeof hoje === 'number' ? 0 : hoje?.fixo || 0);
+      devendo[chave(m.receita_id, local)] = (devendo[chave(m.receita_id, local)] || 0) + falta;
+      const h = custoHoje(m.receita_id);
+      custo += falta * h.direto;
+      fixo += falta * h.fixo;
+    }
+    if (m.tipo === 'transferencia') {
+      // Chega no destino com a validade e o custo dos lotes de onde saiu; o que não tinha registrado chega com o custo de hoje.
+      const destino = m.local_destino || locais[0].id;
+      // O que chega primeiro quita o que o destino ficou devendo (venda lançada lá antes de ter estoque).
+      const kd = chave(m.receita_id, destino);
+      const chegar = (lote, quantidade) => {
+        const quita = Math.min(devendo[kd] || 0, quantidade);
+        if (quita) devendo[kd] -= quita;
+        if (quantidade - quita > 0) lotes.push({ ...lote, mov: m, local: destino, restante: quantidade - quita });
+      };
+      for (const p of pegou) chegar(p.lote, p.quantidade);
+      if (falta) {
+        const h = custoHoje(m.receita_id);
+        chegar({ lote: m.id, produzidoEm: m.data, receita_id: m.receita_id, custo: h.direto, fixo: h.fixo, validade: m.validade || addDays(m.data, VALIDADE_PADRAO) }, falta);
+      }
+      saidas[m.id] = { custo: 0, fixo: 0, semProducao: falta, transferido: custo };
+      continue;
     }
     saidas[m.id] = { custo, fixo, semProducao: falta };
   }
-  return { lotes: lotes.filter((l) => l.restante > 0), saidas };
+  return { lotes: lotes.filter((l) => l.restante > 0), saidas, devendo };
 }
 
-// O que está pronto agora, por receita: quantidade, quanto vale vendido, custo, vencidos e o que vence logo.
-export function estoqueAtual(lotes, receitasPorId, hoje) {
+// O que está pronto agora, por receita (de um local ou de todos): quantidade, quanto vale vendido, custo,
+// vencidos, o que vence logo e quanto há em cada local.
+export function estoqueAtual(todosLotes, receitasPorId, hoje, local = null) {
+  const lotes = local ? todosLotes.filter((l) => l.local === local) : todosLotes;
   const por = {};
   for (const l of lotes) {
     const r = receitasPorId[l.receita_id];
-    const x = (por[l.receita_id] ||= { receita: r, receita_id: l.receita_id, quantidade: 0, custo: 0, potencial: 0, vencidos: 0, custoVencido: 0, venceLogo: 0, proximaValidade: null });
+    const x = (por[l.receita_id] ||= { receita: r, receita_id: l.receita_id, quantidade: 0, custo: 0, potencial: 0, vencidos: 0, custoVencido: 0, venceLogo: 0, proximaValidade: null, porLocal: {} });
+    const pl = (x.porLocal[l.local] ||= { quantidade: 0, vencidos: 0 });
     const vencido = l.validade < hoje;
     const preco = toCents(r?.preco_venda || 0);
     if (vencido) {
       x.vencidos += l.restante;
       x.custoVencido += l.restante * l.custo;
+      pl.vencidos += l.restante;
       continue;
     }
+    pl.quantidade += l.restante;
     x.quantidade += l.restante;
     x.custo += l.restante * l.custo;
     x.potencial += l.restante * preco;
@@ -271,6 +331,19 @@ export function estoqueAtual(lotes, receitasPorId, hoje) {
     venceLogo: soma('venceLogo'),
     semPreco: lista.filter((x) => x.quantidade > 0 && !toCents(x.receita?.preco_venda || 0)).map((x) => x.receita?.nome || '?'),
   };
+}
+
+// Lotes na geladeira, para controlar a validade: o que sobrou de cada lote em cada local, o que vence primeiro no topo.
+export function lotesNaGeladeira(todosLotes, hoje, local = null) {
+  const grupos = {};
+  for (const l of todosLotes) {
+    if (local && l.local !== local) continue;
+    const k = `${l.lote}|${l.local}|${l.validade}`;
+    const g = (grupos[k] ||= { lote: l.lote, local: l.local, validade: l.validade, produzidoEm: l.produzidoEm || '', itens: {}, total: 0, vencido: l.validade < hoje });
+    g.itens[l.receita_id] = (g.itens[l.receita_id] || 0) + l.restante;
+    g.total += l.restante;
+  }
+  return Object.values(grupos).sort((a, b) => (a.validade < b.validade ? -1 : a.validade > b.validade ? 1 : 0));
 }
 
 // Semana do pudim (sábado a sexta, a mesma do dízimo): o que produziu, vendeu e perdeu, e o ganho real.

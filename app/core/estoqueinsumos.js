@@ -1,7 +1,7 @@
 // Estoque de ingredientes e embalagens do pudim, e estoque mínimo.
 // Movimentos (aba "Estoque de ingredientes"): entrada (compra), saida (produção), contagem (o que tem em casa agora).
 // Quantidades sempre na unidade base do ingrediente: g, ml ou un.
-import { ingredientesDe, idPreparo } from './pudim.js';
+import { ingredientesDe, idPreparo, LOCAIS_PADRAO, ehGeladinho } from './pudim.js';
 import { chaveProduto, produtoDoItem } from './mercado.js';
 
 const BASE = { g: 'g', kg: 'g', ml: 'ml', l: 'ml', un: 'un' };
@@ -51,11 +51,15 @@ export function saldos(movimentos = []) {
   return { saldo: s, contadoEm: contado };
 }
 
-// Estoque mínimo de ingredientes: o que precisa para fazer o mínimo de fornadas de cada produto.
-export function minimos(produtos, receitasPorId) {
+// Locais que trabalham com o produto (Ibiúna não tem geladinho).
+export const locaisDoProduto = (p, locais = LOCAIS_PADRAO) => locais.filter((l) => !(l.soPudim && ehGeladinho(p)));
+
+// Estoque mínimo de ingredientes: o que precisa para repor o mínimo de cada produto em todos os locais
+// (o mínimo do produto vale para o primeiro local; os outros pedem a fração deles, ex.: Ibiúna metade).
+export function minimos(produtos, receitasPorId, locais = LOCAIS_PADRAO) {
   const out = {};
   for (const p of produtos) {
-    const n = Number(p.estoque_minimo) || 0;
+    const n = (Number(p.estoque_minimo) || 0) * locaisDoProduto(p, locais).reduce((t, l) => t + (Number(l.fator) || 0), 0);
     if (n > 0) porFornada(p, receitasPorId, n, out);
   }
   return out;
@@ -75,16 +79,23 @@ export function faltas({ saldo = {}, minimo = {}, insumosPorId = {} }) {
     .sort((a, b) => b.falta / b.minimo - a.falta / a.minimo || a.insumo.nome.localeCompare(b.insumo.nome));
 }
 
-// Pudins prontos abaixo do mínimo (mínimo em fornadas × rendimento). `prontos`: { receita_id: unidades }.
-export function pudinsAbaixo(produtos, prontos = {}) {
-  return produtos
-    .filter((p) => Number(p.estoque_minimo) > 0)
-    .map((p) => {
-      const minimo = Number(p.estoque_minimo) * (Number(p.rendimento) || 1);
-      const tem = prontos[p.id] || 0;
-      return tem < minimo ? { receita: p, tem, minimo, fornadas: Math.ceil((minimo - tem) / (Number(p.rendimento) || 1)) } : null;
-    })
-    .filter(Boolean);
+// Pudins prontos abaixo do mínimo em cada local (mínimo em fornadas × rendimento × fator do local).
+// `prontos`: { local: { receita_id: unidades } }. Se outro local tem de sobra, sugere enviar em vez de produzir.
+export function pudinsAbaixo(produtos, prontos = {}, locais = LOCAIS_PADRAO) {
+  const out = [];
+  for (const p of produtos) {
+    const n = Number(p.estoque_minimo) || 0;
+    if (!(n > 0)) continue;
+    const rend = Number(p.rendimento) || 1;
+    const doLocal = locaisDoProduto(p, locais).map((l) => ({ local: l, minimo: Math.ceil(n * rend * (Number(l.fator) || 0)), tem: prontos[l.id]?.[p.id] || 0 }));
+    for (const x of doLocal) {
+      if (x.tem >= x.minimo) continue;
+      const falta = x.minimo - x.tem;
+      const sobra = doLocal.filter((o) => o !== x && o.tem - o.minimo > 0).map((o) => ({ local: o.local, sobra: o.tem - o.minimo }))[0] || null;
+      out.push({ receita: p, local: x.local, tem: x.tem, minimo: x.minimo, falta, fornadas: Math.ceil(falta / rend), enviarDe: sobra ? { local: sobra.local, quantidade: Math.min(sobra.sobra, falta) } : null });
+    }
+  }
+  return out;
 }
 
 // Quanto entrou de um ingrediente numa compra (item de nota, da lista ou da pesquisa), na unidade base.

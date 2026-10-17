@@ -53,13 +53,18 @@ test('saldo: última contagem mais entradas e menos saídas depois dela', () => 
 test('mínimo de ingredientes vem do mínimo de fornadas; faltas em embalagens; pudins abaixo do mínimo', () => {
   const produtos = [receitas.gel, receitas.t150];
   const min = minimos(produtos, receitas);
-  assert.equal(min.lc, 790 + 2 * 395);
+  // geladinho só em São Roque (1 fornada); tradicional 2 fornadas em São Roque + metade em Ibiúna = 3
+  assert.equal(min.lc, 790 + 3 * 395);
   const f = faltas({ saldo: { lc: 400, leite: 5000 }, minimo: min, insumosPorId: insumos });
   const lc = f.find((x) => x.insumo.id === 'lc');
-  assert.deepEqual([lc.falta, lc.embalagens], [1180, 3]);
+  assert.deepEqual([lc.falta, lc.embalagens], [790 + 3 * 395 - 400, 4]);
   assert.ok(!f.some((x) => x.insumo.id === 'leite'));
-  const abaixo = pudinsAbaixo(produtos, { t150: 5, gel: 15 });
-  assert.deepEqual(abaixo.map((x) => [x.receita.id, x.tem, x.minimo, x.fornadas]), [['t150', 5, 12, 2]]);
+  // São Roque precisa de 12 tradicionais (tem 5); Ibiúna de 6 (tem 0); geladinho só em São Roque
+  const abaixo = pudinsAbaixo(produtos, { 'sao-roque': { t150: 5, gel: 15 }, ibiuna: {} });
+  assert.deepEqual(abaixo.map((x) => [x.receita.id, x.local.id, x.tem, x.minimo, x.fornadas]), [['t150', 'sao-roque', 5, 12, 2], ['t150', 'ibiuna', 0, 6, 1]]);
+  // São Roque com sobra: para Ibiúna sugere enviar
+  const enviar = pudinsAbaixo(produtos, { 'sao-roque': { t150: 16, gel: 15 }, ibiuna: { t150: 2 } });
+  assert.deepEqual(enviar.map((x) => [x.local.id, x.falta, x.enviarDe?.local.id, x.enviarDe?.quantidade]), [['ibiuna', 4, 'sao-roque', 4]]);
 });
 
 test('compra vira entrada na unidade do ingrediente', () => {

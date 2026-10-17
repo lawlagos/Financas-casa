@@ -2,6 +2,7 @@
 // "fiz uma fornada de mini pudim 150 e vendi 3 tradicionais no ifood", "perdi 2 de ninho que venceram ontem".
 // Cada trecho vira um item com tipo, quantidade e a receita mais provável; o que ficar em dúvida vai com candidatos.
 import { addDays } from './dates.js';
+import { LOCAIS_PADRAO } from './pudim.js';
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
@@ -30,6 +31,7 @@ function numerosEmAlgarismos(t) {
 const VERBOS = [
   ['producao', ['produzi', 'produzimos', 'fiz', 'fizemos', 'fez', 'assei', 'assamos', 'preparei', 'fornada', 'fornadas', 'produzido', 'feitos', 'feito']],
   ['venda', ['vendi', 'vendemos', 'vendeu', 'venda', 'vendas', 'vendido', 'vendidos', 'saiu', 'sairam', 'entreguei', 'pedido', 'pedidos']],
+  ['transferencia', ['mandei', 'mandamos', 'mandou', 'enviei', 'enviamos', 'enviou', 'levei', 'levamos', 'levou', 'transferi', 'transferimos']],
   ['perda', ['perdi', 'perdemos', 'perda', 'venceu', 'venceram', 'vencido', 'vencidos', 'estragou', 'estragaram', 'quebrou', 'quebraram', 'caiu', 'joguei', 'descartei', 'comemos', 'comi', 'dei', 'brinde']],
 ];
 const MOTIVOS = [['quebrou', ['quebrou', 'quebraram', 'caiu', 'estragou', 'estragaram', 'derreteu']], ['consumo', ['comemos', 'comi', 'dei', 'brinde', 'presente', 'provamos']], ['vencido', ['venceu', 'venceram', 'vencido', 'vencidos', 'validade']]];
@@ -78,8 +80,25 @@ function candidatos(trecho, receitas, tamanhos, porPalavra = []) {
   return out.sort((a, b) => b.nota - a.nota);
 }
 
+// Locais ditos no trecho: "pra Ibiúna" é destino, "de São Roque" é origem; sem preposição, é onde aconteceu.
+function locaisNoTrecho(trecho, locais) {
+  const out = { origem: '', destino: '', onde: '' };
+  for (const l of locais) {
+    const n = norm(l.nome).replace(/[^a-z0-9]+/g, ' ').trim();
+    const m = new RegExp(`(?:\\b(\\w+)\\s+)?\\b${n.replace(/ /g, '\\s+')}\\b`).exec(trecho);
+    if (!m) continue;
+    const prep = m[1] || '';
+    if (['pra', 'para', 'pro', 'ate'].includes(prep)) out.destino ||= l.id;
+    else if (['de', 'do', 'da', 'dos', 'das'].includes(prep)) out.origem ||= l.id;
+    else out.onde ||= l.id;
+  }
+  return out;
+}
+
 // `estoque` (opcional): { receita_id: quantidade pronta }, para desempatar venda e perda pelo que existe.
-export function interpretarEstoque(texto, { receitas = [], hoje, estoque = {} }) {
+// `locais`: onde fica o estoque (São Roque, Ibiúna). Cada item sai com `local` (onde foi, ou de onde saiu o envio)
+// e, no envio, `para`; vazio quando a frase não diz.
+export function interpretarEstoque(texto, { receitas = [], hoje, estoque = {}, locais = LOCAIS_PADRAO }) {
   const t = norm(texto);
   const todas = palavras(t);
   const data = /\banteontem\b/.test(t) ? addDays(hoje, -2) : /\bontem\b/.test(t) ? addDays(hoje, -1) : hoje;
@@ -94,12 +113,25 @@ export function interpretarEstoque(texto, { receitas = [], hoje, estoque = {} })
     .map((x) => x.trim())
     .filter(Boolean);
 
+  const palavrasLocal = new Set(locais.flatMap((l) => palavras(l.nome)));
   let tipo = null;
+  let local = '';
+  let para = '';
+  let localFrase = '';
   const itens = [];
   for (const trecho of trechos) {
     const ps = palavras(trecho);
     const verbo = VERBOS.find(([, vs]) => tem(ps, vs));
     if (verbo) tipo = verbo[0];
+    // O local dito vale para os trechos seguintes até outro ser dito ("em Ibiúna vendi 3 de limão e 2 de ninho").
+    const lt = locaisNoTrecho(trecho, locais);
+    if (tipo === 'transferencia') {
+      if (lt.destino || lt.onde) para = lt.destino || lt.onde;
+      if (lt.origem) local = lt.origem;
+    } else if (lt.onde || lt.destino || lt.origem) {
+      local = lt.onde || lt.destino || lt.origem;
+      localFrase ||= local;
+    }
     // Quantidade: o primeiro número do trecho; os outros números são tamanho (150, 1100).
     const nums = ps.map((p, i) => ({ p, i, n: numero(p) })).filter((x) => x.n !== null);
     const primeiro = nums[0];
@@ -120,7 +152,7 @@ export function interpretarEstoque(texto, { receitas = [], hoje, estoque = {} })
     // "vendemos 28 vidrinhos e comemos dois": sem nome de pudim, é o mesmo do item anterior.
     const anterior = itens[itens.length - 1];
     const todosVerbos = VERBOS.flatMap(([, vs]) => vs.map(raiz));
-    const outrasPalavras = ps.filter((p) => !VAZIAS.has(p) && !ENCHIMENTO.has(p) && numero(p) === null && !todosVerbos.includes(p) && !MOTIVOS.some(([, m]) => m.map(raiz).includes(p)));
+    const outrasPalavras = ps.filter((p) => !VAZIAS.has(p) && !palavrasLocal.has(p) && !['pra', 'pro', 'para', 'ate'].includes(p) && !ENCHIMENTO.has(p) && numero(p) === null && !todosVerbos.includes(p) && !MOTIVOS.some(([, m]) => m.map(raiz).includes(p)));
     if (!lista.length && primeiro && anterior?.receita_id && !outrasPalavras.length) lista = [{ r: receitas.find((x) => x.id === anterior.receita_id), nota: 1 }];
     if (!lista.length) continue;
     let melhores = lista.filter((c) => c.nota >= lista[0].nota - 0.01).map((c) => c.r);
@@ -136,6 +168,8 @@ export function interpretarEstoque(texto, { receitas = [], hoje, estoque = {} })
     itens.push({
       trecho,
       tipo,
+      local: tipo === 'transferencia' ? local || locais.find((l) => l.id !== para)?.id || '' : local,
+      para: tipo === 'transferencia' ? para : '',
       quantidade: quantidade || (fornadas ? null : 1),
       numFornadas,
       receita_id: receita?.id || '',
@@ -146,5 +180,5 @@ export function interpretarEstoque(texto, { receitas = [], hoje, estoque = {} })
   // Trechos sem verbo antes do primeiro verbo herdam o primeiro tipo dito.
   const primeiroTipo = itens.find((i) => i.tipo)?.tipo || null;
   for (const i of itens) if (!i.tipo) i.tipo = primeiroTipo;
-  return { data, canal, motivo, itens };
+  return { data, canal, motivo, itens, local: localFrase };
 }
