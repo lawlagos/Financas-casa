@@ -2,7 +2,7 @@ import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Topo, Secao, Marca, Vazio, Campo } from '../componentes.js';
-import { useStore, abrirFolha, salvar, config, reiniciarDemo, sair, toast } from '../../data/store.js';
+import { useStore, abrirFolha, salvar, apagar, config, reiniciarDemo, sair, toast } from '../../data/store.js';
 import { brl, parseBRL } from '../../core/money.js';
 import { fmtDay, fmtMonthYear, monthName } from '../../core/dates.js';
 import { GRUPOS } from '../../core/balances.js';
@@ -180,10 +180,10 @@ function Importar() {
     if (f) f.text().then(setTexto);
   };
   const importar = async () => {
-    const r = prepararImportacao(texto, s.tables.contas);
+    const r = prepararImportacao(texto, s.tables.contas, s.tables.previstos);
     setErros(r.erros);
     if (r.erros.length) return;
-    const total = r.contas.length + r.previstos.length;
+    const total = r.contas.length + r.previstos.length + r.remover.length;
     let feitos = 0;
     try {
       for (const [tabela, lista] of [['contas', r.contas], ['previstos', r.previstos]]) {
@@ -192,13 +192,17 @@ function Importar() {
           await salvar(tabela, linha);
         }
       }
+      for (const id of r.remover) {
+        setProgresso(`Importando ${++feitos} de ${total}…`);
+        await apagar('previstos', id);
+      }
     } catch {
       setProgresso(`Parou no item ${feitos} de ${total}. Toque em Importar de novo: o que já entrou não é duplicado.`);
       return;
     }
     setProgresso(null);
     setTexto('');
-    toast(`Importado: ${r.contas.length} saldos e ${r.previstos.length} previstos`);
+    toast(`Importado: ${r.contas.length} saldos e ${r.previstos.length} previstos${r.remover.length ? `, ${r.remover.length} antigos removidos` : ''}`);
   };
   return html`<${Secao} titulo="Importar dados">
     <div class="painel painel-pad">

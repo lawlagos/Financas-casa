@@ -1,12 +1,13 @@
 // Importação em lote: saldos de contas e previstos, num texto JSON gerado fora do app.
-// { versao: 1, data_saldo: 'AAAA-MM-DD', contas: { c6: 120.5, ... }, previstos: [ { id, descricao, ... } ] }
+// { versao: 1, data_saldo: 'AAAA-MM-DD', contas: { c6: 120.5, ... }, previstos: [ { id, descricao, ... } ],
+//   substituir_prefixos: ['imp-'] }  (opcional: apaga previstos importados antes com esses prefixos)
 import { SCHEMA } from './schema.js';
 
 const NATUREZAS = ['fixo', 'parcelado', 'variavel', 'unico'];
 const TIPOS = ['entrada', 'saida', 'transferencia'];
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 
-export function prepararImportacao(texto, contasExistentes) {
+export function prepararImportacao(texto, contasExistentes, previstosExistentes = []) {
   let dados;
   try {
     dados = typeof texto === 'string' ? JSON.parse(texto) : texto;
@@ -39,5 +40,11 @@ export function prepararImportacao(texto, contasExistentes) {
     previstos.push(Object.fromEntries(SCHEMA.previstos.map((c) => [c, p[c] ?? ''])));
   });
   if (!erros.length && !contas.length && !previstos.length) erros.push('A importação está vazia.');
-  return { erros, contas, previstos };
+  // Previstos de uma importação anterior (pelo prefixo do id) que não estão nesta saem, para não duplicar.
+  const novos = new Set(previstos.map((p) => p.id));
+  const prefixos = [].concat(dados?.substituir_prefixos || []).filter(Boolean);
+  const remover = prefixos.length
+    ? (previstosExistentes || []).filter((p) => prefixos.some((x) => String(p.id).startsWith(x)) && !novos.has(p.id)).map((p) => p.id)
+    : [];
+  return { erros, contas, previstos, remover };
 }

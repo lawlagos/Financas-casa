@@ -26,3 +26,10 @@ test('recusa texto quebrado, conta inexistente e previsto incompleto', () => {
   assert.match(r.erros.join(' '), /total de parcelas/);
   assert.match(r.erros.join(' '), /data inválida/);
 });
+
+test('substituir_prefixos remove previstos importados antes que não vieram de novo', () => {
+  const existentes = [{ id: 'imp-01' }, { id: 'imp-02' }, { id: 'manual-1' }];
+  const r = prepararImportacao({ versao: 1, substituir_prefixos: ['imp-'], previstos: [prev({ id: 'imp-02' })] }, contas, existentes);
+  assert.deepEqual(r.erros, []);
+  assert.deepEqual(r.remover, ['imp-01']);
+});
