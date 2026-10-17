@@ -2,7 +2,7 @@
 // É um interpretador local, sem IA: acha valor, tipo, contas, categoria e origem por palavras-chave.
 // Campos que não deu para descobrir ficam vazios e a tela pergunta.
 
-import { parseBRL } from './money.js';
+import { parseBRL, juntarCentavos } from './money.js';
 import { addDays } from './dates.js';
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -25,14 +25,6 @@ const DICAS_ORIGEM = [
   ['Salario', ['salario', 'pagamento do mes']],
   ['YouTube', ['youtube', 'adsense']],
 ];
-
-// Valor falado com os centavos separados: "54 e 96" → "54,96"; "54 reais e 9 centavos" → "54,09"; "96 centavos" → "0,96".
-export function juntarCentavos(t) {
-  return t
-    .replace(/(?<![\d.,])(\d+)\s*(?:reais?\s+)?e\s+(\d{1,2})\s*centavos?\b/g, (_, r, c) => `${r},${c.padStart(2, '0')}`)
-    .replace(/(?<![\d.,])(\d+)\s*(?:reais?\s+)?e\s+(\d{2})(?![\d.,]|\s*mil\b)/g, '$1,$2')
-    .replace(/(?<![\d.,])(\d{1,2})\s*centavos?\b/g, (_, c) => `0,${c.padStart(2, '0')}`);
-}
 
 export function parseQuick(texto, { contas = [], categorias = [], hoje }) {
   const t = juntarCentavos(norm(texto));

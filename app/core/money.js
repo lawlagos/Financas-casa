@@ -10,9 +10,18 @@ export function toReais(cents) {
 }
 
 // Aceita "1.234,56", "1234,56", "1234.56", "R$ 87,50".
+// Valor falado com os centavos separados: "54 e 96" → "54,96"; "54 reais e 9 centavos" → "54,09"; "96 centavos" → "0,96".
+export function juntarCentavos(t) {
+  return String(t)
+    .replace(/(?<![\d.,])(\d+)\s*(?:reais?\s+)?e\s+(\d{1,2})\s*centavos?\b/gi, (_, r, c) => `${r},${c.padStart(2, '0')}`)
+    .replace(/(?<![\d.,])(\d+)\s*(?:reais?\s+)?e\s+(\d{2})(?![\d.,]|\s*mil\b)/gi, '$1,$2')
+    .replace(/(?<![\d.,])(\d{1,2})\s*centavos?\b/gi, (_, c) => `0,${c.padStart(2, '0')}`);
+}
+
 export function parseBRL(text) {
   if (typeof text === 'number') return text;
-  let s = String(text || '').replace(/[^\d,.-]/g, '');
+  // No campo de valor, "54 96" ditado sem o "e" também são reais e centavos.
+  let s = juntarCentavos(String(text || '')).replace(/^(\D*\d+)\s+(\d{2})(\D*)$/, '$1,$2$3').replace(/[^\d,.-]/g, '');
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
   else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
   const n = Number(s);

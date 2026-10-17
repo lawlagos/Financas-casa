@@ -31,3 +31,13 @@ test('dinheiro: parse e formato brasileiro', () => {
   assert.equal(brl(-500), '-R$ 5,00');
   assert.equal(brlCompact(1243000), '12,4 mil');
 });
+
+test('valor ditado no campo: "54 e 96", "54 96", "54 reais e 96 centavos" são 54,96', async () => {
+  const { parseBRL } = await import('../../app/core/money.js');
+  for (const t of ['54 e 96', '54 96', 'R$ 54 e 96', '54 reais e 96 centavos', '54,96', '54.96']) assert.equal(parseBRL(t), 54.96, t);
+  assert.equal(parseBRL('96 centavos'), 0.96);
+  assert.equal(parseBRL('12 e 5 centavos'), 12.05);
+  assert.equal(parseBRL('1.234,56'), 1234.56);
+  assert.equal(parseBRL('1.200'), 1200);
+  assert.equal(parseBRL('54'), 54);
+});
