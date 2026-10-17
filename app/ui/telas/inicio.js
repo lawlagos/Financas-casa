@@ -19,11 +19,14 @@ export function FaixaDemo() {
 function Termometro({ s }) {
   const ate = fimPadrao(s.hoje);
   const p = projetar(s, ate);
-  const hoje = p.dias[0].saldo;
+  const real = saldosHoje(s).grupos.Tudo;
+  const pendente = p.dias[0].saldo - real;
+  const nPendentes = p.dias[0].itens.length;
   const negativo = p.precisaFazer > 0;
   return html`<section class="termometro" aria-label="Termômetro do saldo">
     <div class="rotulo">Saldo hoje, todas as contas</div>
-    <div class=${`saldo ${hoje < 0 ? 'neg' : ''}`}>${brl(hoje)}</div>
+    <div class=${`saldo ${real < 0 ? 'neg' : ''}`}>${brl(real)}</div>
+    ${nPendentes > 0 && html`<div class="rotulo" style="margin-top:4px">${nPendentes} ${nPendentes === 1 ? 'previsto de hoje ou atrasado ainda não lançado' : 'previstos de hoje ou atrasados ainda não lançados'}: <b style="color:var(--hero-ink)">${brlSigned(pendente)}</b></div>`}
     <div class="grafico">
       <${GraficoSaldo} dias=${p.dias} minimo=${p.minimo} altura=${118}
         cores=${{ linha: 'var(--hero-line)', prov: '#aab3ff', neg: 'var(--hero-neg)', grade: 'var(--hero-grid)', texto: 'var(--hero-ink-2)', fundo: 'var(--hero-bg)' }} />

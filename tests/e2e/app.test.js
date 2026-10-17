@@ -247,3 +247,9 @@ test('importar arquivo: saldos e previstos entram e reimportar não duplica', as
   await page.goto(`${base}/?demo#/mais/contas`);
   assert.match(await page.locator('.item', { hasText: 'Hotmart' }).innerText(), /1\.462,55/);
 });
+
+test('saldo do termômetro é o real das contas; pendentes de hoje aparecem à parte', async () => {
+  const soma = (await page.locator('.grupo-cab span:last-child').allInnerTexts()).reduce((t, x) => t + reais(x), 0);
+  const saldo = reais(await page.locator('.termometro .saldo').innerText());
+  assert.equal(Math.round(saldo * 100), Math.round(soma * 100));
+});
