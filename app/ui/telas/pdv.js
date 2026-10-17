@@ -60,7 +60,7 @@ export function TelaPdv() {
     .map(([id, quantidade]) => {
       const receita = d.receitasPorId[id];
       const p = precoDe(receita);
-      return { receita, quantidade, preco: p.preco, calculado: p.calculado, custo: d.custos[id]?.porUnidade || 0 };
+      return { receita, quantidade, preco: p.preco, calculado: p.calculado, custo: d.custos[id]?.porUnidade || 0, fixo: d.custos[id]?.fixoUnidade || 0 };
     })
     .filter((l) => l.receita);
   const t = totaisCarrinho(linhas, canal, taxaPct);
@@ -157,7 +157,8 @@ export function TelaPdv() {
           <div><span>${t.quantidade} ${t.quantidade === 1 ? 'pudim' : 'pudins'}</span><strong>${brl(t.bruto)}</strong></div>
           ${canal === 'ifood' && html`<div><span>Taxa iFood ${qtdTxt(taxaPct)}%</span><span class="neg">− ${brl(t.taxa)}</span></div>
             <div><span>Fica com vocês</span><strong>${brl(t.liquido)}</strong></div>`}
-          <div class="muted"><span>Lucro (tirando ingredientes)</span><span>${brl(t.lucro)}</span></div>
+          <div class="muted"><span>Lucro (tirando ingredientes e embalagens)</span><span>${brl(t.lucro)}</span></div>
+          ${t.fixo > 0 && html`<div class="muted"><span>Lucro livre (tirando também mão de obra e despesas)</span><span>${brl(t.lucroLivre)}</span></div>`}
         </div>
         <div class="linha2">
           <${Campo} rotulo="Dia"><input type="date" value=${data} onInput=${(e) => setData(e.target.value)} /><//>

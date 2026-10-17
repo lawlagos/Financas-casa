@@ -16,8 +16,8 @@ export const SCHEMA = {
   itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'origem', 'lancamento_id', 'grupo_id', 'criado_em', 'categoria_id',
     'produto', 'marca', 'tamanho', 'tamanho_unidade'],
   insumos: ['id', 'nome', 'tipo', 'marca', 'qtd_embalagem', 'unidade', 'preco_embalagem', 'data_preco', 'produto', 'ativo'],
-  receitas: ['id', 'nome', 'rendimento', 'validade_dias', 'preco_venda', 'preco_sugerido', 'custo_ref', 'ingredientes', 'ativo', 'preco_ifood'],
-  estoque: ['id', 'data', 'receita_id', 'tipo', 'quantidade', 'custo_unitario', 'preco_unitario', 'validade', 'lancamento_id', 'obs', 'criado_em', 'canal', 'taxa_unitaria'],
+  receitas: ['id', 'nome', 'rendimento', 'validade_dias', 'preco_venda', 'preco_sugerido', 'custo_ref', 'ingredientes', 'ativo', 'preco_ifood', 'tempo_preparo', 'markup'],
+  estoque: ['id', 'data', 'receita_id', 'tipo', 'quantidade', 'custo_unitario', 'preco_unitario', 'validade', 'lancamento_id', 'obs', 'criado_em', 'canal', 'taxa_unitaria', 'custo_fixo_unitario'],
 };
 
 export const TABELAS = Object.keys(SCHEMA);

@@ -55,12 +55,13 @@ export async function registrarVenda({ linhas, canal, data, conta_id, lancar }) 
   return { ...t, lancado: !!lancamento_id };
 }
 
-// Produção e perda (vários de uma vez, como vêm da fala). itens: [{ tipo, receita, quantidade, custo (centavos) }].
+// Produção e perda (vários de uma vez, como vêm da fala).
+// itens: [{ tipo, receita, quantidade, custo (ingredientes e embalagem), fixo (mão de obra e despesas), em centavos por unidade }].
 export async function registrarMovimentos(itens, { data, motivo = 'vencido' }) {
   const agora = new Date().toISOString();
   const linhas = itens.filter((i) => i.receita && i.quantidade > 0 && (i.tipo === 'producao' || i.tipo === 'perda')).map((i) => ({
     data, receita_id: i.receita.id, tipo: i.tipo, quantidade: i.quantidade,
-    custo_unitario: i.tipo === 'producao' ? reais(i.custo || 0) : '', preco_unitario: '',
+    custo_unitario: i.tipo === 'producao' ? reais(i.custo || 0) : '', custo_fixo_unitario: i.tipo === 'producao' ? reais(i.fixo || 0) : '', preco_unitario: '',
     validade: i.tipo === 'producao' ? addDays(data, Number(i.receita.validade_dias) || VALIDADE_PADRAO) : '',
     lancamento_id: '', obs: i.tipo === 'perda' ? motivo : '', criado_em: agora, canal: '', taxa_unitaria: '',
   }));

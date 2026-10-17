@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { custoInsumo, custoReceita, processarEstoque, estoqueAtual, semanaPudim, ingredientesDe, precoNoCanal, totaisCarrinho } from '../../app/core/pudim.js';
+import { custoInsumo, custoReceita, processarEstoque, estoqueAtual, semanaPudim, ingredientesDe, precoNoCanal, totaisCarrinho, valorMinuto, lerCustos } from '../../app/core/pudim.js';
 
 const hoje = '2026-10-17'; // sábado
 const lc = { id: 'ins-lc', nome: 'Leite condensado', tipo: 'ingrediente', qtd_embalagem: 395, unidade: 'g', preco_embalagem: 6.39, data_preco: '2025-12-01', produto: 'Leite condensado' };
@@ -74,7 +74,7 @@ test('estoque: produção vira lote, venda e perda saem do mais antigo, vencido 
 
 test('venda sem produção registrada usa o custo de hoje e avisa', () => {
   const { saidas } = processarEstoque([M('1', '2026-10-16', 'venda', 2, { preco_unitario: 12 })], () => 350);
-  assert.deepEqual(saidas['1'], { custo: 700, semProducao: 2 });
+  assert.deepEqual(saidas['1'], { custo: 700, fixo: 0, semProducao: 2 });
 });
 
 test('semana do pudim (sáb a sex): produziu, vendeu, perdeu, ganho real e compras no caixa', () => {
@@ -162,7 +162,7 @@ test('revisão: venda pula o lote vencido, baixa de vencido tira o vencido e pro
     { ...M('1', '2026-10-10', 'venda', 4, { preco_unitario: 12 }), criado_em: '2026-10-10T09:00' },
     { ...M('2', '2026-10-10', 'producao', 8, { custo_unitario: 3, validade: '2026-10-15' }), criado_em: '2026-10-10T18:00' },
   ]);
-  assert.deepEqual(c.saidas['1'], { custo: 1200, semProducao: 0 });
+  assert.deepEqual(c.saidas['1'], { custo: 1200, fixo: 0, semProducao: 0 });
   assert.equal(c.lotes[0].restante, 4);
 });
 
@@ -171,4 +171,51 @@ test('revisão: nota de item vendido por peso e embalagem por unidade sem conte�
   const nota = [{ data: '2026-10-01', produto: 'Açúcar', valor: 10, quantidade: 2, unidade: 'kg' }];
   assert.equal(custoInsumo(acucar, nota).porBase, 1000 / 2 / 1000);
   assert.equal(custoInsumo({ nome: 'Tampa', unidade: 'un', qtd_embalagem: '', preco_embalagem: 1.26 }).porBase, 126);
+});
+
+// Mesmos números da Base Cadastros da planilha.
+const CUSTOS = {
+  salario: 200, decimo: 125, dias: 15, horas: 6,
+  despesas: [{ nome: 'Água', valor: 120, divisor: 6 }, { nome: 'Energia', valor: 400, divisor: 4 }, { nome: 'Parcelas', valor: 1800, divisor: 1 }, { nome: 'Publicidade', valor: 200, divisor: 1 }, { nome: 'MEI', valor: 72, divisor: 1 }],
+};
+
+test('valor do minuto: mão de obra com 13º e despesas fixas rateadas, como na planilha', () => {
+  const m = valorMinuto(CUSTOS);
+  assert.equal(m.despesasMes, 219200);
+  assert.ok(Math.abs(m.maoDeObra - 6.018518) < 1e-5); // R$ 0,0602 por minuto
+  assert.ok(Math.abs(m.despesas - 40.59259) < 1e-4); // R$ 0,4059 por minuto
+  assert.deepEqual(lerCustos('{quebrado').despesas, []);
+  assert.equal(valorMinuto(null).maoDeObra, 0);
+});
+
+test('custo completo da receita: (A) mão de obra + (B) ingredientes + (C) embalagens + (D) despesas e preço sugerido com markup', () => {
+  // Mini pudim tradicional 150 da planilha: B = 14,90, C = 15,24, 60 min, rende 6, markup 30% → sugerido 12,59
+  const ins = {
+    b: { id: 'b', nome: 'Ingredientes', tipo: 'ingrediente', qtd_embalagem: 1, unidade: 'un', preco_embalagem: 14.9 },
+    c: { id: 'c', nome: 'Embalagens', tipo: 'embalagem', qtd_embalagem: 1, unidade: 'un', preco_embalagem: 15.24 },
+  };
+  const r = { rendimento: 6, tempo_preparo: 60, markup: 0.3, preco_venda: 15, ingredientes: [{ insumo_id: 'b', quantidade: 1 }, { insumo_id: 'c', quantidade: 1 }] };
+  const c = custoReceita(r, ins, [], CUSTOS);
+  assert.deepEqual([c.ingredientes, c.embalagens, c.maoDeObra, c.despesas], [1490, 1524, 361, 2436]);
+  assert.equal(c.completo, 5811);
+  assert.equal(c.completoUnidade, 969);
+  assert.equal(c.sugerido, 1259);
+  assert.equal(c.porUnidade, 502);
+  assert.equal(c.lucroUnidade, 1500 - 969);
+  // sem markup informado vale 30%; sem custos configurados, completo = ingredientes + embalagens
+  assert.equal(custoReceita({ ...r, markup: '' }, ins, [], CUSTOS).sugerido, 1259);
+  assert.equal(custoReceita(r, ins).completo, 3014);
+});
+
+test('estoque guarda mão de obra e despesas do lote; semana mostra o lucro livre', () => {
+  const movs = [
+    M('1', '2026-10-10', 'producao', 6, { custo_unitario: 5, custo_fixo_unitario: 4.66, validade: '2026-10-15' }),
+    M('2', '2026-10-11', 'venda', 2, { preco_unitario: 15, canal: 'direta' }),
+  ];
+  const { saidas } = processarEstoque(movs);
+  assert.deepEqual(saidas['2'], { custo: 1000, fixo: 932, semProducao: 0 });
+  const s = semanaPudim({ movimentos: movs, saidas, data: '2026-10-11' });
+  assert.equal(s.ganho, 3000 - 1000);
+  assert.equal(s.lucroLivre, 3000 - 1000 - 932);
+  assert.equal(totaisCarrinho([{ quantidade: 2, preco: 1500, custo: 500, fixo: 466 }], 'direta').lucroLivre, 3000 - 1000 - 932);
 });

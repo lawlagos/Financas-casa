@@ -182,13 +182,13 @@ function Importar() {
     if (f) f.text().then(setTexto);
   };
   const importar = async () => {
-    const r = prepararImportacao(texto, s.tables.contas, s.tables.previstos, s.tables.insumos);
+    const r = prepararImportacao(texto, s.tables.contas, s.tables.previstos, s.tables.insumos, s.tables.receitas);
     setErros(r.erros);
     if (r.erros.length) return;
-    const total = r.contas.length + r.previstos.length + r.remover.length + r.insumos.length + r.receitas.length;
+    const total = r.contas.length + r.previstos.length + r.remover.length + r.insumos.length + r.receitas.length + r.config.length;
     let feitos = 0;
     try {
-      for (const [tabela, lista] of [['contas', r.contas], ['previstos', r.previstos], ['insumos', r.insumos], ['receitas', r.receitas]]) {
+      for (const [tabela, lista] of [['contas', r.contas], ['previstos', r.previstos], ['insumos', r.insumos], ['receitas', r.receitas], ['config', r.config]]) {
         for (const linha of lista) {
           setProgresso(`Importando ${++feitos} de ${total}…`);
           await salvar(tabela, linha);
@@ -208,6 +208,7 @@ function Importar() {
       r.contas.length || r.previstos.length ? `${r.contas.length} saldos e ${r.previstos.length} previstos` : '',
       r.insumos.length ? `${r.insumos.length} ingredientes` : '',
       r.receitas.length ? `${r.receitas.length} receitas` : '',
+      r.config.length ? 'custos do pudim' : '',
     ].filter(Boolean);
     toast(`Importado: ${partes.join(', ')}${r.remover.length ? `, ${r.remover.length} antigos removidos` : ''}`);
   };

@@ -2,11 +2,11 @@ import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Topo, Secao, Segmento, Vazio, Arrastavel } from '../componentes.js';
-import { useStore, abrirFolha, salvarVarias, toast } from '../../data/store.js';
+import { useStore, abrirFolha, salvarVarias, toast, config } from '../../data/store.js';
 import { apagarMovimento } from '../../data/pudim-acoes.js';
 import { brl, brlSigned } from '../../core/money.js';
 import { fmtDay, addDays, businessWeekStart } from '../../core/dates.js';
-import { custoReceita, processarEstoque, estoqueAtual, semanaPudim, custoInsumo } from '../../core/pudim.js';
+import { custoReceita, processarEstoque, estoqueAtual, semanaPudim, custoInsumo, lerCustos, valorMinuto } from '../../core/pudim.js';
 import { porId } from '../derivados.js';
 import { FaixaDemo } from './inicio.js';
 
@@ -18,12 +18,13 @@ export function dadosPudim(s) {
   const receitas = (s.tables.receitas || []).filter(ativo).sort((a, b) => a.nome.localeCompare(b.nome));
   const receitasPorId = porId(s.tables.receitas || []);
   const itens = s.tables.itens || [];
+  const custosFixos = lerCustos(config('custos_pudim', ''));
   const custos = {};
-  for (const r of s.tables.receitas || []) custos[r.id] = custoReceita(r, insumosPorId, itens);
+  for (const r of s.tables.receitas || []) custos[r.id] = custoReceita(r, insumosPorId, itens, custosFixos);
   const movimentos = s.tables.estoque || [];
-  const { lotes, saidas } = processarEstoque(movimentos, (id) => custos[id]?.porUnidade || 0);
+  const { lotes, saidas } = processarEstoque(movimentos, (id) => ({ direto: custos[id]?.porUnidade || 0, fixo: custos[id]?.fixoUnidade || 0 }));
   const estoque = estoqueAtual(lotes, receitasPorId, s.hoje);
-  return { insumosPorId, receitas, receitasPorId, custos, movimentos, saidas, estoque, itens };
+  return { insumosPorId, receitas, receitasPorId, custos, custosFixos, movimentos, saidas, estoque, itens };
 }
 
 const ROTULO_MOV = { producao: 'Produziu', venda: 'Vendeu', perda: 'Perdeu' };
@@ -94,6 +95,8 @@ function AbaEstoque({ s, d }) {
         <${Linha} rot=${`Perdeu ${plural(sem.perdidos, 'pudim', 'pudins')}`} valor=${`− ${brl(sem.custoPerdido)}`} classe=${sem.custoPerdido ? 'neg' : ''} />
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
           <span style="font-weight:700">Ganho real</span><span class=${sem.ganho < 0 ? 'neg' : ''} style="font:700 24px var(--display)">${brlSigned(sem.ganho)}</span></div>
+        ${sem.fixoSaidas > 0 && html`<${Linha} rot="Mão de obra e despesas fixas do que saiu" valor=${`− ${brl(sem.fixoSaidas)}`} />
+          <${Linha} rot="Lucro livre (como na planilha)" valor=${brlSigned(sem.lucroLivre)} classe=${sem.lucroLivre < 0 ? 'neg' : ''} forte />`}
         <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:14px">
           <${Linha} rot=${`Produziu ${plural(sem.produzidos, 'pudim', 'pudins')}, gastando em ingredientes`} valor=${brl(sem.custoProduzido)} />
           <${Linha} rot="Saiu do caixa em compras do pudim" valor=${brl(sem.comprasCaixa)} />
@@ -125,16 +128,27 @@ function AbaEstoque({ s, d }) {
 }
 
 function AbaReceitas({ d }) {
+  const m = valorMinuto(d.custosFixos);
+  const configurado = m.maoDeObra > 0 || m.despesas > 0;
   return html`
-    <div class="acoes" style="justify-content:flex-end"><button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('receita', {})}><${Icone} n="mais" />Nova receita</button></div>
+    <button class="painel painel-pad cartao-pudim cartao-custos" onClick=${() => abrirFolha('custos-pudim', {})}>
+      <div class="corpo"><div class="rot-mercado">Mão de obra e despesas fixas</div>
+        <div style="font-weight:700;margin-top:2px">${configurado
+          ? `${brl(Math.round(m.maoDeObra * 60))} por hora de trabalho + ${brl(Math.round(m.despesas * 60))} de despesas`
+          : 'Ainda não configurado: o custo das receitas está só com ingredientes e embalagens'}</div>
+        ${configurado && html`<div class="muted" style="font-size:12.5px;margin-top:2px">Entram no custo de cada receita pelo tempo de preparo.</div>`}</div>
+      <span style="width:18px;color:var(--ink-3)"><${Icone} n="seta" /></span>
+    </button>
+    <div class="acoes" style="justify-content:flex-end;margin-top:10px"><button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('receita', {})}><${Icone} n="mais" />Nova receita</button></div>
     <ul class="lista painel" style="margin-top:10px">
       ${d.receitas.map((r) => {
         const c = d.custos[r.id];
         return html`<li><button class="item item-btn" onClick=${() => abrirFolha('receita', { receita: r })}>
           <div class="corpo"><div class="tit">${r.nome}</div>
-            <div class="meta">Rende ${r.rendimento || 1}, custo ${brl(c.porUnidade)} cada${c.faltando.length ? ', falta preço de algum ingrediente' : ''}</div>
+            <div class="meta">Rende ${r.rendimento || 1}, custo ${brl(c.completoUnidade)} cada${c.faltando.length ? ', falta preço de algum ingrediente' : ''}</div>
+            ${!c.preco && html`<div class="muted" style="font-size:12.5px">Sugerido ${brl(c.sugerido)}</div>`}
             ${c.subiu > 0 && html`<div style="margin-top:4px"><span class="etiqueta atraso">Custo subiu ${Math.round(c.subiu * 100)}%</span></div>`}</div>
-          <div class=${`valor ${c.margem !== null && c.margem < 0.3 ? 'neg' : ''}`}>${c.preco ? brl(c.preco) : '—'}<small>${c.margem !== null ? `margem ${Math.round(c.margem * 100)}%` : 'sem preço'}</small></div>
+          <div class=${`valor ${c.margem !== null && c.margem < 0 ? 'neg' : ''}`}>${c.preco ? brl(c.preco) : '—'}<small>${c.margem !== null ? `lucro ${Math.round(c.margem * 100)}%` : 'sem preço'}</small></div>
         </button></li>`;
       })}
     </ul>`;

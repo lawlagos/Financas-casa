@@ -47,3 +47,19 @@ test('importa ingredientes e receitas; receita com ingrediente desconhecido é r
   imp.receitas[0].ingredientes.push({ insumo_id: 'pp-nada', quantidade: 1 });
   assert.match(prepararImportacao(JSON.stringify(imp), [], []).erros[0], /pp-nada/);
 });
+
+test('reimportar receita mantém o preço digitado no app; custos do pudim viram Config', () => {
+  const imp = {
+    versao: 1,
+    insumos: [{ id: 'pp-lc', nome: 'Leite condensado', qtd_embalagem: 395, unidade: 'g', preco_embalagem: 6.5 }],
+    receitas: [{ id: 'pp-trad', nome: 'Pudim tradicional', rendimento: 8, tempo_preparo: 60, markup: 0.3, preco_venda: '', ingredientes: [{ insumo_id: 'pp-lc', quantidade: 395 }] }],
+    custos_pudim: { salario: 200, decimo: 125, dias: 15, horas: 6, despesas: [{ nome: 'MEI', valor: 72, divisor: 1 }] },
+  };
+  const existente = { id: 'pp-trad', nome: 'Pudim tradicional', rendimento: 6, preco_venda: 12, preco_ifood: 16.5, tempo_preparo: '' };
+  const r = prepararImportacao(JSON.stringify(imp), [], [], [{ id: 'pp-lc', preco_embalagem: 6.39, marca: 'Moça' }], [existente]);
+  assert.deepEqual(r.erros, []);
+  const [rec] = r.receitas;
+  assert.deepEqual([rec.rendimento, rec.preco_venda, rec.preco_ifood, rec.tempo_preparo], [8, 12, 16.5, 60]);
+  assert.deepEqual([r.insumos[0].preco_embalagem, r.insumos[0].marca], [6.5, 'Moça']);
+  assert.equal(JSON.parse(r.config[0].valor).salario, 200);
+});

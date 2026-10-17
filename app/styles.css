@@ -449,3 +449,7 @@ a.btn { text-decoration: none; }
 .pdv-totais { margin-top: 10px; }
 .pdv-totais > div { display: flex; justify-content: space-between; margin-top: 4px; }
 .pdv-totais strong { font: 700 18px var(--display); }
+button.cartao-custos { width: 100%; text-align: left; font: inherit; cursor: pointer; margin-top: 0; }
+.desp-linha { flex-wrap: wrap; }
+.desp-linha .desp-nome { flex: 1 1 100%; width: auto; text-align: left; }
+.desp-linha input:not(.desp-nome) { flex: 1; }

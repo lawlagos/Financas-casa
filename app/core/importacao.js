@@ -2,14 +2,19 @@
 // { versao: 1, data_saldo: 'AAAA-MM-DD', contas: { c6: 120.5, ... }, previstos: [ { id, descricao, ... } ],
 //   substituir_prefixos: ['imp-'],  (opcional: apaga previstos importados antes com esses prefixos)
 //   insumos: [ { id, nome, tipo, qtd_embalagem, unidade, preco_embalagem, ... } ],
-//   receitas: [ { id, nome, rendimento, ingredientes: [ { insumo_id, quantidade } ], ... } ] }
+//   receitas: [ { id, nome, rendimento, ingredientes: [ { insumo_id, quantidade } ], ... } ],
+//   custos_pudim: { salario, decimo, dias, horas, despesas: [ { nome, valor, divisor } ] } }
+// Reimportar ingrediente ou receita que já existe atualiza só o que veio preenchido: o resto (ex.: preço de venda
+// digitado no app) fica como está.
 import { SCHEMA } from './schema.js';
 
 const NATUREZAS = ['fixo', 'parcelado', 'variavel', 'unico'];
 const TIPOS = ['entrada', 'saida', 'transferencia'];
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 
-export function prepararImportacao(texto, contasExistentes, previstosExistentes = [], insumosExistentes = []) {
+const juntar = (nova, antiga) => (antiga ? Object.fromEntries(Object.entries(nova).map(([k, v]) => [k, v === '' && antiga[k] !== '' && antiga[k] != null ? antiga[k] : v])) : nova);
+
+export function prepararImportacao(texto, contasExistentes, previstosExistentes = [], insumosExistentes = [], receitasExistentes = []) {
   let dados;
   try {
     dados = typeof texto === 'string' ? JSON.parse(texto) : texto;
@@ -45,7 +50,8 @@ export function prepararImportacao(texto, contasExistentes, previstosExistentes 
   (dados?.insumos || []).forEach((x, i) => {
     if (!x?.id || !x.nome) return erros.push(`Ingrediente ${i + 1}: falta id ou nome.`);
     if (!['g', 'kg', 'ml', 'l', 'un'].includes(x.unidade)) return erros.push(`Ingrediente ${x.nome}: unidade inválida.`);
-    insumos.push(Object.fromEntries(SCHEMA.insumos.map((c) => [c, x[c] ?? (c === 'ativo' ? true : '')])));
+    const linha = Object.fromEntries(SCHEMA.insumos.map((c) => [c, x[c] ?? (c === 'ativo' ? true : '')]));
+    insumos.push(juntar(linha, insumosExistentes.find((e) => e.id === x.id)));
   });
   const idsInsumos = new Set([...(dados?.insumos || []).map((x) => x?.id), ...insumosExistentes.map((x) => x.id)]);
   const receitas = [];
@@ -54,14 +60,21 @@ export function prepararImportacao(texto, contasExistentes, previstosExistentes 
     const ings = Array.isArray(r.ingredientes) ? r.ingredientes : [];
     const sem = ings.filter((x) => !idsInsumos.has(x.insumo_id));
     if (sem.length) return erros.push(`Receita ${r.nome}: ingrediente desconhecido (${sem[0].insumo_id}).`);
-    receitas.push({ ...Object.fromEntries(SCHEMA.receitas.map((c) => [c, r[c] ?? (c === 'ativo' ? true : '')])), ingredientes: JSON.stringify(ings) });
+    const linha = { ...Object.fromEntries(SCHEMA.receitas.map((c) => [c, r[c] ?? (c === 'ativo' ? true : '')])), ingredientes: JSON.stringify(ings) };
+    receitas.push(juntar(linha, receitasExistentes.find((e) => e.id === r.id)));
   });
-  if (!erros.length && !contas.length && !previstos.length && !insumos.length && !receitas.length) erros.push('A importação está vazia.');
+  const config = [];
+  if (dados?.custos_pudim) {
+    const c = dados.custos_pudim;
+    if (typeof c !== 'object' || !Array.isArray(c.despesas || [])) erros.push('Custos do pudim em formato inválido.');
+    else config.push({ id: 'custos_pudim', valor: JSON.stringify(c) });
+  }
+  if (!erros.length && !contas.length && !previstos.length && !insumos.length && !receitas.length && !config.length) erros.push('A importação está vazia.');
   // Previstos de uma importação anterior (pelo prefixo do id) que não estão nesta saem, para não duplicar.
   const novos = new Set(previstos.map((p) => p.id));
   const prefixos = [].concat(dados?.substituir_prefixos || []).filter(Boolean);
   const remover = prefixos.length
     ? (previstosExistentes || []).filter((p) => prefixos.some((x) => String(p.id).startsWith(x)) && !novos.has(p.id)).map((p) => p.id)
     : [];
-  return { erros, contas, previstos, remover, insumos, receitas };
+  return { erros, contas, previstos, remover, insumos, receitas, config };
 }

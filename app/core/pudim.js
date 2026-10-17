@@ -13,6 +13,39 @@ export const TAXA_IFOOD_PADRAO = 26.2;
 export const CANAIS = { direta: 'Venda direta', ifood: 'iFood' };
 export const CATEGORIA_TAXA_IFOOD = 'cat-taxa-ifood';
 export const CONTA_IFOOD = 'ifood';
+export const MARKUP_PADRAO = 0.3;
+
+// Mão de obra e despesas fixas do pudim (Config "custos_pudim"), como na Base Cadastros da planilha:
+// { salario, decimo, dias, horas, despesas: [{ nome, valor (por mês), divisor }] }.
+// Cada despesa entra como valor ÷ divisor (ex.: água 120 ÷ 6 = 20 é a parte do pudim).
+export const CUSTOS_PADRAO = { salario: 0, decimo: 0, dias: 20, horas: 8, despesas: [] };
+
+export function lerCustos(v) {
+  let c = v;
+  if (typeof v === 'string') {
+    try {
+      c = JSON.parse(v || '{}');
+    } catch {
+      c = {};
+    }
+  }
+  c = c && typeof c === 'object' ? c : {};
+  return { ...CUSTOS_PADRAO, ...c, despesas: Array.isArray(c.despesas) ? c.despesas : [] };
+}
+
+// Valor do minuto de trabalho (salário + 13º) e das despesas fixas, em centavos por minuto.
+export function valorMinuto(custos) {
+  const c = lerCustos(custos);
+  const minutosMes = (Number(c.dias) || 0) * (Number(c.horas) || 0) * 60;
+  const despesasMes = c.despesas.reduce((s, d) => s + toCents(d.valor || 0) / (Number(d.divisor) || 1), 0);
+  const salarioMes = toCents(c.salario || 0) + toCents(c.decimo || 0);
+  return {
+    maoDeObra: minutosMes ? salarioMes / minutosMes : 0,
+    despesas: minutosMes ? despesasMes / minutosMes : 0,
+    despesasMes: Math.round(despesasMes),
+    salarioMes,
+  };
+}
 
 const BASE = { g: 'g', kg: 'g', ml: 'ml', l: 'ml', un: 'un' };
 const FATOR = { g: 1, kg: 1000, ml: 1, l: 1000, un: 1 };
@@ -60,7 +93,10 @@ export function custoInsumo(insumo, itens = []) {
 }
 
 // Custo da receita inteira e por unidade (centavos), com o que faltou preço.
-export function custoReceita(receita, insumosPorId, itens = []) {
+// Custo da receita como na ficha técnica: (A) mão de obra + (B) ingredientes + (C) embalagens + (D) despesas fixas.
+// A e D são o tempo de preparo vezes o valor do minuto. "porUnidade" é só B + C (o que vai no pudim);
+// "completoUnidade" soma tudo; o preço sugerido é o completo mais o markup.
+export function custoReceita(receita, insumosPorId, itens = [], custos = null) {
   const linhas = ingredientesDe(receita).map((x) => {
     const insumo = insumosPorId[x.insumo_id];
     const c = insumo ? custoInsumo(insumo, itens) : { porBase: null };
@@ -68,18 +104,36 @@ export function custoReceita(receita, insumosPorId, itens = []) {
     return { insumo, quantidade: qtd, custo: c.porBase === null ? null : Math.round(c.porBase * qtd), preco: c };
   });
   const total = linhas.reduce((s, l) => s + (l.custo || 0), 0);
+  const ingredientes = linhas.filter((l) => l.insumo?.tipo !== 'embalagem').reduce((s, l) => s + (l.custo || 0), 0);
   const rendimento = Math.max(1, Number(receita.rendimento) || 1);
   const porUnidade = Math.round(total / rendimento);
+  const minuto = valorMinuto(custos);
+  const tempo = Number(receita.tempo_preparo) || 0;
+  const maoDeObra = Math.round(tempo * minuto.maoDeObra);
+  const despesas = Math.round(tempo * minuto.despesas);
+  const completo = total + maoDeObra + despesas;
+  const completoUnidade = Math.round(completo / rendimento);
+  const markup = receita.markup === '' || receita.markup === undefined || receita.markup === null ? MARKUP_PADRAO : Number(receita.markup) || 0;
   const preco = toCents(receita.preco_venda || 0);
   const ref = toCents(receita.custo_ref || 0);
   return {
     linhas,
     total,
+    ingredientes,
+    embalagens: total - ingredientes,
+    maoDeObra,
+    despesas,
+    completo,
     porUnidade,
+    fixoUnidade: completoUnidade - porUnidade,
+    completoUnidade,
+    sugerido: Math.round((completo * (1 + markup)) / rendimento),
+    markup,
     faltando: linhas.filter((l) => l.custo === null && l.quantidade > 0).map((l) => l.insumo?.nome || 'ingrediente apagado'),
     preco,
-    lucroUnidade: preco ? preco - porUnidade : null,
-    margem: preco ? (preco - porUnidade) / preco : null,
+    // Lucro e margem "livres no bolso", como na planilha: depois de mão de obra e despesas fixas.
+    lucroUnidade: preco ? preco - completoUnidade : null,
+    margem: preco ? (preco - completoUnidade) / preco : null,
     subiu: ref > 0 && porUnidade >= ref * (1 + ALERTA_CUSTO) ? (porUnidade - ref) / ref : 0,
   };
 }
@@ -96,11 +150,12 @@ export function processarEstoque(movimentos, custoAtual = () => 0) {
   for (const m of ordem) {
     const qtd = Number(m.quantidade) || 0;
     if (m.tipo === 'producao') {
-      lotes.push({ mov: m, receita_id: m.receita_id, restante: qtd, custo: toCents(m.custo_unitario || 0), validade: m.validade || m.data });
+      lotes.push({ mov: m, receita_id: m.receita_id, restante: qtd, custo: toCents(m.custo_unitario || 0), fixo: toCents(m.custo_fixo_unitario || 0), validade: m.validade || m.data });
       continue;
     }
     let falta = qtd;
     let custo = 0;
+    let fixo = 0;
     const vencido = (l) => (l.validade < m.data ? 1 : 0);
     const primeiroVencidos = m.tipo === 'perda' && (m.obs || 'vencido') === 'vencido';
     const fila = lotes
@@ -112,9 +167,14 @@ export function processarEstoque(movimentos, custoAtual = () => 0) {
       l.restante -= usa;
       falta -= usa;
       custo += usa * l.custo;
+      fixo += usa * l.fixo;
     }
-    if (falta) custo += falta * custoAtual(m.receita_id);
-    saidas[m.id] = { custo, semProducao: falta };
+    if (falta) {
+      const hoje = custoAtual(m.receita_id);
+      custo += falta * (typeof hoje === 'number' ? hoje : hoje?.direto || 0);
+      fixo += falta * (typeof hoje === 'number' ? 0 : hoje?.fixo || 0);
+    }
+    saidas[m.id] = { custo, fixo, semProducao: falta };
   }
   return { lotes: lotes.filter((l) => l.restante > 0), saidas };
 }
@@ -178,6 +238,8 @@ export function semanaPudim({ movimentos, saidas, lancamentos = [], data }) {
   }
   const custoVendido = vendidos.reduce((s, m) => s + (saidas[m.id]?.custo || 0), 0);
   const custoPerdido = perdidos.reduce((s, m) => s + (saidas[m.id]?.custo || 0), 0);
+  // Mão de obra e despesas fixas que estavam dentro do que foi vendido ou perdido.
+  const fixoSaidas = vendidos.concat(perdidos).reduce((s, m) => s + (saidas[m.id]?.fixo || 0), 0);
   const comprasCaixa = lancamentos
     .filter((l) => l.tipo === 'saida' && l.origem === 'Pudim' && l.categoria_id !== CATEGORIA_TAXA_IFOOD && l.data >= inicio && l.data <= fim)
     .reduce((s, l) => s + toCents(l.valor), 0);
@@ -194,6 +256,8 @@ export function semanaPudim({ movimentos, saidas, lancamentos = [], data }) {
     perdidos: qtd(perdidos),
     custoPerdido,
     ganho: vendas - taxas - custoVendido - custoPerdido,
+    fixoSaidas,
+    lucroLivre: vendas - taxas - custoVendido - custoPerdido - fixoSaidas,
     comprasCaixa,
     semProducao: vendidos.concat(perdidos).reduce((s, m) => s + (saidas[m.id]?.semProducao || 0), 0),
   };
@@ -216,7 +280,8 @@ export function totaisCarrinho(linhas, canal, taxaPct = TAXA_IFOOD_PADRAO) {
   const bruto = linhas.reduce((s, l) => s + Math.round(l.quantidade * l.preco), 0);
   const taxa = canal === 'ifood' ? linhas.reduce((s, l) => s + Math.round(l.quantidade * taxaUnitaria(l.preco, taxaPct)), 0) : 0;
   const custo = linhas.reduce((s, l) => s + Math.round(l.quantidade * (l.custo || 0)), 0);
-  return { bruto, taxa, liquido: bruto - taxa, custo, lucro: bruto - taxa - custo, quantidade: linhas.reduce((s, l) => s + l.quantidade, 0) };
+  const fixo = linhas.reduce((s, l) => s + Math.round(l.quantidade * (l.fixo || 0)), 0);
+  return { bruto, taxa, liquido: bruto - taxa, custo, fixo, lucro: bruto - taxa - custo, lucroLivre: bruto - taxa - custo - fixo, quantidade: linhas.reduce((s, l) => s + l.quantidade, 0) };
 }
 
 export function taxaUnitaria(precoCents, taxaPct = TAXA_IFOOD_PADRAO) {

@@ -378,3 +378,33 @@ test('estoque por voz: produz, vende e perde numa frase; o que faltou é respond
   await toast().filter({ hasText: '1 movimento no estoque' }).waitFor();
   assert.deepEqual(erros, []);
 });
+
+test('custos do pudim: mão de obra e despesas fixas entram na receita pelo tempo de preparo, com preço sugerido', async () => {
+  await page.goto(`${base}/?demo#/pudim?aba=receitas`);
+  await page.getByRole('button', { name: /Mão de obra e despesas fixas/ }).click();
+  await page.locator('#custos-salario').fill('200');
+  await page.getByLabel('13º por mês').fill('125');
+  await page.getByLabel('Dias de trabalho no mês').fill('15');
+  await page.getByLabel('Horas por dia').fill('6');
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: /Tirar / }).first().click();
+  await page.getByRole('button', { name: 'Despesa', exact: true }).click();
+  await page.getByLabel('Despesa 1').fill('Fixas');
+  await page.getByLabel('Valor de Fixas').fill('2192');
+  await folha().getByText('R$ 2.192,00/mês').waitFor();
+  await folha().getByText('R$ 0,0602').waitFor();
+  await page.getByRole('button', { name: 'Salvar', exact: true }).click();
+  await toast().filter({ hasText: 'Custos do pudim salvos' }).waitFor();
+
+  await page.locator('.item-btn', { hasText: 'Mini pudim tradicional 150' }).click();
+  await page.locator('#receita-tempo').fill('60');
+  // 60 min: mão de obra 3,61 e despesas 24,36 na receita inteira
+  await folha().getByText('R$ 3,61').waitFor();
+  await folha().getByText('R$ 24,36').waitFor();
+  await folha().getByText(/Preço sugerido \(markup 30%\)/).waitFor();
+  await page.locator('#receita-markup').fill('50');
+  await folha().getByText(/Preço sugerido \(markup 50%\)/).waitFor();
+  await page.getByRole('button', { name: 'Salvar receita' }).click();
+  await toast().filter({ hasText: 'Receita salva' }).waitFor();
+  assert.match(await page.locator('.item-btn', { hasText: 'Mini pudim tradicional 150' }).innerText(), /custo R\$ [\d,]+ cada/);
+  assert.deepEqual(erros, []);
+});

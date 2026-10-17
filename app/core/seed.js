@@ -125,7 +125,7 @@ export function demoTables(hoje) {
   }
   const mt = monthlyTithe(lancs, mesAnterior);
   if (mt.dizimo > 0) lancs.push({ id: `demo-l${++n}`, data: `${monthKey(hoje)}-01`, tipo: 'saida', valor: mt.dizimo / 100, descricao: 'Dízimo do mês', conta_id: 'itau', conta_destino_id: '', categoria_id: CATEGORIA_DIZIMO, origem: 'Casa', canal: 'manual', id_externo: refMes(mesAnterior), criado_por: 'demo', criado_em: hoje });
-  return { contas, categorias: baseCategorias(), lancamentos: lancs, previstos, baixas, config: baseConfig(), itens: demoItens(hoje), ...demoPudim(hoje) };
+  return { contas, categorias: baseCategorias(), lancamentos: lancs, previstos, baixas, config: [...baseConfig(), { id: 'custos_pudim', valor: JSON.stringify(demoCustosPudim()) }], itens: demoItens(hoje), ...demoPudim(hoje) };
 }
 
 // Ingredientes, três receitas e duas semanas de produção, venda e perda.
@@ -143,7 +143,7 @@ function demoPudim(hoje) {
   ];
   const base = [['demo-ins-lc', 395], ['demo-ins-cl', 200], ['demo-ins-leite', 300], ['demo-ins-ovos', 4], ['demo-ins-acucar', 100]];
   const R = (id, nome, rendimento, preco_venda, extra, custo_ref) => ({
-    id, nome, rendimento, validade_dias: 5, preco_venda, preco_sugerido: '', custo_ref,
+    id, nome, rendimento, validade_dias: 5, preco_venda, preco_sugerido: '', custo_ref, tempo_preparo: 60, markup: 0.3, preco_ifood: '',
     ingredientes: JSON.stringify([...base, ...extra].map(([insumo_id, quantidade]) => ({ insumo_id, quantidade }))), ativo: true,
   });
   const receitas = [
@@ -164,6 +164,14 @@ function demoPudim(hoje) {
   M(3, 'demo-rec-mini', 'venda', 9, { preco_unitario: 12 }); M(2, 'demo-rec-ninho', 'venda', 1, { preco_unitario: 85 });
   M(1, 'demo-rec-mini', 'venda', 3, { preco_unitario: 12 });
   return { insumos, receitas, estoque };
+}
+
+// Mão de obra e despesas fixas de exemplo (a Base Cadastros da planilha).
+export function demoCustosPudim() {
+  return {
+    salario: 1500, decimo: 125, dias: 20, horas: 6,
+    despesas: [{ nome: 'Gás', valor: 120, divisor: 1 }, { nome: 'Energia', valor: 300, divisor: 3 }, { nome: 'MEI e contador', valor: 72, divisor: 1 }],
+  };
 }
 
 // Itens de notas de mercado: produtos com ritmos diferentes, em dois mercados.
