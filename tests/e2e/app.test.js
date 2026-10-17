@@ -408,3 +408,27 @@ test('custos do pudim: mão de obra e despesas fixas entram na receita pelo temp
   assert.match(await page.locator('.item-btn', { hasText: 'Mini pudim tradicional 150' }).innerText(), /custo R\$ [\d,]+ cada/);
   assert.deepEqual(erros, []);
 });
+
+test('revisão: quantidade do PDV aceita apagar e digitar 1,5 sem sumir; receita desativada pode ser reativada', async () => {
+  await page.goto(`${base}/?demo#/pudim/vender`);
+  await page.getByRole('button', { name: 'Adicionar Pudim tradicional 1100' }).click();
+  const qtd = page.getByLabel('Quantidade de Pudim tradicional 1100');
+  await qtd.fill('');
+  assert.equal(await qtd.count(), 1, 'apagar o número não tira o item do carrinho');
+  await qtd.pressSequentially('1,5');
+  await page.locator('#carrinho').getByText('R$ 97,50').first().waitFor();
+  await page.getByRole('button', { name: 'Menos Pudim tradicional 1100' }).click();
+  await page.getByRole('button', { name: 'Menos Pudim tradicional 1100' }).click();
+  assert.equal(await page.getByLabel('Quantidade de Pudim tradicional 1100').count(), 0);
+
+  await page.goto(`${base}/?demo#/pudim?aba=receitas`);
+  await page.locator('.item-btn', { hasText: 'Pudim ninho com Nutella 1100' }).click();
+  await folha().getByLabel('Receita em uso').uncheck();
+  await page.getByRole('button', { name: 'Salvar receita' }).click();
+  await page.getByRole('button', { name: 'Mostrar 1 receitas desativadas' }).click();
+  await page.getByRole('button', { name: /Pudim ninho com Nutella 1100.*reativar/ }).click();
+  await folha().getByLabel('Receita em uso').check();
+  await page.getByRole('button', { name: 'Salvar receita' }).click();
+  await page.locator('.lista .item-btn', { hasText: 'Pudim ninho com Nutella 1100' }).first().waitFor();
+  assert.deepEqual(erros, []);
+});

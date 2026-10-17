@@ -53,3 +53,27 @@ test('sem quantidade vale 1; trecho sem receita conhecida é ignorado', () => {
   assert.deepEqual(resumo(ler('vendi um pudim de chocolate branco 500 e um de abacaxi')), [['venda', 1, 'choc500']]);
   assert.deepEqual(resumo(ler('meia dúzia de limão vendidos')), [['venda', 6, 'limao']]);
 });
+
+test('revisão: números compostos, dúzias e cem', () => {
+  assert.deepEqual(resumo(ler('vendi vinte e cinco tradicionais 1100')), [['venda', 25, 'trad1100']]);
+  assert.deepEqual(resumo(ler('vendi vinte e dois de limão e trinta e um de ninho')), [['venda', 22, 'limao'], ['venda', 31, 'ninho']]);
+  assert.deepEqual(resumo(ler('vendi uma dúzia de limão')), [['venda', 12, 'limao']]);
+  assert.deepEqual(resumo(ler('fizemos duas dúzias de limão')), [['producao', 24, 'limao']]);
+  assert.deepEqual(resumo(ler('vendi cem de limão')), [['venda', 100, 'limao']]);
+});
+
+test('revisão: verbo diferente no meio da frase separa os itens', () => {
+  assert.deepEqual(resumo(ler('vendi um de limão e dei um de ninho')), [['venda', 1, 'limao'], ['perda', 1, 'ninho']]);
+  assert.deepEqual(resumo(ler('vendi 2 de limão e comi 1 de ninho')), [['venda', 2, 'limao'], ['perda', 1, 'ninho']]);
+});
+
+test('revisão: palavra de enchimento antes da quantidade não vira tamanho', () => {
+  assert.deepEqual(resumo(ler('vendi ontem 30 de limão')), [['venda', 30, 'limao']]);
+  assert.deepEqual(resumo(ler('vendi só 25 de limão')), [['venda', 25, 'limao']]);
+  assert.deepEqual(resumo(ler('vendi tradicional 1100')), [['venda', 1, 'trad1100']]);
+});
+
+test('revisão: trecho sem nome de pudim usa o pudim do item anterior', () => {
+  assert.deepEqual(resumo(ler('vendemos 5 de limão e comemos dois')), [['venda', 5, 'limao'], ['perda', 2, 'limao']]);
+  assert.deepEqual(resumo(ler('vendi 2 e mais nada')), []);
+});

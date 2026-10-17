@@ -17,8 +17,9 @@ function pagamento(lancs, ref) {
 
 // Semanas de negócio (sáb→sex) desde a primeira movimentação até a semana de `hoje`, com prejuízo carregado.
 export function businessWeeks(lancs, hoje) {
-  const neg = lancs.filter((l) => conta(l) && ORIGENS_NEGOCIO.includes(l.origem));
   const atual = businessWeekStart(hoje);
+  // Lançamentos de semanas futuras (data adiantada) ficam de fora até a semana chegar.
+  const neg = lancs.filter((l) => conta(l) && ORIGENS_NEGOCIO.includes(l.origem) && l.data <= addDays(atual, 6));
   if (!neg.length) return [semana(atual, [], 0, lancs)];
   let inicio = businessWeekStart(neg.reduce((m, l) => (l.data < m ? l.data : m), neg[0].data));
   const out = [];

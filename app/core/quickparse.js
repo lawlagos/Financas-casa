@@ -31,8 +31,9 @@ export function parseQuick(texto, { contas = [], categorias = [], hoje }) {
   const out = { tipo: null, valor: null, descricao: '', conta_id: null, conta_destino_id: null, categoria_id: null, origem: null, data: hoje };
 
   // valor: "87,50", "87.50", "1.200", "2 mil", "87 reais"
-  const mil = t.match(/(\d+(?:[.,]\d+)?)\s*mil\b/);
-  const num = t.match(/(?:r\$\s*)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)/);
+  // O número não pode estar grudado em letra: "c6" é conta, não valor.
+  const mil = t.match(/(?<![a-z\d])(\d+(?:[.,]\d+)?)\s*mil\b/);
+  const num = t.match(/(?:r\$\s*)?(?<![a-z\d.,])(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?![a-z])/);
   if (mil) out.valor = parseBRL(mil[1]) * 1000;
   else if (num) out.valor = parseBRL(num[1]);
 

@@ -44,24 +44,27 @@ export function prepararImportacao(texto, contasExistentes, previstosExistentes 
     if (!ids.has(p.conta_id)) return erros.push(`${onde}: conta desconhecida.`);
     if (p.natureza === 'unico' ? !DATA.test(p.data_unica || '') : !DATA.test(p.inicio || '')) return erros.push(`${onde}: data inválida.`);
     if (p.natureza === 'parcelado' && !(Number(p.parcelas_total) > 0)) return erros.push(`${onde}: falta o total de parcelas.`);
-    previstos.push(Object.fromEntries(SCHEMA.previstos.map((c) => [c, p[c] ?? ''])));
+    // Sem "ativo" no arquivo, entra ativo: vazio vira "falso" na planilha e o previsto sumiria.
+    previstos.push(Object.fromEntries(SCHEMA.previstos.map((c) => [c, p[c] ?? (c === 'ativo' ? true : c === 'renovacao' ? false : '')])));
   });
   const insumos = [];
   (dados?.insumos || []).forEach((x, i) => {
     if (!x?.id || !x.nome) return erros.push(`Ingrediente ${i + 1}: falta id ou nome.`);
     if (!['g', 'kg', 'ml', 'l', 'un'].includes(x.unidade)) return erros.push(`Ingrediente ${x.nome}: unidade inválida.`);
-    const linha = Object.fromEntries(SCHEMA.insumos.map((c) => [c, x[c] ?? (c === 'ativo' ? true : '')]));
-    insumos.push(juntar(linha, insumosExistentes.find((e) => e.id === x.id)));
+    // Sem "ativo" no arquivo: novo entra ativo, existente fica como está (não reativa o que foi desligado).
+    const linha = juntar(Object.fromEntries(SCHEMA.insumos.map((c) => [c, x[c] ?? ''])), insumosExistentes.find((e) => e.id === x.id));
+    insumos.push({ ...linha, ativo: linha.ativo === '' ? true : linha.ativo });
   });
   const idsInsumos = new Set([...(dados?.insumos || []).map((x) => x?.id), ...insumosExistentes.map((x) => x.id)]);
   const receitas = [];
   (dados?.receitas || []).forEach((r, i) => {
     if (!r?.id || !r.nome) return erros.push(`Receita ${i + 1}: falta id ou nome.`);
-    const ings = Array.isArray(r.ingredientes) ? r.ingredientes : [];
-    const sem = ings.filter((x) => !idsInsumos.has(x.insumo_id));
+    const ings = Array.isArray(r.ingredientes) ? r.ingredientes : null;
+    const sem = (ings || []).filter((x) => !idsInsumos.has(x.insumo_id));
     if (sem.length) return erros.push(`Receita ${r.nome}: ingrediente desconhecido (${sem[0].insumo_id}).`);
-    const linha = { ...Object.fromEntries(SCHEMA.receitas.map((c) => [c, r[c] ?? (c === 'ativo' ? true : '')])), ingredientes: JSON.stringify(ings) };
-    receitas.push(juntar(linha, receitasExistentes.find((e) => e.id === r.id)));
+    // Sem lista de ingredientes no arquivo, mantém a que já existe.
+    const linha = juntar({ ...Object.fromEntries(SCHEMA.receitas.map((c) => [c, r[c] ?? ''])), ingredientes: ings ? JSON.stringify(ings) : '' }, receitasExistentes.find((e) => e.id === r.id));
+    receitas.push({ ...linha, ativo: linha.ativo === '' ? true : linha.ativo, ingredientes: linha.ingredientes || '[]' });
   });
   const config = [];
   if (dados?.custos_pudim) {

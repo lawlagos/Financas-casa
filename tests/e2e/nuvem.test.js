@@ -218,7 +218,7 @@ test('pudim na planilha: receita com ingredientes em texto, produção e venda c
   assert.deepEqual(est[0], SCHEMA_ESTOQUE);
   assert.deepEqual([est[1][3], est[1][4], est[1][5], est[1][7]], ['producao', 2, 3.2, addDias(est[1][1], 4)]);
   // 20 / (1 - 0,262) = 27,10 → 27,20 no iFood; taxa 7,13
-  assert.deepEqual([est[2][3], est[2][4], est[2][6], est[2][11], est[2][12]], ['venda', 1, 27.2, 'ifood', 7.13]);
+  assert.deepEqual([est[2][3], est[2][4], est[2][6], est[2][11], est[2][12]], ['venda', 1, 27.2, 'ifood', 7.1264]);
   const [l, taxa] = env.abas['Lançamentos'].linhas.slice(antes);
   assert.deepEqual([l[2], l[3], l[5], l[7], l[8], l[9]], ['entrada', 27.2, 'ifood', 'cat-venda-pudim', 'Pudim', 'pdv']);
   assert.deepEqual([taxa[2], taxa[3], taxa[5], taxa[7], taxa[12]], ['saida', 7.13, 'ifood', 'cat-taxa-ifood', l[12]]);

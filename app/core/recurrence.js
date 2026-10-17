@@ -23,7 +23,8 @@ export function rawOccurrences(p, ate) {
   };
 
   if (p.recorrencia === 'semanal') {
-    const alvo = Number(p.dia_semana ?? weekday(inicio));
+    // Vazio (como vem da planilha) é o dia da semana do início, não domingo.
+    const alvo = p.dia_semana === '' || p.dia_semana == null ? weekday(inicio) : Number(p.dia_semana);
     let d = addDays(inicio, (alvo - weekday(inicio) + 7) % 7);
     while (d <= ate) {
       if (!push(d, d)) break;
@@ -77,7 +78,8 @@ export function openOccurrences({ previstos, baixas = [], lancs = [], de, ate, h
     for (const o of rawOccurrences(p, ate)) {
       const b = idx[`${p.id}|${o.ref}`];
       if (b && (b.status === 'baixado' || b.status === 'pulado')) continue;
-      const data = b && b.status === 'adiado' && b.nova_data ? b.nova_data : o.data;
+      // Renovação confirmada pode ter sido adiada também: vale a nova data e continua certa.
+      const data = b && (b.status === 'adiado' || b.status === 'renovou') && b.nova_data ? b.nova_data : o.data;
       if (data < de || data > ate) continue;
       let confianca = p.confianca || 'certo';
       if (p.renovacao) confianca = b && b.status === 'renovou' ? 'certo' : 'provavel';

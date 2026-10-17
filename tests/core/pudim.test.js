@@ -116,7 +116,7 @@ test('carrinho: bruto, taxa de 26,2% no iFood, líquido e lucro', () => {
   const linhas = [{ quantidade: 3, preco: 1650, custo: 400 }, { quantidade: 1, preco: 9000, custo: 3000 }];
   const t = totaisCarrinho(linhas, 'ifood', 26.2);
   assert.equal(t.bruto, 4950 + 9000);
-  assert.equal(t.taxa, 3 * 432 + 2358);
+  assert.equal(t.taxa, Math.round(13950 * 0.262)); // sobre o total, não unidade por unidade
   assert.equal(t.liquido, t.bruto - t.taxa);
   assert.equal(t.lucro, t.liquido - 4200);
   assert.equal(t.quantidade, 4);
@@ -218,4 +218,24 @@ test('estoque guarda mão de obra e despesas do lote; semana mostra o lucro livr
   assert.equal(s.ganho, 3000 - 1000);
   assert.equal(s.lucroLivre, 3000 - 1000 - 932);
   assert.equal(totaisCarrinho([{ quantidade: 2, preco: 1500, custo: 500, fixo: 466 }], 'direta').lucroLivre, 3000 - 1000 - 932);
+});
+
+test('revisão: taxa do iFood sobre o total (10 × R$ 19,90 = R$ 52,14) e a semana soma igual ao lançamento', () => {
+  assert.equal(totaisCarrinho([{ quantidade: 10, preco: 1990, custo: 0 }], 'ifood', 26.2).taxa, 5214);
+  const movs = [M('1', '2026-10-11', 'venda', 10, { preco_unitario: 19.9, taxa_unitaria: 5.2138, canal: 'ifood' })];
+  const { saidas } = processarEstoque(movs);
+  assert.equal(semanaPudim({ movimentos: movs, saidas, data: '2026-10-11' }).taxas, 5214);
+});
+
+test('revisão: venda com data antes da produção baixa o estoque da produção seguinte', () => {
+  const { lotes, saidas } = processarEstoque([
+    M('1', '2026-10-17', 'producao', 10, { custo_unitario: 3, validade: '2026-10-22' }),
+    M('2', '2026-10-16', 'venda', 2, { preco_unitario: 12 }),
+  ], () => ({ direto: 300, fixo: 0 }));
+  assert.equal(lotes[0].restante, 8);
+  assert.equal(saidas['2'].semProducao, 2);
+});
+
+test('revisão: preço com vírgula vindo como texto da planilha conta', () => {
+  assert.equal(custoInsumo({ nome: 'X', unidade: 'un', qtd_embalagem: 1, preco_embalagem: '12,50' }).porBase, 1250);
 });

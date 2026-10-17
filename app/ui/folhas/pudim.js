@@ -7,7 +7,7 @@ import { brl, parseBRL, toCents } from '../../core/money.js';
 import { addDays, fmtDay } from '../../core/dates.js';
 import { custoReceita, custoInsumo, ingredientesDe, VALIDADE_PADRAO, precoNoCanal, totaisCarrinho, CANAIS, MARKUP_PADRAO, lerCustos, valorMinuto } from '../../core/pudim.js';
 import { interpretarEstoque } from '../../core/vozestoque.js';
-import { registrarVenda, registrarMovimentos, taxaIfood } from '../../data/pudim-acoes.js';
+import { registrarFala, taxaIfood } from '../../data/pudim-acoes.js';
 import { CampoFala } from '../voz.js';
 import { chaveProduto, produtoDoItem, produtos } from '../../core/mercado.js';
 import { contasAtivas } from '../derivados.js';
@@ -299,8 +299,9 @@ export function FolhaVozEstoque() {
     setSalvando(true);
     try {
       const outros = itens.filter((i) => i.tipo !== 'venda').map((i) => ({ tipo: i.tipo, receita: i.receita, quantidade: i.qtd, custo: d.custos[i.receita.id]?.porUnidade || 0, fixo: d.custos[i.receita.id]?.fixoUnidade || 0 }));
-      const n = await registrarMovimentos(outros, { data: r.data, motivo: r.motivo });
-      const v = linhasVenda.length ? await registrarVenda({ linhas: linhasVenda, canal: r.canal, data: r.data, conta_id, lancar }) : null;
+      const res = await registrarFala({ movimentos: outros, venda: linhasVenda.length ? { linhas: linhasVenda, canal: r.canal, conta_id, lancar } : null, data: r.data, motivo: r.motivo });
+      const n = res.movimentos;
+      const v = res.venda;
       fecharFolha();
       toast([n ? `${n} movimento${n > 1 ? 's' : ''} no estoque` : '', v ? `venda de ${brl(v.bruto)}${v.lancado ? ' lançada no caixa' : ''}` : ''].filter(Boolean).join(' e ').replace(/^./, (c) => c.toUpperCase()));
     } catch {

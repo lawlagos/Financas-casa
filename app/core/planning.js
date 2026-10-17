@@ -37,11 +37,17 @@ function monthlyEquivalent(p, lancs) {
 // Tela Compromissos.
 export function commitments({ previstos, baixas, lancs, hoje }) {
   const ativos = previstos.filter((p) => p.ativo !== false && p.natureza !== 'unico');
-  const saidas = ativos.filter((p) => p.tipo === 'saida');
   const idx = baixaIndex(baixas);
+  // Parcelado já quitado (sem parcela em aberto) não compromete mais nada por mês.
+  const quitado = (p) => p.natureza === 'parcelado' && !rawOccurrences(p, '2100-01-01').some((o) => {
+    const b = idx[`${p.id}|${o.ref}`];
+    return !(b && (b.status === 'baixado' || b.status === 'pulado'));
+  });
+  const saidas = ativos.filter((p) => p.tipo === 'saida');
   const porNatureza = { fixo: 0, parcelado: 0, variavel: 0 };
   const listas = { fixo: [], parcelado: [], variavel: [] };
   for (const p of saidas) {
+    if (quitado(p)) continue;
     const eq = monthlyEquivalent(p, lancs);
     porNatureza[p.natureza] += eq;
     listas[p.natureza].push({ previsto: p, mensal: eq });

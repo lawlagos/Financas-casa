@@ -80,7 +80,7 @@ export function TelaFuturo() {
               </tr>
               ${aberto === d.data && html`<tr class="det"><td colspan="5">
                 <ul class="lista" style="margin:2px 0 6px">
-                  ${d.itens.map((it) => html`<li><button class="item item-btn" style="padding:8px 4px;min-height:0;background:none" onClick=${(e) => { e.stopPropagation(); abrirFolha('ocorrencia', { occ: it.occ }); }}>
+                  ${d.itens.map((it) => html`<li><button class="item item-btn" style="padding:8px 4px;min-height:0;background:none" onClick=${(e) => { e.stopPropagation(); if (it.pagarDizimo) abrirFolha('dizimo', it.pagarDizimo); else abrirFolha('ocorrencia', { occ: it.occ }); }}>
                     <div class="corpo"><div class="tit" style="font-size:14px">${it.descricao}${it.parcela ? ` ${it.parcela.k}/${it.parcela.n}` : ''}</div>
                       <div class="meta">${it.atrasado ? `atrasado desde ${fmtDay(it.dataOriginal)}` : it.confianca === 'certo' ? 'certo' : 'provável'}${it.variavel ? ', média dos últimos' : ''}</div></div>
                     <div class=${`valor ${it.efeito > 0 ? (it.confianca === 'certo' ? 'pos' : 'prov') : 'neg'}`} style="font-size:14px">${it.efeito > 0 ? '+' : ''}${brl(it.efeito)}</div>

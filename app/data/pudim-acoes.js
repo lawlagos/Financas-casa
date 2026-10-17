@@ -15,7 +15,7 @@ export function taxaIfood() {
 // A conta iFood (onde o dinheiro fica até o repasse) e a categoria da taxa nascem na primeira venda pelo iFood.
 async function garantirIfood(data) {
   if (!state.tables.contas.some((c) => c.id === CONTA_IFOOD)) {
-    await salvar('contas', { id: CONTA_IFOOD, nome: 'iFood', dono: 'Esposa', grupo: 'Pudim', saldo_inicial: 0, data_saldo_inicial: data, cor: '#ea1d2c', ativa: true });
+    await salvar('contas', { id: CONTA_IFOOD, nome: 'iFood', dono: 'Esposa', grupo: 'Pudim', saldo_inicial: 0, data_saldo_inicial: '2000-01-01', cor: '#ea1d2c', ativa: true });
   }
   if (!state.tables.categorias.some((c) => c.id === CATEGORIA_TAXA_IFOOD)) {
     await salvar('categorias', { id: CATEGORIA_TAXA_IFOOD, nome: 'Taxa iFood', tipo: 'saida', origem_padrao: 'Pudim', ativa: true });
@@ -24,7 +24,22 @@ async function garantirIfood(data) {
 
 // Venda de um carrinho. linhas: [{ receita, quantidade, preco (centavos), custo (centavos por unidade) }].
 // No iFood a entrada é o valor cheio na conta iFood e a taxa sai como gasto do Pudim, ligadas pelo mesmo grupo.
-export async function registrarVenda({ linhas, canal, data, conta_id, lancar }) {
+// Tudo ou nada: se uma das gravações falhar, as que já foram são desfeitas, para não sobrar venda pela metade.
+async function tudoOuNada(fn) {
+  const feitos = [];
+  try {
+    return await fn(feitos);
+  } catch (e) {
+    for (const { tabela, id } of feitos.reverse()) await apagar(tabela, id).catch(() => {});
+    throw e;
+  }
+}
+
+export function registrarVenda(args) {
+  return tudoOuNada((feitos) => gravarVenda(args, feitos));
+}
+
+async function gravarVenda({ linhas, canal, data, conta_id, lancar }, feitos) {
   const itens = linhas.filter((l) => l.receita && l.quantidade > 0);
   if (!itens.length) return null;
   const taxaPct = taxaIfood();
@@ -41,16 +56,18 @@ export async function registrarVenda({ linhas, canal, data, conta_id, lancar }) 
       conta_id: conta, conta_destino_id: '', categoria_id: 'cat-venda-pudim', origem: 'Pudim', canal: 'pdv', grupo_id, previsto_id: '',
     });
     lancamento_id = entrada.id;
+    feitos.push({ tabela: 'lancamentos', id: entrada.id });
     if (canal === 'ifood' && t.taxa > 0) {
-      await salvar('lancamentos', {
+      const taxa = await salvar('lancamentos', {
         tipo: 'saida', valor: reais(t.taxa), data, descricao: `Taxa iFood (${qtdTxt(taxaPct)}%)`, conta_id: CONTA_IFOOD, conta_destino_id: '',
         categoria_id: CATEGORIA_TAXA_IFOOD, origem: 'Pudim', canal: 'pdv', grupo_id, previsto_id: '',
       });
+      feitos.push({ tabela: 'lancamentos', id: taxa.id });
     }
   }
   await salvarVarias('estoque', itens.map((l) => ({
     data, receita_id: l.receita.id, tipo: 'venda', quantidade: l.quantidade, custo_unitario: '', preco_unitario: reais(l.preco),
-    taxa_unitaria: canal === 'ifood' ? reais(taxaUnitaria(l.preco, taxaPct)) : '', canal, validade: '', lancamento_id, obs: '', criado_em: agora,
+    taxa_unitaria: canal === 'ifood' ? Math.round(taxaUnitaria(l.preco, taxaPct) * 100) / 10000 : '', canal, validade: '', lancamento_id, obs: '', criado_em: agora,
   })));
   return { ...t, lancado: !!lancamento_id };
 }
@@ -65,15 +82,26 @@ export async function registrarMovimentos(itens, { data, motivo = 'vencido' }) {
     validade: i.tipo === 'producao' ? addDays(data, Number(i.receita.validade_dias) || VALIDADE_PADRAO) : '',
     lancamento_id: '', obs: i.tipo === 'perda' ? motivo : '', criado_em: agora, canal: '', taxa_unitaria: '',
   }));
-  if (linhas.length) await salvarVarias('estoque', linhas);
-  return linhas.length;
+  return linhas.length ? salvarVarias('estoque', linhas) : [];
+}
+
+// Produção/perda e venda ditas na mesma frase: se a venda falhar, a produção e a perda também são desfeitas.
+export function registrarFala({ movimentos, venda, data, motivo }) {
+  return tudoOuNada(async (feitos) => {
+    const salvos = await registrarMovimentos(movimentos, { data, motivo });
+    for (const x of salvos) feitos.push({ tabela: 'estoque', id: x.id });
+    const v = venda ? await gravarVenda({ ...venda, data }, feitos) : null;
+    return { movimentos: salvos.length, venda: v };
+  });
 }
 
 // Apagar um movimento de venda apaga a venda inteira: todos os itens do carrinho e os lançamentos dela (entrada e taxa).
 export async function apagarMovimento(m) {
   if (!m.lancamento_id) {
-    await apagar('estoque', m.id);
-    return { itens: 1, lancamentos: 0 };
+    // Venda sem lançamento no caixa: os itens do mesmo carrinho foram gravados juntos (mesmo dia e mesma hora).
+    const juntos = m.tipo === 'venda' ? state.tables.estoque.filter((x) => x.tipo === 'venda' && !x.lancamento_id && x.data === m.data && x.criado_em === m.criado_em) : [m];
+    for (const x of juntos) await apagar('estoque', x.id);
+    return { itens: juntos.length, lancamentos: 0 };
   }
   const irmaos = state.tables.estoque.filter((x) => x.lancamento_id === m.lancamento_id);
   const entrada = state.tables.lancamentos.find((l) => l.id === m.lancamento_id);

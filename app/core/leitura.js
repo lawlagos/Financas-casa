@@ -1,6 +1,6 @@
 // Prepara o que vai para a IA e confere o que volta dela, marcando o que precisa de resposta antes de salvar.
 import { ORIGENS } from './schema.js';
-import { toCents } from './money.js';
+import { toCents, parseBRL } from './money.js';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const CONFIANCA_MINIMA = 0.7;
@@ -21,7 +21,7 @@ export function montarContexto(tables, hoje) {
 }
 
 const num = (v) => {
-  const n = typeof v === 'string' ? Number(v.replace(',', '.')) : Number(v);
+  const n = typeof v === 'string' ? parseBRL(v) : Number(v);
   return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
 };
 

@@ -63,3 +63,14 @@ test('reimportar receita mantém o preço digitado no app; custos do pudim viram
   assert.deepEqual([r.insumos[0].preco_embalagem, r.insumos[0].marca], [6.5, 'Moça']);
   assert.equal(JSON.parse(r.config[0].valor).salario, 200);
 });
+
+test('revisão: reimportar não reativa receita desligada nem apaga a lista de ingredientes', () => {
+  const imp = { versao: 1, insumos: [{ id: 'pp-lc', nome: 'Leite condensado', unidade: 'g' }], receitas: [{ id: 'pp-trad', nome: 'Pudim tradicional' }, { id: 'pp-nova', nome: 'Nova' }] };
+  const existentes = [{ id: 'pp-trad', nome: 'Pudim tradicional', ativo: false, ingredientes: '[{"insumo_id":"pp-lc","quantidade":395}]' }];
+  const r = prepararImportacao(JSON.stringify(imp), [], [], [{ id: 'pp-lc', ativo: false }], existentes);
+  assert.deepEqual(r.erros, []);
+  assert.equal(r.receitas[0].ativo, false);
+  assert.equal(r.receitas[0].ingredientes, existentes[0].ingredientes);
+  assert.deepEqual([r.receitas[1].ativo, r.receitas[1].ingredientes], [true, '[]']);
+  assert.equal(r.insumos[0].ativo, false);
+});

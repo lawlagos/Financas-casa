@@ -48,6 +48,8 @@ export class RemoteApi {
   }
 
   sair() {
+    // Avisa o servidor para a sessão deixar de valer; se falhar (sem internet), o aparelho sai assim mesmo.
+    if (this.sessao) this.chamar('sair').catch(() => {});
     this.sessao = null;
   }
 

@@ -67,7 +67,14 @@ function interpretar_(dados) {
   var codigo = resp.getResponseCode();
   if (codigo === 429) throw erro_('ia-limite', 'O limite gratuito do Gemini acabou por agora. Tente de novo em alguns minutos ou lance pelo formulário.');
   if (codigo === 404) throw erro_('ia-modelo', 'Não achei um modelo do Gemini disponível para a sua chave (tentei ' + modelo + '). Apague a propriedade GEMINI_MODELO, se existir, e tente de novo.');
-  if (codigo === 400 || codigo === 403) throw erro_('ia-chave', 'O Gemini recusou a chave. Confira a propriedade GEMINI_API_KEY no Apps Script.');
+  if (codigo === 400 || codigo === 403) {
+    // 400 também vem de imagem ilegível ou grande demais: só culpa a chave quando o Gemini diz que é a chave.
+    var detalhe = {};
+    try { detalhe = JSON.parse(resp.getContentText()).error || {}; } catch (e) { detalhe = {}; }
+    var texto = String(detalhe.status || '') + ' ' + String(detalhe.message || '') + ' ' + JSON.stringify(detalhe.details || '');
+    if (codigo === 403 || /API_KEY|PERMISSION_DENIED|api key/i.test(texto)) throw erro_('ia-chave', 'O Gemini recusou a chave. Confira a propriedade GEMINI_API_KEY no Apps Script.');
+    throw erro_('ia', 'O Gemini não conseguiu ler esta imagem. Tente um print mais nítido ou menor, ou lance pelo formulário.');
+  }
   if (codigo !== 200) throw erro_('ia', 'O Gemini não respondeu (erro ' + codigo + '). Tente de novo.');
   var json = JSON.parse(resp.getContentText());
   var texto = json.candidates && json.candidates[0] && json.candidates[0].content && json.candidates[0].content.parts &&

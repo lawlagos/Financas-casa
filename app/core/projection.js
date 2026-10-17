@@ -1,8 +1,8 @@
 import { toCents } from './money.js';
-import { addDays } from './dates.js';
+import { addDays, monthKey, addMonthsKey, fmtDay, monthName } from './dates.js';
 import { balances, groupTotals } from './balances.js';
 import { openOccurrences } from './recurrence.js';
-import { ORIGENS_MENSAIS } from './tithe.js';
+import { ORIGENS_MENSAIS, CATEGORIA_DIZIMO, businessWeeks, monthlyTithe, refSemana, refMes } from './tithe.js';
 
 const ATRASO_MAX_DIAS = 60;
 
@@ -42,12 +42,40 @@ export function plannedItems(occs, hoje) {
   return items;
 }
 
+// Dízimo de dinheiro que já entrou e ainda não foi pago: semanas de negócio (a pagar no sábado seguinte;
+// as atrasadas, hoje) e salário/consultoria/YouTube do mês passado e deste mês (hoje).
+// Sai da conta onde o último dízimo foi pago (ou da primeira conta pessoal).
+export function dizimosPendentes({ contas, lancs, hoje }) {
+  const ultimo = [...lancs].filter((l) => l.categoria_id === CATEGORIA_DIZIMO).sort((a, b) => (a.data < b.data ? 1 : -1))[0];
+  const conta_id = ultimo?.conta_id || (contas.find((c) => c.grupo === 'Pessoal' && c.ativa !== false) || contas[0])?.id || '';
+  const desde = addDays(hoje, -ATRASO_MAX_DIAS);
+  const out = [];
+  const item = (data, valor, descricao, pagar) => out.push({
+    tipo: 'saida', valor, data, dataOriginal: data, confianca: 'certo', atrasado: false, conta_id, conta_destino_id: '', descricao, dizimo: true, pagarDizimo: { ...pagar, valor },
+  });
+  for (const w of businessWeeks(lancs, hoje)) {
+    const falta = w.dizimo - (w.pago?.valor || 0);
+    if (falta <= 0 || w.pagarEm < desde) continue;
+    const titulo = `Dízimo dos negócios, semana de ${fmtDay(w.inicio)} a ${fmtDay(w.fim)}`;
+    item(w.pagarEm < hoje ? hoje : w.pagarEm, falta, titulo, { referencia: refSemana(w.inicio), titulo });
+  }
+  const mes = monthKey(hoje);
+  for (const k of [addMonthsKey(mes, -1), mes]) {
+    const m = monthlyTithe(lancs, k);
+    const falta = m.dizimo - (m.pago?.valor || 0);
+    if (falta <= 0) continue;
+    const titulo = `Dízimo de ${monthName(k)} (salário e consultoria)`;
+    item(hoje, falta, titulo, { referencia: refMes(k), titulo });
+  }
+  return out;
+}
+
 // Saldo projetado dia a dia de `hoje` até `ate`, em dois cenários: só o certo, e com os prováveis.
 export function project({ contas, lancs, previstos, baixas, config = {}, hoje, ate, grupo = 'Tudo' }) {
   const ids = accountsInGroup(contas, grupo);
   const inicial = groupTotals(contas, balances(contas, lancs, hoje))[grupo] || 0;
   const occs = openOccurrences({ previstos, baixas, lancs, de: addDays(hoje, -ATRASO_MAX_DIAS), ate, hoje });
-  const items = plannedItems(occs, hoje)
+  const items = [...plannedItems(occs, hoje), ...dizimosPendentes({ contas, lancs, hoje })]
     .map((it) => ({ ...it, efeito: groupEffect(it.tipo, it.valor, it.conta_id, it.conta_destino_id, ids) }))
     .filter((it) => it.efeito !== 0);
   const diario = grupo === 'Tudo' || grupo === 'Pessoal' ? toCents(config.gasto_diario || 0) : 0;

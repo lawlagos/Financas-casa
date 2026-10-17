@@ -27,6 +27,7 @@ function doGet() {
 
 function tratar_(pedido) {
   if (pedido.acao === 'entrar') return entrar_(pedido.dados);
+  if (pedido.acao === 'sair') return sair_(pedido.sessao);
   var usuario = validarSessao_(pedido.sessao);
   var d = pedido.dados || {};
   switch (pedido.acao) {

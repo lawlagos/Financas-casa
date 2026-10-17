@@ -182,8 +182,10 @@ test('interpretar: sem sessão, sem chave, limite e modelo inexistente dão mens
   assert.equal(e.post({ acao: 'interpretar', dados: { imagem: 'x' } }).codigo, 'sessao-invalida');
   let { sessao } = e.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
   assert.match(e.post({ acao: 'interpretar', sessao, dados: { imagem: 'x' } }).erro, /GEMINI_API_KEY/);
-  for (const [code, codigo] of [[429, 'ia-limite'], [404, 'ia-modelo'], [400, 'ia-chave'], [500, 'ia']]) {
-    e = ambiente({ ...base, props: { ...PROPS, GEMINI_API_KEY: 'k', GEMINI_MODELO: 'gemini-x' }, gemini: (url) => (url.includes('/models?') ? { code: 200, body: '{"models":[]}' } : { code, body: '{}' }) });
+  const CHAVE_RUIM = JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', message: 'API key not valid. Please pass a valid API key.' } });
+  const IMAGEM_RUIM = JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', message: 'Unable to process input image.' } });
+  for (const [code, codigo, body] of [[429, 'ia-limite'], [404, 'ia-modelo'], [400, 'ia-chave', CHAVE_RUIM], [403, 'ia-chave'], [400, 'ia', IMAGEM_RUIM], [500, 'ia']]) {
+    e = ambiente({ ...base, props: { ...PROPS, GEMINI_API_KEY: 'k', GEMINI_MODELO: 'gemini-x' }, gemini: (url) => (url.includes('/models?') ? { code: 200, body: '{"models":[]}' } : { code, body: body || '{}' }) });
     e.ctx.configurar();
     ({ sessao } = e.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados);
     assert.equal(e.post({ acao: 'interpretar', sessao, dados: { imagem: 'x' } }).codigo, codigo);
@@ -226,4 +228,49 @@ test('doGet mostra a versão do servidor e se a chave do Gemini está configurad
   const info = JSON.parse(env.ctx.doGet().texto);
   assert.match(info.versao, /^\d{4}-\d{2}-\d{2}/);
   assert.match(info.leitura_de_prints, /FALTA/);
+});
+
+test('config guarda o JSON dos custos do pudim como texto e números como número', () => {
+  const { sessao } = env.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  const custos = JSON.stringify({ salario: 200, despesas: [{ nome: 'MEI', valor: 72, divisor: 1 }] });
+  env.post({ acao: 'salvar', sessao, dados: { tabela: 'config', linha: { id: 'custos_pudim', valor: custos } } });
+  env.post({ acao: 'salvar', sessao, dados: { tabela: 'config', linha: { id: 'taxa_ifood', valor: 26.2 } } });
+  const cfg = Object.fromEntries(env.post({ acao: 'carregar', sessao }).dados.config.map((c) => [c.id, c.valor]));
+  assert.equal(cfg.custos_pudim, custos);
+  assert.equal(cfg.taxa_ifood, 26.2);
+});
+
+test('aba cheia (mais de 1000 linhas) ganha linhas novas em texto puro, em vez de dar erro', () => {
+  const { sessao } = env.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  const linhas = Array.from({ length: 1100 }, (_, i) => ({ id: `i${i}`, data: '2026-10-17', descricao: 'Item', quantidade: 1, valor: 1 }));
+  assert.equal(env.post({ acao: 'salvarVarias', sessao, dados: { tabela: 'itens', linhas } }).ok, true);
+  assert.equal(env.post({ acao: 'salvar', sessao, dados: { tabela: 'itens', linha: { id: 'mais-um', descricao: 'x' } } }).ok, true);
+  const aba = env.abas['Itens'];
+  assert.equal(aba.linhas.length, 1102);
+  assert.ok(aba.maxRows >= 1102);
+  const dataCol = SCHEMA.itens.indexOf('data') + 1;
+  assert.ok(aba.formatosNovos.some(([linha, col, n, f]) => linha === 1001 && col === dataCol && n >= 500 && f === '@'));
+  assert.ok(!aba.formatosNovos.some(([, col]) => col === SCHEMA.itens.indexOf('valor') + 1), 'coluna numérica não vira texto');
+});
+
+test('salvarVarias repetido (resposta perdida) atualiza em vez de duplicar; apagar tira todas as cópias', () => {
+  const { sessao } = env.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  const linhas = [{ id: 'e1', data: '2026-10-17', tipo: 'venda', quantidade: 2 }, { id: 'e2', data: '2026-10-17', tipo: 'venda', quantidade: 1 }];
+  env.post({ acao: 'salvarVarias', sessao, dados: { tabela: 'estoque', linhas } });
+  env.post({ acao: 'salvarVarias', sessao, dados: { tabela: 'estoque', linhas: [{ ...linhas[0], quantidade: 3 }, linhas[1]] } });
+  let est = env.post({ acao: 'carregar', sessao }).dados.estoque;
+  assert.deepEqual(est.map((x) => [x.id, x.quantidade]), [['e1', 3], ['e2', 1]]);
+  // cópia antiga duplicada à mão na planilha: apagar remove as duas
+  env.abas['Estoque'].linhas.push([...env.abas['Estoque'].linhas[1]]);
+  env.post({ acao: 'apagar', sessao, dados: { tabela: 'estoque', id: 'e1' } });
+  est = env.post({ acao: 'carregar', sessao }).dados.estoque;
+  assert.deepEqual(est.map((x) => x.id), ['e2']);
+});
+
+test('sair encerra a sessão no servidor; outra sessão continua valendo', () => {
+  const a = env.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados.sessao;
+  const b = env.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados.sessao;
+  assert.equal(env.post({ acao: 'sair', sessao: a }).ok, true);
+  assert.equal(env.post({ acao: 'carregar', sessao: a }).codigo, 'sessao-invalida');
+  assert.equal(env.post({ acao: 'carregar', sessao: b }).ok, true);
 });

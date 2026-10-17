@@ -1,7 +1,7 @@
 // Leituras prontas das tabelas para as telas.
 import { balances, groupTotals } from '../core/balances.js';
 import { ORIGEM_LABEL } from '../core/schema.js';
-import { weekdayName, monthName } from '../core/dates.js';
+import { weekdayName, monthName, weekday } from '../core/dates.js';
 import { brl, toCents } from '../core/money.js';
 import { project } from '../core/projection.js';
 import { addDays, diffDays } from '../core/dates.js';
@@ -34,7 +34,7 @@ export const FREQUENCIAS = [
 // "todo dia 30", "dia 8 a 10, todo mês", "a cada 3 meses (jan, abr, jul, out), dia 20", "anual em abril, dia 10".
 export function agendaTexto(p) {
   if (p.natureza === 'unico') return p.data_unica ? `em ${p.data_unica.split('-').reverse().join('/')}` : 'data única';
-  if (p.recorrencia === 'semanal') return `toda ${weekdayName(Number(p.dia_semana || 0))}`;
+  if (p.recorrencia === 'semanal') return `toda ${weekdayName(p.dia_semana === '' || p.dia_semana == null ? weekday(p.inicio || '2000-01-02') : Number(p.dia_semana))}`;
   const ini = Number(p.dia_inicio || 1);
   const fim = Number(p.dia_fim || ini);
   const dia = fim > ini ? `dia ${ini} a ${fim}` : `dia ${ini}`;

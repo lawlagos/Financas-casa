@@ -27,8 +27,7 @@ function entrar_(dados) {
   var token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
   var agora = new Date().toISOString();
   comLock_(function () {
-    var sh = aba_('sessoes');
-    sh.getRange(sh.getLastRow() + 1, 1, 1, COLUNAS_SESSOES.length).setValues([[token, email, String(dados.aparelho || '').slice(0, 80), agora, agora]]);
+    acrescentar_(aba_('sessoes'), 'sessoes', [[token, email, String(dados.aparelho || '').slice(0, 80), agora, agora]]);
   });
   return { sessao: token, email: email };
 }
@@ -43,10 +42,31 @@ function validarSessao_(token) {
   var ultimo = new Date(linha[4]);
   var agora = new Date();
   if (agora - ultimo > DIAS_SESSAO * 86400000) {
-    sh.deleteRow(r);
+    apagarSessao_(token);
     throw erro_('sessao-invalida', 'Faz tempo que você não entra. Entre de novo.');
   }
   if (emailsAutorizados_().indexOf(String(linha[1]).toLowerCase()) < 0) throw erro_('sessao-invalida', 'Este e-mail não tem mais acesso.');
-  if (agora - ultimo > 3600000) sh.getRange(r, 5).setValue(agora.toISOString());
+  if (agora - ultimo > 3600000) {
+    // Dentro do lock e procurando a linha de novo: outro aparelho pode ter entrado ou saído no meio.
+    comLock_(function () {
+      var r2 = linhaDoId_(sh, token);
+      if (r2 > 0) sh.getRange(r2, 5).setValue(agora.toISOString());
+    });
+  }
   return { email: linha[1] };
+}
+
+function apagarSessao_(token) {
+  return comLock_(function () {
+    var sh = aba_('sessoes');
+    var r = linhaDoId_(sh, token);
+    if (r > 0) sh.deleteRow(r);
+    return r > 0;
+  });
+}
+
+// Sair deste aparelho: a sessão deixa de valer no servidor também.
+function sair_(token) {
+  if (token) apagarSessao_(token);
+  return true;
 }

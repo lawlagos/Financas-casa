@@ -27,6 +27,7 @@ export function TelaPdv() {
   const [canal, setCanal] = useState('direta');
   const [carrinho, setCarrinho] = useState({}); // receita_id → quantidade
   const [precos, setPrecos] = useState({}); // receita_id|canal → texto digitado
+  const [qtdTexto, setQtdTexto] = useState({}); // receita_id → quantidade enquanto é digitada ("1," a caminho de "1,5")
   const [conta_id, setConta] = useState(ultimaDireta?.conta_id || (contas.find((c) => c.id === 'nubank-pj') ? 'nubank-pj' : ''));
   const [data, setData] = useState(s.hoje);
   const [lancar, setLancar] = useState(true);
@@ -66,13 +67,25 @@ export function TelaPdv() {
   const t = totaisCarrinho(linhas, canal, taxaPct);
   const semPreco = linhas.filter((l) => !l.preco);
 
-  const mudar = (id, delta) => setCarrinho((c) => ({ ...c, [id]: Math.max(0, (c[id] || 0) + delta) }));
+  const mudar = (id, delta) => {
+    soltarQtd(id);
+    setCarrinho((c) => ({ ...c, [id]: Math.max(0, Math.round(((c[id] || 0) + delta) * 100) / 100) }));
+  };
   const tocar = (id) => {
     if (!duvida) return mudar(id, 1);
     mudar(id, duvida.quantidade || 1);
     setDuvidas((x) => x.slice(1));
   };
-  const definir = (id, q) => setCarrinho((c) => ({ ...c, [id]: Math.max(0, q) }));
+  // Digitar só muda a quantidade quando o número é válido; apagar o campo não tira o item (só o "−" tira).
+  const digitarQtd = (id, texto) => {
+    setQtdTexto((x) => ({ ...x, [id]: texto }));
+    const q = Number(texto.replace(',', '.'));
+    if (Number.isFinite(q) && q > 0) setCarrinho((c) => ({ ...c, [id]: q }));
+  };
+  const soltarQtd = (id) => setQtdTexto((x) => {
+    const { [id]: _, ...resto } = x;
+    return resto;
+  });
 
   const ouvido = (texto) => {
     const r = interpretarEstoque(texto, { receitas: d.receitas, hoje: s.hoje, estoque: naGeladeira });
@@ -101,7 +114,10 @@ export function TelaPdv() {
       const r = await registrarVenda({ linhas, canal, data, conta_id, lancar });
       setCarrinho({});
       setPrecos({});
+      setQtdTexto({});
       toast(`Venda de ${brl(r.bruto)} registrada${r.lancado ? (canal === 'ifood' ? ', líquido ' + brl(r.liquido) + ' na conta iFood' : ' e lançada no caixa') : ''}`);
+    } catch {
+      // o aviso de erro já apareceu; o carrinho continua para tentar de novo
     } finally {
       setSalvando(false);
     }
@@ -145,7 +161,7 @@ export function TelaPdv() {
               ${!(l.receita.id in naGeladeira) && html`<div class="muted" style="font-size:12px">Sem produção registrada</div>`}</div>
             <div class="pdv-contador">
               <button class="icone-btn" aria-label=${`Menos ${l.receita.nome}`} onClick=${() => mudar(l.receita.id, -1)}>−</button>
-              <input aria-label=${`Quantidade de ${l.receita.nome}`} inputmode="numeric" value=${qtdTxt(l.quantidade)} onInput=${(e) => definir(l.receita.id, Number(e.target.value.replace(',', '.')) || 0)} />
+              <input aria-label=${`Quantidade de ${l.receita.nome}`} inputmode="decimal" value=${qtdTexto[l.receita.id] ?? qtdTxt(l.quantidade)} onInput=${(e) => digitarQtd(l.receita.id, e.target.value)} onBlur=${() => soltarQtd(l.receita.id)} />
               <button class="icone-btn" aria-label=${`Mais ${l.receita.nome}`} onClick=${() => mudar(l.receita.id, 1)}>+</button>
             </div>
             <input class="pdv-preco-linha" aria-label=${`Preço de ${l.receita.nome}`} inputmode="decimal" placeholder="0,00"
@@ -168,7 +184,7 @@ export function TelaPdv() {
         ${semPreco.length > 0 && html`<div class="duvida" style="margin-top:10px"><${Icone} n="alerta" /><span>Digite o preço de ${semPreco.map((l) => l.receita.nome).join(', ')}.</span></div>`}
         <button class="btn btn-pri btn-larga" style="margin-top:14px" disabled=${salvando || semPreco.length > 0 || (lancar && canal === 'direta' && !conta_id)} onClick=${finalizar}>
           ${salvando ? 'Salvando…' : `Finalizar venda · ${brl(t.bruto)}`}</button>
-        <button class="link" style="margin-top:8px" onClick=${() => { setCarrinho({}); setPrecos({}); }}>Esvaziar carrinho</button>`}
+        <button class="link" style="margin-top:8px" onClick=${() => { setCarrinho({}); setPrecos({}); setQtdTexto({}); }}>Esvaziar carrinho</button>`}
     </section>
   </main>`;
 }

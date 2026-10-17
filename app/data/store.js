@@ -19,6 +19,18 @@ export const state = {
 let api;
 const listeners = new Set();
 
+// O app pode ficar aberto de um dia para o outro: ao voltar para ele, confere a data de hoje.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    const hoje = todayIso();
+    if (hoje !== state.hoje) {
+      state.hoje = hoje;
+      emit();
+    }
+  });
+}
+
 let versao = 0;
 
 export function emit() {
@@ -118,17 +130,16 @@ export async function salvar(tabela, linha) {
       nova.criado_por = quem();
     } else nova.editado_em = agora;
   }
-  const lista = state.tables[tabela];
-  const i = lista.findIndex((x) => x.id === nova.id);
-  const anterior = i >= 0 ? lista[i] : null;
-  if (i >= 0) lista[i] = nova;
-  else lista.push(nova);
+  const anterior = state.tables[tabela].find((x) => x.id === nova.id) || null;
+  state.tables[tabela] = anterior ? state.tables[tabela].map((x) => (x.id === nova.id ? nova : x)) : [...state.tables[tabela], nova];
   emit();
   try {
     await api.salvar(tabela, nova);
   } catch (e) {
-    if (anterior) lista[i] = anterior;
-    else state.tables[tabela] = lista.filter((x) => x.id !== nova.id);
+    // Desfaz pelo id na lista de agora: outras gravações podem ter mudado a lista enquanto esta ia.
+    state.tables[tabela] = anterior
+      ? state.tables[tabela].map((x) => (x.id === nova.id ? anterior : x))
+      : state.tables[tabela].filter((x) => x.id !== nova.id);
     toast(`Não salvou: ${e.message}`, { tom: 'erro' });
     emit();
     throw e;
@@ -136,16 +147,17 @@ export async function salvar(tabela, linha) {
   return nova;
 }
 
-// Grava várias linhas novas de uma vez (sem atualizar existentes).
+// Grava várias linhas de uma vez; id que já existe é substituído (o servidor faz o mesmo).
 export async function salvarVarias(tabela, linhas) {
   const novas = linhas.map((l) => ({ ...l, id: l.id || uid(tabela.slice(0, 3)) }));
-  state.tables[tabela] = (state.tables[tabela] || []).concat(novas);
+  const ids = new Set(novas.map((l) => l.id));
+  const anteriores = (state.tables[tabela] || []).filter((l) => ids.has(l.id));
+  state.tables[tabela] = (state.tables[tabela] || []).filter((l) => !ids.has(l.id)).concat(novas);
   emit();
   try {
     await api.salvarVarias(tabela, novas);
   } catch (e) {
-    const ids = new Set(novas.map((l) => l.id));
-    state.tables[tabela] = state.tables[tabela].filter((l) => !ids.has(l.id));
+    state.tables[tabela] = state.tables[tabela].filter((l) => !ids.has(l.id)).concat(anteriores);
     toast(`Não salvou: ${e.message}`, { tom: 'erro' });
     emit();
     throw e;
@@ -161,7 +173,7 @@ export async function apagar(tabela, id) {
   try {
     await api.apagar(tabela, id);
   } catch (e) {
-    if (linha) state.tables[tabela].push(linha);
+    if (linha && !state.tables[tabela].some((x) => x.id === id)) state.tables[tabela] = [...state.tables[tabela], linha];
     toast(`Não apagou: ${e.message}`, { tom: 'erro' });
     emit();
     throw e;

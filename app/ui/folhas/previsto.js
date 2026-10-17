@@ -191,7 +191,7 @@ export function FolhaOcorrencia({ occ }) {
     });
   };
   const adiar = async () => {
-    await baixa('adiado', { nova_data: novaData });
+    await baixa(occ.baixa?.status === 'renovou' ? 'renovou' : 'adiado', { nova_data: novaData });
     fecharFolha();
     toast(`${p.descricao} reagendado para ${fmtDay(novaData)}`);
   };
@@ -201,7 +201,7 @@ export function FolhaOcorrencia({ occ }) {
     toast(`${p.descricao} de ${fmtDay(occ.data)} saiu da previsão`, { acao: 'Desfazer', onAcao: () => apagarBaixa(p.id, occ.ref) });
   };
   const renovou = async () => {
-    await baixa('renovou');
+    await baixa('renovou', { nova_data: occ.baixa?.nova_data || '' });
     fecharFolha();
     toast(`${p.descricao} confirmado. Agora conta como certo.`);
   };
@@ -222,11 +222,11 @@ export function FolhaOcorrencia({ occ }) {
       ${occ.atrasado && html` <span class="etiqueta atraso">Atrasado</span>`}
       ${occ.confianca !== 'certo' && html` <span class="etiqueta prov">Provável</span>`}</p>
     <div style="display:grid;gap:8px;margin-top:14px">
-      ${p.renovacao && !occ.baixa
+      ${p.renovacao && (!occ.baixa || occ.baixa.status === 'adiado')
         ? html`<button class="btn btn-pri" onClick=${renovou}>Renovou, contar como certo</button>
           <button class="btn btn-sec" onClick=${naoRenovou}>Não renovou</button>`
         : null}
-      <button class=${`btn ${p.renovacao && !occ.baixa ? 'btn-sec' : 'btn-pri'}`} onClick=${lancar}>${recebe ? 'Recebi, lançar agora' : 'Paguei, lançar agora'}</button>
+      <button class=${`btn ${p.renovacao && (!occ.baixa || occ.baixa.status === 'adiado') ? 'btn-sec' : 'btn-pri'}`} onClick=${lancar}>${recebe ? 'Recebi, lançar agora' : 'Paguei, lançar agora'}</button>
       ${!adiando
         ? html`<button class="btn btn-sec" onClick=${() => setAdiando(true)}>${recebe ? 'Ainda vai pagar, mudar a data' : 'Mudar a data'}</button>`
         : html`<div class="painel painel-pad"><${Campo} rotulo="Nova data"><input type="date" value=${novaData} onInput=${(e) => setNovaData(e.target.value)} /><//>

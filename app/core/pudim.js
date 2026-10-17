@@ -68,7 +68,7 @@ export function custoInsumo(insumo, itens = []) {
   // Item por unidade sem conteúdo informado (embalagem, ovo avulso) conta como 1 por embalagem.
   const qtdEmb = (Number(insumo.qtd_embalagem) || (base === 'un' ? 1 : 0)) * (FATOR[insumo.unidade] || 1);
   // Preço zero digitado (água da torneira) é preço, não falta de preço.
-  const temPreco = insumo.preco_embalagem !== '' && insumo.preco_embalagem !== null && insumo.preco_embalagem !== undefined && Number(insumo.preco_embalagem) >= 0;
+  const temPreco = insumo.preco_embalagem !== '' && insumo.preco_embalagem !== null && insumo.preco_embalagem !== undefined && toCents(insumo.preco_embalagem) >= 0;
   const manual = temPreco && qtdEmb > 0
     ? { porBase: toCents(insumo.preco_embalagem) / qtdEmb, fonte: 'cadastro', data: insumo.data_preco || '' }
     : null;
@@ -147,10 +147,14 @@ export function processarEstoque(movimentos, custoAtual = () => 0) {
   const ordem = [...movimentos].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : peso(a) - peso(b) || (String(a.criado_em || '') < String(b.criado_em || '') ? -1 : 1)));
   const lotes = [];
   const saidas = {};
+  // Saída sem lote (venda com data antes da produção): a próxima produção da receita já nasce descontada.
+  const devendo = {};
   for (const m of ordem) {
     const qtd = Number(m.quantidade) || 0;
     if (m.tipo === 'producao') {
-      lotes.push({ mov: m, receita_id: m.receita_id, restante: qtd, custo: toCents(m.custo_unitario || 0), fixo: toCents(m.custo_fixo_unitario || 0), validade: m.validade || m.data });
+      const desconta = Math.min(devendo[m.receita_id] || 0, qtd);
+      if (desconta) devendo[m.receita_id] -= desconta;
+      lotes.push({ mov: m, receita_id: m.receita_id, restante: qtd - desconta, custo: toCents(m.custo_unitario || 0), fixo: toCents(m.custo_fixo_unitario || 0), validade: m.validade || m.data });
       continue;
     }
     let falta = qtd;
@@ -170,6 +174,7 @@ export function processarEstoque(movimentos, custoAtual = () => 0) {
       fixo += usa * l.fixo;
     }
     if (falta) {
+      devendo[m.receita_id] = (devendo[m.receita_id] || 0) + falta;
       const hoje = custoAtual(m.receita_id);
       custo += falta * (typeof hoje === 'number' ? hoje : hoje?.direto || 0);
       fixo += falta * (typeof hoje === 'number' ? 0 : hoje?.fixo || 0);
@@ -228,13 +233,15 @@ export function semanaPudim({ movimentos, saidas, lancamentos = [], data }) {
   const custoProduzido = produzidos.reduce((s, m) => s + (Number(m.quantidade) || 0) * toCents(m.custo_unitario || 0), 0);
   const valorDe = (m, col) => Math.round((Number(m.quantidade) || 0) * toCents(m[col] || 0));
   const vendas = vendidos.reduce((s, m) => s + valorDe(m, 'preco_unitario'), 0);
-  const taxas = vendidos.reduce((s, m) => s + valorDe(m, 'taxa_unitaria'), 0);
+  // Taxa guardada por unidade sem arredondar: soma tudo e arredonda uma vez, como o lançamento da venda.
+  const taxaDe = (m) => (Number(m.quantidade) || 0) * Number(m.taxa_unitaria || 0) * 100;
+  const taxas = Math.round(vendidos.reduce((s, m) => s + taxaDe(m), 0));
   const porCanal = {};
   for (const m of vendidos) {
     const c = (porCanal[m.canal === 'ifood' ? 'ifood' : 'direta'] ||= { quantidade: 0, vendas: 0, taxas: 0 });
     c.quantidade += Number(m.quantidade) || 0;
     c.vendas += valorDe(m, 'preco_unitario');
-    c.taxas += valorDe(m, 'taxa_unitaria');
+    c.taxas += taxaDe(m);
   }
   const custoVendido = vendidos.reduce((s, m) => s + (saidas[m.id]?.custo || 0), 0);
   const custoPerdido = perdidos.reduce((s, m) => s + (saidas[m.id]?.custo || 0), 0);
@@ -243,6 +250,7 @@ export function semanaPudim({ movimentos, saidas, lancamentos = [], data }) {
   const comprasCaixa = lancamentos
     .filter((l) => l.tipo === 'saida' && l.origem === 'Pudim' && l.categoria_id !== CATEGORIA_TAXA_IFOOD && l.data >= inicio && l.data <= fim)
     .reduce((s, l) => s + toCents(l.valor), 0);
+  for (const c of Object.values(porCanal)) c.taxas = Math.round(c.taxas);
   return {
     inicio,
     fim,
@@ -278,12 +286,14 @@ export function precoNoCanal(receita, canal, taxaPct = TAXA_IFOOD_PADRAO) {
 // linhas: [{ quantidade, preco (centavos), custo (centavos por unidade) }]
 export function totaisCarrinho(linhas, canal, taxaPct = TAXA_IFOOD_PADRAO) {
   const bruto = linhas.reduce((s, l) => s + Math.round(l.quantidade * l.preco), 0);
-  const taxa = canal === 'ifood' ? linhas.reduce((s, l) => s + Math.round(l.quantidade * taxaUnitaria(l.preco, taxaPct)), 0) : 0;
+  // A taxa é sobre o valor da venda inteira, arredondada uma vez só.
+  const taxa = canal === 'ifood' ? Math.round((bruto * taxaPct) / 100) : 0;
   const custo = linhas.reduce((s, l) => s + Math.round(l.quantidade * (l.custo || 0)), 0);
   const fixo = linhas.reduce((s, l) => s + Math.round(l.quantidade * (l.fixo || 0)), 0);
   return { bruto, taxa, liquido: bruto - taxa, custo, fixo, lucro: bruto - taxa - custo, lucroLivre: bruto - taxa - custo - fixo, quantidade: linhas.reduce((s, l) => s + l.quantidade, 0) };
 }
 
+// Taxa de uma unidade em centavos, sem arredondar (para guardar no estoque e somar depois).
 export function taxaUnitaria(precoCents, taxaPct = TAXA_IFOOD_PADRAO) {
-  return Math.round((precoCents * taxaPct) / 100);
+  return (precoCents * taxaPct) / 100;
 }

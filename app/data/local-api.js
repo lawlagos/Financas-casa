@@ -55,7 +55,8 @@ export class LocalApi {
   }
 
   async salvarVarias(tabela, linhas) {
-    this.tables[tabela] = (this.tables[tabela] || []).concat(linhas);
+    const ids = new Set(linhas.map((l) => l.id));
+    this.tables[tabela] = (this.tables[tabela] || []).filter((l) => !ids.has(l.id)).concat(linhas);
     this.write(this.tables);
     return linhas;
   }

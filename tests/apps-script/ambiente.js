@@ -9,6 +9,7 @@ class Aba {
     this.nome = nome;
     this.linhas = [];
     this.formatos = {};
+    this.maxRows = 1000; // como a planilha de verdade: escrever além da grade dá erro
   }
   getLastRow() {
     return this.linhas.length;
@@ -17,13 +18,17 @@ class Aba {
     return Math.max(0, ...this.linhas.map((l) => l.length));
   }
   getMaxRows() {
-    return 1000;
+    return this.maxRows;
+  }
+  insertRowsAfter(_depois, n) {
+    this.maxRows += n;
   }
   setFrozenRows() {}
   getRange(r, c, nr = 1, nc = 1) {
     const aba = this;
     return {
       setValues(v) {
+        if (r + nr - 1 > aba.maxRows) throw new Error('Those rows are out of bounds.');
         for (let i = 0; i < nr; i++) {
           while (aba.linhas.length < r + i) aba.linhas.push([]);
           for (let j = 0; j < nc; j++) aba.linhas[r - 1 + i][c - 1 + j] = v[i][j];
@@ -41,7 +46,8 @@ class Aba {
         return out;
       },
       setNumberFormat(f) {
-        aba.formatos[c] = f;
+        if (r > 1) (aba.formatosNovos ||= []).push([r, c, nr, f]);
+        else aba.formatos[c] = f;
       },
     };
   }

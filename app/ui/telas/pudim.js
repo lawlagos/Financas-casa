@@ -127,7 +127,19 @@ function AbaEstoque({ s, d }) {
     <//>`;
 }
 
-function AbaReceitas({ d }) {
+// Desativados ficam escondidos, mas dá para abrir e reativar.
+function Desativados({ lista, tipo, folha, chave }) {
+  const [aberto, setAberto] = useState(false);
+  if (!lista.length) return null;
+  return html`<div style="margin-top:12px">
+    <button class="link" onClick=${() => setAberto(!aberto)}>${aberto ? 'Esconder' : 'Mostrar'} ${lista.length} ${tipo} desativad${tipo.endsWith('s') && tipo.startsWith('ingred') ? 'os' : 'as'}</button>
+    ${aberto && html`<ul class="lista painel" style="margin-top:8px;opacity:.7">
+      ${lista.map((x) => html`<li><button class="item item-btn" onClick=${() => abrirFolha(folha, { [chave]: x })}><div class="corpo"><div class="tit">${x.nome}</div><div class="meta">Desativad${chave === 'insumo' ? 'o' : 'a'}. Toque para reativar.</div></div></button></li>`)}
+    </ul>`}
+  </div>`;
+}
+
+function AbaReceitas({ s, d }) {
   const m = valorMinuto(d.custosFixos);
   const configurado = m.maoDeObra > 0 || m.despesas > 0;
   return html`
@@ -151,7 +163,8 @@ function AbaReceitas({ d }) {
           <div class=${`valor ${c.margem !== null && c.margem < 0 ? 'neg' : ''}`}>${c.preco ? brl(c.preco) : '—'}<small>${c.margem !== null ? `lucro ${Math.round(c.margem * 100)}%` : 'sem preço'}</small></div>
         </button></li>`;
       })}
-    </ul>`;
+    </ul>
+    <${Desativados} lista=${(s.tables.receitas || []).filter((r) => !ativo(r))} tipo="receitas" folha="receita" chave="receita" />`;
 }
 
 function AbaIngredientes({ s, d }) {
@@ -174,7 +187,8 @@ function AbaIngredientes({ s, d }) {
   return html`
     <div class="acoes" style="justify-content:flex-end"><button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('insumo', {})}><${Icone} n="mais" />Novo</button></div>
     <p class="muted" style="font-size:13px;margin:8px 2px">O preço vem da nota de mercado mais recente do produto. Sem nota, vale o preço digitado aqui.</p>
-    <ul class="lista painel">${bloco('ingrediente', 'Ingredientes')}${bloco('embalagem', 'Embalagens')}</ul>`;
+    <ul class="lista painel">${bloco('ingrediente', 'Ingredientes')}${bloco('embalagem', 'Embalagens')}</ul>
+    <${Desativados} lista=${(s.tables.insumos || []).filter((x) => !ativo(x))} tipo="ingredientes" folha="insumo" chave="insumo" />`;
 }
 
 export function TelaPudim({ params = {} }) {
@@ -192,7 +206,7 @@ export function TelaPudim({ params = {} }) {
         ? html`<div class="painel"><${Vazio} titulo="Nenhuma receita ainda">
             <p style="margin:6px 0 12px">Importe as receitas da planilha do Pudim Perfeito em Mais > Ajustes > Importar, ou crie a primeira.</p>
             <button class="btn btn-pri" onClick=${() => abrirFolha('receita', {})}>Criar receita</button><//></div>`
-        : aba === 'estoque' ? html`<${AbaEstoque} s=${s} d=${d} />` : aba === 'receitas' ? html`<${AbaReceitas} d=${d} />` : html`<${AbaIngredientes} s=${s} d=${d} />`}
+        : aba === 'estoque' ? html`<${AbaEstoque} s=${s} d=${d} />` : aba === 'receitas' ? html`<${AbaReceitas} s=${s} d=${d} />` : html`<${AbaIngredientes} s=${s} d=${d} />`}
     </div>
   </main>`;
 }
