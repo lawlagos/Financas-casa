@@ -274,3 +274,53 @@ test('mercado: previsão, lista sugerida marcável, juntar produtos e trocar par
   assert.match(await page.locator('.item-btn', { hasText: 'Leite condensado' }).innerText(), /\/kg/);
   assert.deepEqual(erros, []);
 });
+
+test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar a venda e ajustar receita', async () => {
+  await page.goto(`${base}/?demo#/negocios`);
+  await page.locator('a.cartao-pudim').click();
+  await page.getByText('Pronto para vender').waitFor();
+  const pudins = async () => Number((await page.locator('.hero-pudim .num-mercado').innerText()).match(/\d+/)[0]);
+  const antes = await pudins();
+
+  await page.getByRole('button', { name: 'Produzi' }).click();
+  await folha().getByLabel('Qual pudim').selectOption({ label: 'Mini pudim tradicional 150' });
+  assert.equal(await page.locator('#mov-quantidade').inputValue(), '8');
+  await page.getByRole('button', { name: 'Pôr no estoque' }).click();
+  await toast().filter({ hasText: '8 Mini pudim tradicional 150 no estoque' }).waitFor();
+  assert.equal(await pudins(), antes + 8);
+
+  await page.getByRole('button', { name: 'Vendi' }).click();
+  await folha().getByLabel('Qual pudim').selectOption({ label: 'Mini pudim tradicional 150' });
+  await page.locator('#mov-quantidade').fill('3');
+  assert.equal(await page.locator('#mov-preco').inputValue(), '12');
+  await folha().getByText('R$ 36,00').waitFor();
+  await page.getByRole('button', { name: 'Registrar venda' }).click();
+  await toast().filter({ hasText: 'Venda registrada e lançada no caixa' }).waitFor();
+  assert.equal(await pudins(), antes + 5);
+  const nubankPj = await saldoConta('Nubank PJ');
+  await page.goto(`${base}/?demo#/lancamentos`);
+  await page.locator('.item', { hasText: 'Venda: 3 Mini pudim tradicional 150' }).first().waitFor();
+
+  await page.goto(`${base}/?demo#/pudim`);
+  await page.getByRole('alert').filter({ hasText: 'venceu' }).getByRole('button', { name: 'Dar baixa' }).click();
+  await toast().filter({ hasText: 'Baixa de 1 pudim vencido' }).waitFor();
+  assert.equal(await page.getByRole('alert').filter({ hasText: 'venceu' }).count(), 0);
+
+  // apagar a venda tira a entrada do caixa junto
+  const venda = page.locator('.arrastavel', { hasText: 'Vendeu 3 Mini pudim' }).first();
+  await venda.scrollIntoViewIfNeeded();
+  const caixa = await venda.boundingBox();
+  await page.mouse.move(caixa.x + caixa.width - 20, caixa.y + caixa.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(caixa.x + 40, caixa.y + caixa.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await toast().filter({ hasText: 'Venda apagada, e a entrada no caixa também' }).waitFor();
+  assert.equal(reais(await saldoConta('Nubank PJ')), Math.round((reais(nubankPj) - 36) * 100) / 100);
+
+  await page.goto(`${base}/?demo#/pudim?aba=receitas`);
+  await page.locator('.item-btn', { hasText: 'Mini pudim tradicional 150' }).click();
+  await page.getByRole('button', { name: 'Manter o preço e tirar o aviso' }).click();
+  await toast().filter({ hasText: 'Receita salva' }).waitFor();
+  assert.equal(await page.locator('.item-btn', { hasText: 'Mini pudim tradicional 150' }).locator('.etiqueta').count(), 0);
+  assert.deepEqual(erros, []);
+});

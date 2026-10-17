@@ -28,7 +28,7 @@ export function TelaMais() {
       ${it('#/mais/categorias', 'etiqueta', 'Categorias', 'Nomes e origem sugerida')}
       ${it('#/mais/ajustes', 'ajustes', 'Ajustes', 'Gasto diário, reserva mínima, tema')}
     </ul>
-    <p class="muted" style="font-size:12.5px;margin-top:18px">Próximas etapas: custo dos pudins e preços por marca, depois Hotmart e Meta automáticos.</p>
+    <p class="muted" style="font-size:12.5px;margin-top:18px">Próximas etapas: Hotmart e Meta automáticos, depois o radar de ofertas.</p>
   </main>`;
 }
 
@@ -181,13 +181,13 @@ function Importar() {
     if (f) f.text().then(setTexto);
   };
   const importar = async () => {
-    const r = prepararImportacao(texto, s.tables.contas, s.tables.previstos);
+    const r = prepararImportacao(texto, s.tables.contas, s.tables.previstos, s.tables.insumos);
     setErros(r.erros);
     if (r.erros.length) return;
-    const total = r.contas.length + r.previstos.length + r.remover.length;
+    const total = r.contas.length + r.previstos.length + r.remover.length + r.insumos.length + r.receitas.length;
     let feitos = 0;
     try {
-      for (const [tabela, lista] of [['contas', r.contas], ['previstos', r.previstos]]) {
+      for (const [tabela, lista] of [['contas', r.contas], ['previstos', r.previstos], ['insumos', r.insumos], ['receitas', r.receitas]]) {
         for (const linha of lista) {
           setProgresso(`Importando ${++feitos} de ${total}…`);
           await salvar(tabela, linha);
@@ -203,7 +203,12 @@ function Importar() {
     }
     setProgresso(null);
     setTexto('');
-    toast(`Importado: ${r.contas.length} saldos e ${r.previstos.length} previstos${r.remover.length ? `, ${r.remover.length} antigos removidos` : ''}`);
+    const partes = [
+      r.contas.length || r.previstos.length ? `${r.contas.length} saldos e ${r.previstos.length} previstos` : '',
+      r.insumos.length ? `${r.insumos.length} ingredientes` : '',
+      r.receitas.length ? `${r.receitas.length} receitas` : '',
+    ].filter(Boolean);
+    toast(`Importado: ${partes.join(', ')}${r.remover.length ? `, ${r.remover.length} antigos removidos` : ''}`);
   };
   return html`<${Secao} titulo="Importar dados">
     <div class="painel painel-pad">

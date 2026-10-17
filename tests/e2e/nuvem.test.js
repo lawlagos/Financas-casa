@@ -3,6 +3,10 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { servirApp, chromium } from './servidor.js';
 import { ambiente } from '../apps-script/ambiente.js';
+import { SCHEMA } from '../../app/core/schema.js';
+import { addDays as addDias } from '../../app/core/dates.js';
+
+const SCHEMA_ESTOQUE = SCHEMA.estoque;
 
 const API = 'https://script.google.com/macros/s/TESTE/exec';
 const GSI_FALSO = `window.google = { accounts: { id: {
@@ -184,5 +188,40 @@ test('limite do Gemini: mostra o motivo e oferece o formulário', async () => {
   await page.getByRole('alert').filter({ hasText: 'limite gratuito do Gemini' }).waitFor();
   await page.getByRole('button', { name: 'Lançar pelo formulário' }).click();
   await page.getByRole('dialog', { name: 'Novo lançamento' }).waitFor();
+  await ctx.close();
+});
+
+test('pudim na planilha: receita com ingredientes em texto, produção e venda caem nas abas Estoque e Lançamentos', async () => {
+  const { sessao } = env.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  env.post({ acao: 'salvar', sessao, dados: { tabela: 'insumos', linha: { id: 'ins-lc', nome: 'Leite condensado', tipo: 'ingrediente', qtd_embalagem: 395, unidade: 'g', preco_embalagem: 6.4, data_preco: '2026-10-01', produto: 'Leite condensado', ativo: true } } });
+  env.post({ acao: 'salvar', sessao, dados: { tabela: 'receitas', linha: { id: 'rec-1', nome: 'Pudim teste', rendimento: 2, validade_dias: 4, preco_venda: 20, custo_ref: 3.2, ingredientes: [{ insumo_id: 'ins-lc', quantidade: 395 }], ativo: true } } });
+  assert.equal(typeof env.abas['Receitas'].linhas[1][7], 'string');
+  const antes = env.abas['Lançamentos'].linhas.length;
+
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const { page, erros } = await novaPagina(ctx);
+  await page.goto(`${base}/#/pudim`);
+  await page.getByRole('button', { name: 'Entrar com Google' }).click();
+  await page.getByText('Pronto para vender').waitFor();
+  await page.getByRole('button', { name: 'Produzi' }).click();
+  await page.locator('.folha').getByText('R$ 3,20').first().waitFor();
+  await page.getByRole('button', { name: 'Pôr no estoque' }).click();
+  await page.locator('.toast', { hasText: 'no estoque' }).waitFor();
+  await page.getByRole('button', { name: 'Vendi' }).click();
+  await page.locator('.folha').getByLabel('Entrou em').selectOption({ label: 'Nubank PJ (dela)' });
+  await page.getByRole('button', { name: 'Registrar venda' }).click();
+  await page.locator('.toast', { hasText: 'lançada no caixa' }).waitFor();
+
+  const est = env.abas['Estoque'].linhas;
+  assert.deepEqual(est[0], SCHEMA_ESTOQUE);
+  assert.deepEqual([est[1][3], est[1][4], est[1][5], est[1][7]], ['producao', 2, 3.2, addDias(est[1][1], 4)]);
+  assert.deepEqual([est[2][3], est[2][4], est[2][6]], ['venda', 1, 20]);
+  const l = env.abas['Lançamentos'].linhas[antes];
+  assert.deepEqual([l[2], l[3], l[5], l[7], l[8], l[9]], ['entrada', 20, 'nubank-pj', 'cat-venda-pudim', 'Pudim', 'estoque']);
+  assert.equal(est[2][8], l[0]);
+  await page.reload();
+  await page.getByText('Pronto para vender').waitFor();
+  assert.match(await page.locator('.hero-pudim .num-mercado').innerText(), /^1 pudim$/);
+  assert.deepEqual(erros, []);
   await ctx.close();
 });

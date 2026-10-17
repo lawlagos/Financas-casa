@@ -125,7 +125,45 @@ export function demoTables(hoje) {
   }
   const mt = monthlyTithe(lancs, mesAnterior);
   if (mt.dizimo > 0) lancs.push({ id: `demo-l${++n}`, data: `${monthKey(hoje)}-01`, tipo: 'saida', valor: mt.dizimo / 100, descricao: 'Dízimo do mês', conta_id: 'itau', conta_destino_id: '', categoria_id: CATEGORIA_DIZIMO, origem: 'Casa', canal: 'manual', id_externo: refMes(mesAnterior), criado_por: 'demo', criado_em: hoje });
-  return { contas, categorias: baseCategorias(), lancamentos: lancs, previstos, baixas, config: baseConfig(), itens: demoItens(hoje) };
+  return { contas, categorias: baseCategorias(), lancamentos: lancs, previstos, baixas, config: baseConfig(), itens: demoItens(hoje), ...demoPudim(hoje) };
+}
+
+// Ingredientes, três receitas e duas semanas de produção, venda e perda.
+function demoPudim(hoje) {
+  const I = (id, nome, tipo, qtd_embalagem, unidade, preco_embalagem, produto = '') => ({ id, nome, tipo, marca: '', qtd_embalagem, unidade, preco_embalagem, data_preco: addDays(hoje, -60), produto: produto || nome, ativo: true });
+  const insumos = [
+    I('demo-ins-lc', 'Leite condensado', 'ingrediente', 395, 'g', 6.39),
+    I('demo-ins-cl', 'Creme de leite', 'ingrediente', 200, 'g', 2.39),
+    I('demo-ins-leite', 'Leite integral', 'ingrediente', 1, 'l', 5.29, 'Leite'),
+    I('demo-ins-ovos', 'Ovos', 'ingrediente', 20, 'un', 16.9),
+    I('demo-ins-acucar', 'Açúcar', 'ingrediente', 1, 'kg', 3.79),
+    I('demo-ins-nutella', 'Nutella', 'ingrediente', 350, 'g', 31.99),
+    I('demo-ins-emb150', 'Embalagem 150 ml', 'embalagem', 1, 'un', 2),
+    I('demo-ins-emb1100', 'Embalagem 1100 ml', 'embalagem', 1, 'un', 5.71),
+  ];
+  const base = [['demo-ins-lc', 395], ['demo-ins-cl', 200], ['demo-ins-leite', 300], ['demo-ins-ovos', 4], ['demo-ins-acucar', 100]];
+  const R = (id, nome, rendimento, preco_venda, extra, custo_ref) => ({
+    id, nome, rendimento, validade_dias: 5, preco_venda, preco_sugerido: '', custo_ref,
+    ingredientes: JSON.stringify([...base, ...extra].map(([insumo_id, quantidade]) => ({ insumo_id, quantidade }))), ativo: true,
+  });
+  const receitas = [
+    R('demo-rec-mini', 'Mini pudim tradicional 150', 8, 12, [['demo-ins-emb150', 8]], 2.6),
+    R('demo-rec-trad', 'Pudim tradicional 1100', 1, 65, [['demo-ins-emb1100', 1]], 22),
+    R('demo-rec-ninho', 'Pudim ninho com Nutella 1100', 1, 85, [['demo-ins-emb1100', 1], ['demo-ins-nutella', 140]], 26),
+  ];
+  const estoque = [];
+  const M = (dias, receita_id, tipo, quantidade, extra = {}) => {
+    const data = addDays(hoje, -dias);
+    estoque.push({ id: `demo-e${estoque.length + 1}`, data, receita_id, tipo, quantidade, custo_unitario: '', preco_unitario: '', validade: '', lancamento_id: '', obs: '', criado_em: `${data}T1${estoque.length % 10}:00:00Z`, ...extra });
+  };
+  const P = (dias, id, qtd, custo) => M(dias, id, 'producao', qtd, { custo_unitario: custo, validade: addDays(hoje, -dias + 5) });
+  P(12, 'demo-rec-mini', 16, 2.75); P(12, 'demo-rec-trad', 3, 22.4);
+  M(10, 'demo-rec-mini', 'venda', 10, { preco_unitario: 12 }); M(9, 'demo-rec-trad', 'venda', 2, { preco_unitario: 65 });
+  M(6, 'demo-rec-mini', 'perda', 4, { obs: 'vencido' });
+  P(5, 'demo-rec-mini', 16, 2.81); P(4, 'demo-rec-ninho', 2, 27.9); P(3, 'demo-rec-trad', 2, 22.4);
+  M(3, 'demo-rec-mini', 'venda', 9, { preco_unitario: 12 }); M(2, 'demo-rec-ninho', 'venda', 1, { preco_unitario: 85 });
+  M(1, 'demo-rec-mini', 'venda', 3, { preco_unitario: 12 });
+  return { insumos, receitas, estoque };
 }
 
 // Itens de notas de mercado: produtos com ritmos diferentes, em dois mercados.

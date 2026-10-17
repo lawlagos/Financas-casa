@@ -106,6 +106,7 @@ function instrucoesLeitura_(ctx) {
     '- Nota ou cupom de mercado: preencha "itens" (um por produto, valor_total já com quantidade e descontos) e deixe "lancamentos" vazio.',
     '  "descricao" do item: escreva por extenso e legível (ex.: "LT COND MOCA 395G" vira "Leite condensado Moça 395g"); "unidade" como impressa (KG, UN...).',
     '  "produto": nome genérico, sem marca nem tamanho, igual para o mesmo produto em notas diferentes (ex.: "Leite condensado", "Papel higiênico", "Banana prata").',
+    '  Quando o item for um destes ingredientes do pudim, use exatamente este nome em "produto": ' + JSON.stringify(ctx.produtos_pudim || []) + '.',
     '  "marca": só a marca (ex.: "Moça"); null para hortifruti, granel ou quando não aparecer. "tamanho" e "tamanho_unidade": conteúdo de UMA embalagem',
     '  (ex.: 395 e "g"; 1 e "l"); null quando o item é vendido por peso ou não tiver tamanho impresso.',
     '  Linhas "Desconto sobre item" ou descontos no fim da nota: desconte do item correspondente; "total" é o VALOR A PAGAR, já com descontos.',

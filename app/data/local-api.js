@@ -2,7 +2,7 @@
 import { demoTables } from '../core/seed.js';
 import { TABELAS } from '../core/schema.js';
 
-const KEY = 'fc-demo-v4';
+const KEY = 'fc-demo-v5';
 
 export class LocalApi {
   constructor(hoje) {

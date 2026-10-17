@@ -15,6 +15,8 @@ export function montarContexto(tables, hoje) {
     contas: tables.contas.filter((c) => c.ativa !== false).map((c) => ({ id: c.id, nome: c.nome, dono: c.dono, grupo: c.grupo })),
     categorias: tables.categorias.filter((c) => c.ativa !== false).map((c) => ({ id: c.id, nome: c.nome, tipo: c.tipo, origem_padrao: c.origem_padrao })),
     exemplos: ultimos,
+    // Nomes de produto dos ingredientes do pudim, para a nota vir com o mesmo nome e o custo das receitas se atualizar.
+    produtos_pudim: [...new Set((tables.insumos || []).filter((x) => x.ativo !== false).map((x) => x.produto || x.nome))],
   };
 }
 

@@ -7,6 +7,7 @@ import { fmtDay, monthKey, addMonthsKey, monthName } from '../../core/dates.js';
 import { businessWeeks, monthlyTithe, refSemana, refMes } from '../../core/tithe.js';
 import { origemLabel } from '../derivados.js';
 import { FaixaDemo } from './inicio.js';
+import { CartaoPudim } from './pudim.js';
 
 function Status({ w, hoje }) {
   if (w.pago) return html`<span class="etiqueta pago">Pago ${brl(w.pago.valor)}</span>${w.mudouDepoisDePago ? html` <span class="etiqueta atraso">Valor mudou depois</span>` : ''}`;
@@ -37,6 +38,7 @@ export function TelaNegocios() {
     <${Topo} titulo="Negócios" sub=${`Semana de ${fmtDay(atual.inicio)} a ${fmtDay(atual.fim)}, paga ${fmtDay(atual.pagarEm)}`} />
     <${FaixaDemo} />
     <div class="dupla"><${Coluna} o="Pudim" /><${Coluna} o="Hotmart" /></div>
+    <${CartaoPudim} />
     <div class="painel painel-pad" style="margin-top:10px">
       <div style="display:flex;justify-content:space-between"><span>Lucro do casal na semana</span><strong class=${atual.lucro < 0 ? 'neg' : ''}>${brlSigned(atual.lucro)}</strong></div>
       ${atual.carryIn !== 0 && html`<div style="display:flex;justify-content:space-between;margin-top:6px"><span>Prejuízo que veio da semana anterior</span><strong class="neg">${brl(atual.carryIn)}</strong></div>`}

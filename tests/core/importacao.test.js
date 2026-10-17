@@ -33,3 +33,17 @@ test('substituir_prefixos remove previstos importados antes que não vieram de n
   assert.deepEqual(r.erros, []);
   assert.deepEqual(r.remover, ['imp-01']);
 });
+
+test('importa ingredientes e receitas; receita com ingrediente desconhecido é recusada', () => {
+  const imp = {
+    versao: 1,
+    insumos: [{ id: 'pp-lc', nome: 'Leite condensado', tipo: 'ingrediente', qtd_embalagem: 395, unidade: 'g', preco_embalagem: 6.39 }],
+    receitas: [{ id: 'pp-trad', nome: 'Pudim tradicional', rendimento: 8, ingredientes: [{ insumo_id: 'pp-lc', quantidade: 395 }] }],
+  };
+  const r = prepararImportacao(JSON.stringify(imp), [], []);
+  assert.deepEqual(r.erros, []);
+  assert.equal(r.insumos[0].ativo, true);
+  assert.equal(r.receitas[0].ingredientes, '[{"insumo_id":"pp-lc","quantidade":395}]');
+  imp.receitas[0].ingredientes.push({ insumo_id: 'pp-nada', quantidade: 1 });
+  assert.match(prepararImportacao(JSON.stringify(imp), [], []).erros[0], /pp-nada/);
+});

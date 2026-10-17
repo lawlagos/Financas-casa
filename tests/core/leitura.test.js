@@ -91,3 +91,8 @@ test('categorias mais usadas: as dos lançamentos e itens primeiro, sem dízimo'
   assert.deepEqual(ids.slice(0, 2), ['cat-luz', 'cat-gas']);
   assert.ok(!ids.includes('cat-dizimo'));
 });
+
+test('contexto leva os nomes dos ingredientes do pudim', () => {
+  const c = montarContexto({ ...tables, insumos: [{ nome: 'Leite condensado', produto: 'Leite condensado' }, { nome: 'Ovos' }, { nome: 'Velho', ativo: false }] }, hoje);
+  assert.deepEqual(c.produtos_pudim, ['Leite condensado', 'Ovos']);
+});
