@@ -395,3 +395,9 @@ a { color: inherit; }
 @media (min-width: 600px) {
   .app { padding-top: 24px; }
 }
+
+/* Mercado */
+.rot-mercado { font-size: 13px; color: var(--ink-3); font-weight: 650; }
+.num-mercado { font: 700 30px/1.15 var(--display); letter-spacing: -0.02em; margin: 4px 0 2px; }
+.marcador { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--line-2, var(--line)); background: transparent; color: transparent; display: grid; place-items: center; padding: 5px; cursor: pointer; }
+.marcador[aria-pressed="true"] { background: var(--pos); border-color: var(--pos); color: #fff; }

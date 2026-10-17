@@ -212,6 +212,16 @@ test('aba de versão anterior ganha as colunas novas no fim do cabeçalho', () =
   assert.equal(r.dados.contas.length, 9);
 });
 
+test('aba Itens antiga ganha produto, marca e tamanho: texto puro, menos o tamanho', () => {
+  const aba = env.abas['Itens'];
+  for (const l of aba.linhas) l.length = 13;
+  aba.formatos = {};
+  const { sessao } = env.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  assert.equal(env.post({ acao: 'carregar', sessao }).ok, true);
+  assert.deepEqual(aba.linhas[0], SCHEMA.itens);
+  assert.deepEqual(aba.formatos, { 14: '@', 15: '@', 17: '@' });
+});
+
 test('doGet mostra a versão do servidor e se a chave do Gemini está configurada', () => {
   const info = JSON.parse(env.ctx.doGet().texto);
   assert.match(info.versao, /^\d{4}-\d{2}-\d{2}/);

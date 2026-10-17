@@ -304,7 +304,8 @@ var ESQUEMA = {
   ],
   baixas: ['id', 'previsto_id', 'ref', 'status', 'lancamento_id', 'nova_data', 'criado_em'],
   config: ['id', 'valor'],
-  itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'origem', 'lancamento_id', 'grupo_id', 'criado_em', 'categoria_id']
+  itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'origem', 'lancamento_id', 'grupo_id', 'criado_em', 'categoria_id',
+    'produto', 'marca', 'tamanho', 'tamanho_unidade']
 };
 
 // Nome da aba na planilha para cada tabela.
@@ -321,7 +322,7 @@ var ABAS = {
 
 var COLUNAS_SESSOES = ['token', 'email', 'aparelho', 'criada_em', 'ultimo_uso'];
 
-var NUMERICAS = { quantidade: 1, preco_unitario: 1, valor: 1, saldo_inicial: 1, a_cada: 1, mes_ancora: 1, dia_inicio: 1, dia_fim: 1, dia_semana: 1, parcelas_total: 1, parcela_no_inicio: 1 };
+var NUMERICAS = { quantidade: 1, tamanho: 1, preco_unitario: 1, valor: 1, saldo_inicial: 1, a_cada: 1, mes_ancora: 1, dia_inicio: 1, dia_fim: 1, dia_semana: 1, parcelas_total: 1, parcela_no_inicio: 1 };
 var BOOLEANAS = { ativa: 1, ativo: 1, renovacao: 1 };
 
 // ===== Planilha.gs =====
@@ -344,9 +345,10 @@ function aba_(tabela) {
     }
   }
   // Colunas novas entram sempre no fim: se a aba é de uma versão anterior, completa o cabeçalho.
-  if (sh.getLastColumn() < colunas.length) {
+  var tinha = sh.getLastColumn();
+  if (tinha < colunas.length) {
     sh.getRange(1, 1, 1, colunas.length).setValues([colunas]);
-    for (var j = sh.getLastColumn(); j < colunas.length; j++) {
+    for (var j = tinha; j < colunas.length; j++) {
       if (!NUMERICAS[colunas[j]] && !BOOLEANAS[colunas[j]]) sh.getRange(1, j + 1, sh.getMaxRows(), 1).setNumberFormat('@');
     }
   }
@@ -602,13 +604,16 @@ function instrucoesLeitura_(ctx) {
     '{"tipo_documento":"comprovante|nota_mercado|extrato|outro","estabelecimento":string|null,"data":"AAAA-MM-DD"|null,"total":number|null,',
     ' "lancamentos":[{"tipo":"entrada|saida|transferencia","valor":number,"data":"AAAA-MM-DD"|null,"descricao":string,',
     '   "conta_id":string|null,"conta_destino_id":string|null,"categoria_id":string|null,"origem":string|null,"confianca":number,"duvida":string|null}],',
-    ' "itens":[{"descricao":string,"quantidade":number,"unidade":"un"|"kg"|"g"|"l"|"ml","valor_total":number,"categoria_id":string|null,"origem":"Pudim"|"Casa"|null,"confianca":number,"duvida":string|null}]}',
+    ' "itens":[{"descricao":string,"produto":string,"marca":string|null,"tamanho":number|null,"tamanho_unidade":"g"|"kg"|"ml"|"l"|null,"quantidade":number,"unidade":"un"|"kg"|"g"|"l"|"ml","valor_total":number,"categoria_id":string|null,"origem":"Pudim"|"Casa"|null,"confianca":number,"duvida":string|null}]}',
     '',
     'Regras:',
     '- Comprovante de Pix, TED, boleto ou cartão: um item em "lancamentos". Pix enviado = saida; recebido = entrada.',
     '- Transferência entre duas contas da lista acima = "transferencia" com conta_id (origem do dinheiro) e conta_destino_id.',
     '- Nota ou cupom de mercado: preencha "itens" (um por produto, valor_total já com quantidade e descontos) e deixe "lancamentos" vazio.',
     '  "descricao" do item: escreva por extenso e legível (ex.: "LT COND MOCA 395G" vira "Leite condensado Moça 395g"); "unidade" como impressa (KG, UN...).',
+    '  "produto": nome genérico, sem marca nem tamanho, igual para o mesmo produto em notas diferentes (ex.: "Leite condensado", "Papel higiênico", "Banana prata").',
+    '  "marca": só a marca (ex.: "Moça"); null para hortifruti, granel ou quando não aparecer. "tamanho" e "tamanho_unidade": conteúdo de UMA embalagem',
+    '  (ex.: 395 e "g"; 1 e "l"); null quando o item é vendido por peso ou não tiver tamanho impresso.',
     '  Linhas "Desconto sobre item" ou descontos no fim da nota: desconte do item correspondente; "total" é o VALOR A PAGAR, já com descontos.',
     '  Se a foto tiver mais de uma nota, junte os itens de todas, some os totais em "total" e liste os mercados em "estabelecimento" (ex.: "Swift + Hortifruti").',
     '  Foto torta, amassada ou com dedo na frente: leia o que der; item ilegível vai com valor_total null e "duvida".',
@@ -625,7 +630,7 @@ function instrucoesLeitura_(ctx) {
 // Ponto de entrada do Web App. O app manda POST com {acao, sessao, dados}.
 
 // Mude a cada atualização do servidor: abrir o endereço /exec no navegador mostra este número.
-var VERSAO_SERVIDOR = '2026-10-17.4';
+var VERSAO_SERVIDOR = '2026-10-17.5';
 
 function doPost(e) {
   var resposta;

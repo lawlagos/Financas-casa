@@ -21,13 +21,14 @@ export function TelaMais() {
   return html`<main>
     <${Topo} titulo="Mais" />
     <ul class="lista painel">
+      ${it('#/mais/mercado', 'carrinho', 'Mercado', 'O que mais compram, lista sugerida e previsão do mês')}
       ${it('#/mais/previstos', 'repetir', 'Previstos', 'Contas fixas, parcelas, variáveis e o que você tem a receber')}
       ${it('#/mais/compromissos', 'pilha', 'Compromissos', 'Quanto já está comprometido por mês e quando cada parcela acaba')}
       ${it('#/mais/contas', 'contas', 'Contas', `${s.tables.contas.length} contas, saldos iniciais`)}
       ${it('#/mais/categorias', 'etiqueta', 'Categorias', 'Nomes e origem sugerida')}
       ${it('#/mais/ajustes', 'ajustes', 'Ajustes', 'Gasto diário, reserva mínima, tema')}
     </ul>
-    <p class="muted" style="font-size:12.5px;margin-top:18px">Etapa 1. Próximas: leitura de foto e print com IA, pudim e preços, Hotmart e Meta automáticos.</p>
+    <p class="muted" style="font-size:12.5px;margin-top:18px">Próximas etapas: custo dos pudins e preços por marca, depois Hotmart e Meta automáticos.</p>
   </main>`;
 }
 

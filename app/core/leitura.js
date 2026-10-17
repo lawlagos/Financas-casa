@@ -60,6 +60,10 @@ export function conferirLeitura(resp, tables, hoje) {
     unidade: ['un', 'kg', 'g', 'l', 'ml'].includes(String(it.unidade || '').toLowerCase()) ? String(it.unidade).toLowerCase() : 'un',
     valor: num(it.valor_total),
     categoria_id: categoriaDoItem(it, cats),
+    produto: String(it.produto || '').slice(0, 60),
+    marca: String(it.marca || '').slice(0, 40),
+    tamanho: Number(it.tamanho) > 0 ? Number(it.tamanho) : '',
+    tamanho_unidade: ['g', 'kg', 'ml', 'l'].includes(String(it.tamanho_unidade || '').toLowerCase()) ? String(it.tamanho_unidade).toLowerCase() : '',
     duvidaIa: it.duvida || (Number(it.confianca) < CONFIANCA_MINIMA && it.origem ? 'Confira a categoria.' : ''),
   }));
 
@@ -146,6 +150,10 @@ export function itensDaNota(nota, lancamentosSalvos, { data, grupo_id, criado_em
       valor: i.valor ?? '',
       preco_unitario: i.valor ? Math.round((i.valor / (i.quantidade || 1)) * 100) / 100 : '',
       categoria_id: i.categoria_id,
+      produto: i.produto || '',
+      marca: i.marca || '',
+      tamanho: i.tamanho || '',
+      tamanho_unidade: i.tamanho && i.tamanho_unidade ? i.tamanho_unidade : '',
       origem: porCategoria[i.categoria_id]?.origem || '',
       lancamento_id: porCategoria[i.categoria_id]?.id || '',
       grupo_id,

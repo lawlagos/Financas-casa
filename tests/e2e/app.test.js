@@ -253,3 +253,24 @@ test('saldo do termômetro é o real das contas; pendentes de hoje aparecem à p
   const saldo = reais(await page.locator('.termometro .saldo').innerText());
   assert.equal(Math.round(saldo * 100), Math.round(soma * 100));
 });
+
+test('mercado: previsão, lista sugerida marcável, juntar produtos e trocar para pudim', async () => {
+  await page.goto(`${base}/?demo#/mais`);
+  await page.getByRole('link', { name: /Mercado/ }).click();
+  await page.getByText(/Mercado da casa em/).waitFor();
+  assert.match(await page.locator('.num-mercado').innerText(), /R\$/);
+  const marcador = page.getByRole('button', { name: /^Peguei/ }).first();
+  await marcador.click();
+  assert.equal(await marcador.getAttribute('aria-pressed'), 'true');
+  // juntar Café com Banana prata (só para testar o mecanismo)
+  const antes = await page.locator('.lista .item-btn').count();
+  await page.locator('.item-btn', { hasText: 'Café' }).click();
+  await page.locator('#produto-nome').fill('banana prata');
+  await page.getByRole('button', { name: 'Juntar com Banana prata' }).click();
+  await toast().filter({ hasText: 'Juntei com Banana prata' }).waitFor();
+  assert.equal(await page.locator('.lista .item-btn').count(), antes - 1);
+  await page.getByRole('group', { name: 'Compras de' }).getByRole('button', { name: 'Pudim' }).click();
+  await page.locator('.item-btn', { hasText: 'Leite condensado' }).waitFor();
+  assert.match(await page.locator('.item-btn', { hasText: 'Leite condensado' }).innerText(), /\/kg/);
+  assert.deepEqual(erros, []);
+});

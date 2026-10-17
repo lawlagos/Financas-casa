@@ -77,12 +77,12 @@ export function demoTables(hoje) {
     L(d + 5, 'saida', 64.9, 'Embalagens Plastilânia', 'nubank-pj', 'cat-embalagem', 'Pudim');
     L(d + 2, 'entrada', 1180 + (w % 2) * 640, 'Vendas Hotmart', 'hotmart', 'cat-venda-hotmart', 'Hotmart');
     L(d + 2, 'saida', 610 + w * 25, 'Anúncios Meta (semana)', 'c6', 'cat-anuncio', 'Hotmart');
+    L(d + 5, 'saida', 243.62 - w * 11, 'Mercado da semana', 'nubank', 'cat-mercado', 'Casa');
     L(d, 'transferencia', 1200, 'Saque Hotmart', 'hotmart', '', '', { conta_destino_id: 'c6' });
   }
   L(9, 'entrada', 4500, 'Salário', 'itau', 'cat-salario', 'Salario');
   L(6, 'entrada', 2000, 'Katsuhiro', 'inter', 'cat-consultoria', 'Consultoria', { previsto_id: 'demo-kat' });
   L(8, 'saida', 316, 'Internet + celular', 'itau', 'cat-internet', 'Casa');
-  L(5, 'saida', 243.62, 'Mercado da semana', 'nubank', 'cat-mercado', 'Casa');
   L(3, 'saida', 46.9, 'Uber', 'nubank', 'cat-transporte', 'Casa');
   L(2, 'transferencia', 3000, 'C6 → Itaú', 'c6', '', 'Casa', { conta_destino_id: 'itau' });
   L(1, 'saida', 129.9, 'Farmácia', 'nubank-pf', 'cat-saude', 'Casa');
@@ -125,5 +125,35 @@ export function demoTables(hoje) {
   }
   const mt = monthlyTithe(lancs, mesAnterior);
   if (mt.dizimo > 0) lancs.push({ id: `demo-l${++n}`, data: `${monthKey(hoje)}-01`, tipo: 'saida', valor: mt.dizimo / 100, descricao: 'Dízimo do mês', conta_id: 'itau', conta_destino_id: '', categoria_id: CATEGORIA_DIZIMO, origem: 'Casa', canal: 'manual', id_externo: refMes(mesAnterior), criado_por: 'demo', criado_em: hoje });
-  return { contas, categorias: baseCategorias(), lancamentos: lancs, previstos, baixas, config: baseConfig() };
+  return { contas, categorias: baseCategorias(), lancamentos: lancs, previstos, baixas, config: baseConfig(), itens: demoItens(hoje) };
+}
+
+// Itens de notas de mercado: produtos com ritmos diferentes, em dois mercados.
+function demoItens(hoje) {
+  const itens = [];
+  const produtos = [
+    // produto, descrição, marca, tamanho, unidade, a cada N dias, preço, origem, categoria
+    ['Café', 'Café Pilão 500g', 'Pilão', 500, 'g', 12, 18.9, 'Casa', 'cat-mercado'],
+    ['Arroz', 'Arroz Tio João 5kg', 'Tio João', 5, 'kg', 28, 31.9, 'Casa', 'cat-mercado'],
+    ['Detergente', 'Detergente Ypê 500ml', 'Ypê', 500, 'ml', 9, 2.79, 'Casa', 'cat-mercado'],
+    ['Papel higiênico', 'Papel higiênico Neve 12 rolos', 'Neve', '', '', 20, 22.9, 'Casa', 'cat-mercado'],
+    ['Banana prata', 'Banana prata', '', '', '', 7, 7.5, 'Casa', 'cat-mercado'],
+    ['Leite', 'Leite integral Italac 1l', 'Italac', 1, 'l', 6, 5.29, 'Casa', 'cat-mercado'],
+    ['Leite condensado', 'Leite condensado Moça 395g', 'Moça', 395, 'g', 7, 6.89, 'Pudim', 'cat-ingrediente'],
+    ['Creme de leite', 'Creme de leite Nestlé 200g', 'Nestlé', 200, 'g', 7, 3.49, 'Pudim', 'cat-ingrediente'],
+  ];
+  let n = 0;
+  produtos.forEach(([produto, descricao, marca, tamanho, tamanho_unidade, passo, preco, origem, categoria_id], k) => {
+    for (let d = 2 + (k % 4); d < 50; d += passo) {
+      const mercado = (d + k) % 3 === 0 ? 'Atacadão' : 'Assaí';
+      const quantidade = origem === 'Pudim' ? 6 : 1;
+      const unit = Math.round(preco * (mercado === 'Atacadão' ? 0.94 : 1) * (1 - d * 0.001) * 100) / 100;
+      itens.push({
+        id: `demo-i${++n}`, data: addDays(hoje, -d), mercado, descricao, produto, marca, tamanho, tamanho_unidade,
+        quantidade, unidade: 'un', valor: Math.round(unit * quantidade * 100) / 100, preco_unitario: unit,
+        origem, categoria_id, lancamento_id: '', grupo_id: '', criado_em: hoje,
+      });
+    }
+  });
+  return itens;
 }

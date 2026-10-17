@@ -17,9 +17,10 @@ function aba_(tabela) {
     }
   }
   // Colunas novas entram sempre no fim: se a aba é de uma versão anterior, completa o cabeçalho.
-  if (sh.getLastColumn() < colunas.length) {
+  var tinha = sh.getLastColumn();
+  if (tinha < colunas.length) {
     sh.getRange(1, 1, 1, colunas.length).setValues([colunas]);
-    for (var j = sh.getLastColumn(); j < colunas.length; j++) {
+    for (var j = tinha; j < colunas.length; j++) {
       if (!NUMERICAS[colunas[j]] && !BOOLEANAS[colunas[j]]) sh.getRange(1, j + 1, sh.getMaxRows(), 1).setNumberFormat('@');
     }
   }

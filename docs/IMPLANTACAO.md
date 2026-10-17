@@ -58,3 +58,11 @@ Sempre que o código do servidor mudar: **Implantar > Gerenciar implantações >
 - **"Falta configurar a propriedade ..."**: faltou uma propriedade da Parte 2, passo 4.
 - **Botão do Google não aparece / erro de origem**: o endereço do app precisa estar em "Origens JavaScript autorizadas".
 - **Tirar o acesso de um celular perdido**: apague a linha dele na aba **Sessões** da planilha.
+
+## Voltar para uma versão anterior
+
+Cada versão que funcionou fica guardada num ramo `estavel-…` do GitHub (o primeiro é `estavel-v1`: leitura de prints funcionando, servidor `2026-10-17.4`).
+
+- **Servidor:** em Implantar > Gerenciar implantações > lápis, escolha no campo Versão o número anterior e clique em Implantar. Volta na hora, sem colar nada. Se quiser o código antigo no editor, copie de `https://raw.githubusercontent.com/lawlagos/Financas-casa/estavel-v1/dist/servidor.gs`.
+- **App:** peça ao Claude para "voltar o app para o estavel-v1"; ele publica o código daquele ramo de novo no GitHub Pages.
+- **Planilha:** as versões novas só acrescentam colunas no fim das abas, então a versão anterior continua lendo a planilha normalmente. Para ter uma cópia dos dados, use Arquivo > Fazer uma cópia, ou Arquivo > Histórico de versões para voltar a planilha a um dia anterior.

@@ -141,7 +141,7 @@ test('print de nota de mercado: categoria por item, categoria nova na hora, dife
   const { ctx, page } = await entrarELer({
     tipo_documento: 'nota_mercado', estabelecimento: 'Assaí', data: '2026-10-16', total: 60,
     itens: [
-      { descricao: 'Leite condensado', quantidade: 6, valor_total: 38.34, origem: 'Pudim', confianca: 0.95 },
+      { descricao: 'Leite condensado Moça 395g', produto: 'Leite condensado', marca: 'Moça', tamanho: 395, tamanho_unidade: 'g', quantidade: 6, valor_total: 38.34, origem: 'Pudim', confianca: 0.95 },
       { descricao: 'Detergente', quantidade: 1, valor_total: 2.99, origem: 'Casa', confianca: 0.95 },
       { descricao: 'Leite integral', quantidade: 2, valor_total: 10.58, origem: null, duvida: 'Pudim ou casa?' },
     ],
@@ -173,6 +173,8 @@ test('print de nota de mercado: categoria por item, categoria nova na hora, dife
   assert.ok(cats.some((c) => c[1] === 'Limpeza' && c[2] === 'saida' && c[3] === 'Casa'));
   const itens = env.abas['Itens'].linhas.slice(1);
   assert.equal(itens.length, 3);
+  const moca = itens.find((i) => i[13] === 'Leite condensado');
+  assert.deepEqual(moca.slice(13, 17), ['Leite condensado', 'Moça', 395, 'g']);
   assert.ok(itens.every((i) => i[9] && novas.some((l) => l[0] === i[9] && l[7] === i[12])), 'cada item ligado ao lançamento da sua categoria');
   await ctx.close();
 });
