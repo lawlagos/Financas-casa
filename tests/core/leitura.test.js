@@ -43,43 +43,51 @@ test('transferência entre contas próprias', () => {
   assert.equal(r.lancamentos[0].origem, '');
 });
 
-test('nota de mercado: soma por origem, diferença do total e lançamentos pudim/casa', () => {
+test('nota de mercado: categoria do item, soma por categoria, diferença e lançamentos por categoria', () => {
   const nota = conferirLeitura({
     tipo_documento: 'nota_mercado', estabelecimento: 'Assaí', data: '2026-10-16', total: 60,
     itens: [
       { descricao: 'Leite condensado', quantidade: 6, valor_total: 38.34, origem: 'Pudim', confianca: 0.95 },
-      { descricao: 'Detergente', quantidade: 1, valor_total: 2.99, origem: 'Casa', confianca: 0.95 },
+      { descricao: 'Detergente', quantidade: 1, valor_total: 2.99, categoria_id: 'cat-outros', origem: 'Casa', confianca: 0.95 },
       { descricao: 'Leite integral', quantidade: 2, valor_total: 10.58, origem: null, duvida: 'Pudim ou casa?' },
+      { descricao: 'Pão', quantidade: 1, valor_total: 5, categoria_id: 'cat-salario', origem: 'Casa' },
     ],
   }, tables, hoje);
   assert.equal(nota.tipo, 'nota');
+  assert.deepEqual(nota.itens.map((i) => i.categoria_id), ['cat-ingrediente', 'cat-outros', '', 'cat-mercado']);
   let r = resumoNota(nota);
-  assert.equal(r.semOrigem, 1);
-  nota.itens[2].origem = 'Pudim';
-  r = resumoNota(nota);
-  assert.equal(r.soma.Pudim, 3834 + 1058);
-  assert.equal(r.diferenca, 6000 - (3834 + 299 + 1058));
-  assert.equal(r.soma.Casa, 299 + r.diferenca);
-  const ls = lancamentosDaNota(nota, { conta_id: 'nubank-pj', data: '2026-10-16', diferencaEm: 'Casa' });
-  assert.equal(ls.length, 2);
-  assert.equal(ls[0].origem, 'Pudim');
+  assert.equal(r.semCategoria, 1);
+  nota.itens[2].categoria_id = 'cat-ingrediente';
+  r = resumoNota(nota, { diferencaEm: 'cat-mercado' });
+  assert.equal(r.diferenca, 6000 - (3834 + 299 + 1058 + 500));
+  assert.equal(r.soma['cat-mercado'], 500 + r.diferenca);
+  const ls = lancamentosDaNota(nota, { conta_id: 'nubank-pj', data: '2026-10-16', diferencaEm: 'cat-mercado', categorias: tables.categorias });
+  assert.deepEqual(ls.map((l) => [l.categoria_id, l.origem]), [['cat-ingrediente', 'Pudim'], ['cat-mercado', 'Casa'], ['cat-outros', 'Casa']]);
   assert.equal(ls[0].valor, 48.92);
-  assert.equal(ls[0].descricao, 'Assaí — pudim');
+  assert.equal(ls[0].descricao, 'Assaí — ingrediente');
   assert.match(ls[0].detalhe, /Leite condensado, Leite integral/);
-  assert.equal(Math.round((ls[0].valor + ls[1].valor) * 100), 6000);
-  const sem = lancamentosDaNota(nota, { conta_id: 'x', data: hoje, diferencaEm: '' });
-  assert.equal(Math.round((sem[0].valor + sem[1].valor) * 100), 3834 + 299 + 1058);
+  assert.equal(Math.round(ls.reduce((t, l) => t + l.valor, 0) * 100), 6000);
+  const sem = lancamentosDaNota(nota, { conta_id: 'x', data: hoje, diferencaEm: '', categorias: tables.categorias });
+  assert.equal(Math.round(sem.reduce((t, l) => t + l.valor, 0) * 100), 3834 + 299 + 1058 + 500);
 });
 
-test('itens da nota ficam ligados ao lançamento da origem, com preço unitário', async () => {
+test('itens da nota ficam ligados ao lançamento da categoria, com preço unitário', async () => {
   const { itensDaNota } = await import('../../app/core/leitura.js');
   const nota = conferirLeitura({ tipo_documento: 'nota_mercado', estabelecimento: 'Assaí', itens: [
     { descricao: 'Leite condensado Moça 395g', quantidade: 6, unidade: 'UN', valor_total: 38.34, origem: 'Pudim', confianca: 1 },
     { descricao: 'Batata', quantidade: 1.275, unidade: 'KG', valor_total: 12.74, origem: 'Casa', confianca: 1 },
     { descricao: 'Ilegível', quantidade: 1, valor_total: null, origem: null },
   ] }, tables, hoje);
-  const itens = itensDaNota(nota, [{ id: 'lp', origem: 'Pudim' }, { id: 'lc', origem: 'Casa' }], { data: '2026-10-16', grupo_id: 'g1', criado_em: 'x' });
+  const itens = itensDaNota(nota, [{ id: 'lp', categoria_id: 'cat-ingrediente', origem: 'Pudim' }, { id: 'lc', categoria_id: 'cat-mercado', origem: 'Casa' }], { data: '2026-10-16', grupo_id: 'g1', criado_em: 'x' });
   assert.equal(itens.length, 2);
-  assert.deepEqual([itens[0].lancamento_id, itens[0].preco_unitario, itens[0].unidade, itens[0].mercado], ['lp', 6.39, 'un', 'Assaí']);
-  assert.deepEqual([itens[1].lancamento_id, itens[1].unidade, itens[1].preco_unitario], ['lc', 'kg', 9.99]);
+  assert.deepEqual([itens[0].lancamento_id, itens[0].origem, itens[0].preco_unitario, itens[0].unidade, itens[0].mercado], ['lp', 'Pudim', 6.39, 'un', 'Assaí']);
+  assert.deepEqual([itens[1].lancamento_id, itens[1].categoria_id, itens[1].unidade, itens[1].preco_unitario], ['lc', 'cat-mercado', 'kg', 9.99]);
+});
+
+test('categorias mais usadas: as dos lançamentos e itens primeiro, sem dízimo', async () => {
+  const { categoriasMaisUsadas } = await import('../../app/core/leitura.js');
+  const t = { ...tables, lancamentos: [{ tipo: 'saida', categoria_id: 'cat-luz' }, { tipo: 'saida', categoria_id: 'cat-luz' }, { tipo: 'saida', categoria_id: 'cat-dizimo' }], itens: [{ categoria_id: 'cat-gas' }] };
+  const ids = categoriasMaisUsadas(t, 4).map((c) => c.id);
+  assert.deepEqual(ids.slice(0, 2), ['cat-luz', 'cat-gas']);
+  assert.ok(!ids.includes('cat-dizimo'));
 });

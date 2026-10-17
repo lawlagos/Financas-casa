@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Folha, Segmento, Chips, Campo } from '../componentes.js';
-import { useStore, salvar, apagarLancamento, fecharFolha, abrirFolha, toast } from '../../data/store.js';
+import { useStore, state, salvar, apagarLancamento, fecharFolha, abrirFolha, toast } from '../../data/store.js';
+import { SeletorCategoria } from '../categorias.js';
 import { parseQuick } from '../../core/quickparse.js';
 import { parseBRL, brl, toCents } from '../../core/money.js';
 import { ORIGENS } from '../../core/schema.js';
@@ -93,7 +94,7 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
   };
 
   const escolherCategoria = (id) => {
-    const c = s.tables.categorias.find((x) => x.id === id);
+    const c = state.tables.categorias.find((x) => x.id === id);
     set({ categoria_id: id, ...(c && !origemManual && c.origem_padrao ? { origem: c.origem_padrao } : {}) });
   };
 
@@ -199,12 +200,7 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
       </div>
       ${f.tipo === 'transferencia' && html`<${Campo} rotulo="Data"><input type="date" value=${f.data} onInput=${(e) => set({ data: e.target.value })} /><//>`}
       ${f.tipo !== 'transferencia' && html`<div>
-        <${Campo} rotulo="Categoria">
-          <select aria-label="Categoria" value=${f.categoria_id} onChange=${(e) => escolherCategoria(e.target.value)}>
-            <option value="">Sem categoria</option>
-            ${cats.map((c) => html`<option value=${c.id}>${c.nome}</option>`)}
-          </select>
-        <//>
+        <${SeletorCategoria} tipo=${f.tipo} valor=${f.categoria_id} onChange=${(id) => escolherCategoria(id)} />
         <div class="campo"><span>Origem</span>
           <${Chips} rotulo="Origem" valor=${f.origem} onChange=${(o) => { set({ origem: o }); setOrigemManual(true); }}
             opcoes=${ORIGENS.map((o) => [o, origemLabel(o)])} />

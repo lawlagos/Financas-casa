@@ -59,8 +59,8 @@ export function conferirLeitura(resp, tables, hoje) {
     quantidade: Number(it.quantidade) || 1,
     unidade: ['un', 'kg', 'g', 'l', 'ml'].includes(String(it.unidade || '').toLowerCase()) ? String(it.unidade).toLowerCase() : 'un',
     valor: num(it.valor_total),
-    origem: it.origem === 'Pudim' || it.origem === 'Casa' ? it.origem : '',
-    duvidaIa: it.duvida || (Number(it.confianca) < CONFIANCA_MINIMA && it.origem ? 'Confira se é pudim ou casa.' : ''),
+    categoria_id: categoriaDoItem(it, cats),
+    duvidaIa: it.duvida || (Number(it.confianca) < CONFIANCA_MINIMA && it.origem ? 'Confira a categoria.' : ''),
   }));
 
   return {
@@ -86,38 +86,57 @@ export function pendenciasLancamento(l) {
   return p;
 }
 
-// Nota de mercado: soma por origem e confere com o total impresso.
-export function resumoNota(nota, { diferencaEm = 'Casa' } = {}) {
-  const soma = { Pudim: 0, Casa: 0 };
-  let semOrigem = 0;
+// Categoria do item: a que a IA escolheu (se for de saída) ou a padrão do grupo que ela indicou.
+const PADRAO_POR_ORIGEM = { Pudim: 'cat-ingrediente', Casa: 'cat-mercado' };
+function categoriaDoItem(it, cats) {
+  if (cats[it.categoria_id] && cats[it.categoria_id].tipo === 'saida') return it.categoria_id;
+  const padrao = PADRAO_POR_ORIGEM[it.origem];
+  return padrao && cats[padrao] ? padrao : '';
+}
+
+// Nota de mercado: soma por categoria e confere com o total impresso.
+// `diferencaEm` é o id da categoria que recebe a diferença entre itens e total (vazio = ignorar).
+export function resumoNota(nota, { diferencaEm = '' } = {}) {
+  const soma = {};
+  let semCategoria = 0;
   for (const it of nota.itens) {
     if (!it.valor) continue;
-    if (it.origem) soma[it.origem] += toCents(it.valor);
-    else semOrigem += 1;
+    if (it.categoria_id) soma[it.categoria_id] = (soma[it.categoria_id] || 0) + toCents(it.valor);
+    else semCategoria += 1;
   }
-  const somaItens = soma.Pudim + soma.Casa;
+  const somaItens = Object.values(soma).reduce((a, b) => a + b, 0);
   const total = nota.total ? toCents(nota.total) : null;
-  const diferenca = total !== null ? total - somaItens : 0;
-  if (diferenca && Math.abs(diferenca) > 5 && diferencaEm) soma[diferencaEm] += diferenca;
-  return { soma, somaItens, total, diferenca: Math.abs(diferenca) > 5 ? diferenca : 0, semOrigem, semValor: nota.itens.filter((i) => !i.valor).length };
+  const dif = total !== null ? total - somaItens : 0;
+  const diferenca = Math.abs(dif) > 5 ? dif : 0;
+  if (diferenca && diferencaEm) soma[diferencaEm] = (soma[diferencaEm] || 0) + diferenca;
+  return { soma, somaItens, total, diferenca, semCategoria, semValor: nota.itens.filter((i) => !i.valor).length };
 }
 
-// Lançamentos a gravar a partir da nota: um para a parte do pudim, outro para a parte da casa.
-export function lancamentosDaNota(nota, { conta_id, data, diferencaEm }) {
+// Lançamentos a gravar a partir da nota: um por categoria, com a origem do grupo da categoria.
+export function lancamentosDaNota(nota, { conta_id, data, diferencaEm, categorias }) {
   const r = resumoNota(nota, { diferencaEm });
+  const cats = Object.fromEntries(categorias.map((c) => [c.id, c]));
   const nome = nota.estabelecimento || 'Mercado';
-  const lista = (origem) => nota.itens.filter((i) => i.origem === origem).map((i) => i.descricao).join(', ').slice(0, 300);
-  const out = [];
-  if (r.soma.Pudim > 0) out.push({ tipo: 'saida', valor: r.soma.Pudim / 100, data, descricao: `${nome} — pudim`, conta_id, categoria_id: 'cat-ingrediente', origem: 'Pudim', detalhe: lista('Pudim') });
-  if (r.soma.Casa > 0) out.push({ tipo: 'saida', valor: r.soma.Casa / 100, data, descricao: `${nome} — casa`, conta_id, categoria_id: 'cat-mercado', origem: 'Casa', detalhe: lista('Casa') });
-  return out;
+  return Object.entries(r.soma)
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([cat, v]) => ({
+      tipo: 'saida',
+      valor: v / 100,
+      data,
+      descricao: `${nome} — ${(cats[cat]?.nome || 'Outros').toLowerCase()}`,
+      conta_id,
+      categoria_id: cat,
+      origem: cats[cat]?.origem_padrao || 'Casa',
+      detalhe: nota.itens.filter((i) => i.categoria_id === cat).map((i) => i.descricao).join(', ').slice(0, 300),
+    }));
 }
 
-// Itens da nota para guardar na aba Itens, ligados ao lançamento da sua origem (pudim ou casa).
+// Itens da nota para guardar na aba Itens, ligados ao lançamento da sua categoria.
 export function itensDaNota(nota, lancamentosSalvos, { data, grupo_id, criado_em }) {
-  const porOrigem = Object.fromEntries(lancamentosSalvos.map((l) => [l.origem, l.id]));
+  const porCategoria = Object.fromEntries(lancamentosSalvos.map((l) => [l.categoria_id, l]));
   return nota.itens
-    .filter((i) => i.origem && i.descricao)
+    .filter((i) => i.categoria_id && i.descricao)
     .map((i) => ({
       data,
       mercado: nota.estabelecimento || '',
@@ -126,9 +145,23 @@ export function itensDaNota(nota, lancamentosSalvos, { data, grupo_id, criado_em
       unidade: i.unidade,
       valor: i.valor ?? '',
       preco_unitario: i.valor ? Math.round((i.valor / (i.quantidade || 1)) * 100) / 100 : '',
-      origem: i.origem,
-      lancamento_id: porOrigem[i.origem] || '',
+      categoria_id: i.categoria_id,
+      origem: porCategoria[i.categoria_id]?.origem || '',
+      lancamento_id: porCategoria[i.categoria_id]?.id || '',
       grupo_id,
       criado_em,
     }));
+}
+
+// Categorias de saída mais usadas (lançamentos e itens), para os botões rápidos.
+export function categoriasMaisUsadas(tables, limite = 5) {
+  const conta = {};
+  for (const l of tables.lancamentos) if (l.tipo === 'saida' && l.categoria_id) conta[l.categoria_id] = (conta[l.categoria_id] || 0) + 1;
+  for (const i of tables.itens || []) if (i.categoria_id) conta[i.categoria_id] = (conta[i.categoria_id] || 0) + 1;
+  const ativas = tables.categorias.filter((c) => c.tipo === 'saida' && c.ativa !== false && c.id !== 'cat-dizimo');
+  return ativas
+    .map((c) => ({ c, n: (conta[c.id] || 0) + (c.id === 'cat-mercado' || c.id === 'cat-ingrediente' ? 0.5 : 0) }))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, limite)
+    .map((x) => x.c);
 }

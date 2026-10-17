@@ -59,7 +59,7 @@ function instrucoesLeitura_(ctx) {
     '{"tipo_documento":"comprovante|nota_mercado|extrato|outro","estabelecimento":string|null,"data":"AAAA-MM-DD"|null,"total":number|null,',
     ' "lancamentos":[{"tipo":"entrada|saida|transferencia","valor":number,"data":"AAAA-MM-DD"|null,"descricao":string,',
     '   "conta_id":string|null,"conta_destino_id":string|null,"categoria_id":string|null,"origem":string|null,"confianca":number,"duvida":string|null}],',
-    ' "itens":[{"descricao":string,"quantidade":number,"unidade":"un"|"kg"|"g"|"l"|"ml","valor_total":number,"origem":"Pudim"|"Casa"|null,"confianca":number,"duvida":string|null}]}',
+    ' "itens":[{"descricao":string,"quantidade":number,"unidade":"un"|"kg"|"g"|"l"|"ml","valor_total":number,"categoria_id":string|null,"origem":"Pudim"|"Casa"|null,"confianca":number,"duvida":string|null}]}',
     '',
     'Regras:',
     '- Comprovante de Pix, TED, boleto ou cartão: um item em "lancamentos". Pix enviado = saida; recebido = entrada.',
@@ -70,7 +70,8 @@ function instrucoesLeitura_(ctx) {
     '  Se a foto tiver mais de uma nota, junte os itens de todas, some os totais em "total" e liste os mercados em "estabelecimento" (ex.: "Swift + Hortifruti").',
     '  Foto torta, amassada ou com dedo na frente: leia o que der; item ilegível vai com valor_total null e "duvida".',
     '  Marque origem Pudim para ingredientes típicos de pudim e confeitaria (leite condensado, creme de leite, ovos, açúcar, leite, embalagens),',
-    '  Casa para o resto; use null quando puder ser os dois.',
+    '  Casa para o resto; use null quando puder ser os dois. Em "categoria_id" escolha a categoria de saída que melhor descreve o item',
+    '  (ex.: limpeza, construção, mercado), seguindo como o casal já classifica; null se nenhuma servir.',
     '- Extrato com vários movimentos: um item em "lancamentos" para cada movimento.',
     '- "confianca" de 0 a 1. Use "duvida" para dizer em português curto o que não deu para ler ou decidir.',
     '- Não invente valores: se não estiver legível, use null e explique em "duvida".'

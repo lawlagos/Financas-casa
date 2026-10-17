@@ -5,7 +5,8 @@ import { Folha, Segmento, Chips, Campo } from '../componentes.js';
 import { useStore, salvar, salvarVarias, fecharFolha, abrirFolha, toast, interpretarImagem } from '../../data/store.js';
 import { ORIGENS, uid } from '../../core/schema.js';
 import { brl, parseBRL } from '../../core/money.js';
-import { montarContexto, conferirLeitura, pendenciasLancamento, resumoNota, lancamentosDaNota, itensDaNota } from '../../core/leitura.js';
+import { montarContexto, conferirLeitura, pendenciasLancamento, resumoNota, lancamentosDaNota, itensDaNota, categoriasMaisUsadas } from '../../core/leitura.js';
+import { SeletorCategoria, NovaCategoria } from '../categorias.js';
 import { findMatch, matchCandidates } from '../../core/planning.js';
 import { contasAtivas, origemLabel } from '../derivados.js';
 import { prepararImagem } from '../imagem.js';
@@ -32,10 +33,7 @@ function EditorLancamento({ l, set, contas, categorias }) {
         <${SelectConta} rotulo=${l.tipo === 'transferencia' ? 'Sai de' : 'Conta'} valor=${l.conta_id} contas=${contas} onChange=${(v) => set({ conta_id: v })} />
         ${l.tipo === 'transferencia'
           ? html`<${SelectConta} rotulo="Entra em" valor=${l.conta_destino_id} contas=${contas} excluir=${l.conta_id} onChange=${(v) => set({ conta_destino_id: v })} />`
-          : html`<${Campo} rotulo="Categoria"><select aria-label="Categoria" value=${l.categoria_id} onChange=${(e) => {
-              const c = cats.find((x) => x.id === e.target.value);
-              set({ categoria_id: e.target.value, ...(c?.origem_padrao && !l.origem ? { origem: c.origem_padrao } : {}) });
-            }}><option value="">Sem categoria</option>${cats.map((c) => html`<option value=${c.id}>${c.nome}</option>`)}</select><//>`}
+          : html`<${SeletorCategoria} tipo=${l.tipo} valor=${l.categoria_id} onChange=${(id, c) => set({ categoria_id: id, ...(c?.origem_padrao ? { origem: c.origem_padrao } : {}) })} />`}
       </div>
       ${l.tipo !== 'transferencia' && html`<div class="campo"><span>Origem</span><${Chips} rotulo="Origem" valor=${l.origem} onChange=${(o) => set({ origem: o })} opcoes=${ORIGENS.map((o) => [o, origemLabel(o)])} /></div>`}
       ${pend.length > 0 && html`<div class="duvida" role="alert"><${Icone} n="alerta" /><span>❓ Falta: ${pend.join(', ')}.</span></div>`}
@@ -43,34 +41,61 @@ function EditorLancamento({ l, set, contas, categorias }) {
   </div>`;
 }
 
-function RevisarNota({ nota, setNota, contas }) {
-  const r = resumoNota(nota, { diferencaEm: nota.diferencaEm });
+// Categoria que recebe a diferença entre a soma dos itens e o total: a escolhida, ou a maior da nota.
+function diferencaEfetiva(nota) {
+  if (nota.diferencaEm !== null && nota.diferencaEm !== undefined) return nota.diferencaEm;
+  const base = resumoNota(nota, { diferencaEm: '' });
+  return Object.entries(base.soma).sort((a, b) => b[1] - a[1])[0]?.[0] || 'cat-mercado';
+}
+
+function RevisarNota({ nota, setNota, contas, tables }) {
+  const [novaPara, setNovaPara] = useState(null);
+  const difEm = diferencaEfetiva(nota);
+  const r = resumoNota(nota, { diferencaEm: difEm });
+  const cats = Object.fromEntries(tables.categorias.map((c) => [c.id, c]));
+  const rapidas = categoriasMaisUsadas(tables, 3);
   const setItem = (i, patch) => setNota({ ...nota, itens: nota.itens.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
-  const todos = (origem) => setNota({ ...nota, itens: nota.itens.map((x) => ({ ...x, origem })) });
+  const semCategoria = (id) => setNota({ ...nota, itens: nota.itens.map((x) => (x.categoria_id ? x : { ...x, categoria_id: id, duvidaIa: '' })) });
+  const nomeCat = (id) => (id ? `${cats[id]?.nome || '?'} (${origemLabel(cats[id]?.origem_padrao || 'Casa')})` : '');
   return html`<div>
     <div class="linha2">
       <${Campo} rotulo="Mercado"><input value=${nota.estabelecimento} onInput=${(e) => setNota({ ...nota, estabelecimento: e.target.value })} /><//>
       <${Campo} rotulo="Data"><input type="date" value=${nota.data} onInput=${(e) => setNota({ ...nota, data: e.target.value, dataLida: true })} /><//>
     </div>
     <${SelectConta} rotulo="Pago com" valor=${nota.conta_id} contas=${contas} onChange=${(v) => setNota({ ...nota, conta_id: v })} />
-    <div class="secao-cab" style="margin-top:16px"><h2 style="font-size:16px">Itens (${nota.itens.length})</h2>
-      <span class="acoes"><button class="btn btn-sec btn-mini" onClick=${() => todos('Pudim')}>Tudo pudim</button><button class="btn btn-sec btn-mini" onClick=${() => todos('Casa')}>Tudo casa</button></span></div>
+    <div class="secao-cab" style="margin-top:16px"><h2 style="font-size:16px">Itens (${nota.itens.length})</h2></div>
+    ${r.semCategoria > 0 && html`<label class="campo" style="margin-top:0"><span>Colocar todos os itens sem categoria em</span>
+      <select aria-label="Categoria dos itens sem categoria" value="" onChange=${(e) => e.target.value && semCategoria(e.target.value)}>
+        <option value="">Escolha…</option>
+        ${tables.categorias.filter((c) => c.tipo === 'saida' && c.ativa !== false && c.id !== 'cat-dizimo').map((c) => html`<option value=${c.id}>${nomeCat(c.id)}</option>`)}
+      </select></label>`}
     <ul class="lista painel">
-      ${nota.itens.map((it, i) => html`<li class="item" style="flex-wrap:wrap">
-        <div class="corpo quebra"><div class="tit">${!it.origem || it.duvidaIa ? '❓ ' : '✅ '}${it.descricao || 'Item'}</div>
-          <div class="meta">${it.quantidade > 1 ? `${it.quantidade} un · ` : ''}${it.valor ? brl(Math.round(it.valor * 100)) : 'valor ilegível'}${it.duvidaIa ? ` · ${it.duvidaIa}` : ''}</div></div>
-        <div class="segmento" role="group" aria-label=${`Origem de ${it.descricao}`} style="flex:0 0 auto">
-          ${['Pudim', 'Casa'].map((o) => html`<button type="button" aria-pressed=${String(it.origem === o)} onClick=${() => setItem(i, { origem: o, duvidaIa: '' })}>${o}</button>`)}
-        </div>
-      </li>`)}
+      ${nota.itens.map((it, i) => {
+        const opcoes = rapidas.some((c) => c.id === it.categoria_id) || !it.categoria_id ? rapidas : [cats[it.categoria_id], ...rapidas.slice(0, 2)];
+        return html`<li class="item" style="flex-direction:column;align-items:stretch;gap:8px">
+          <div class="corpo quebra"><div class="tit">${!it.categoria_id || it.duvidaIa ? '❓ ' : '✅ '}${it.descricao || 'Item'}</div>
+            <div class="meta">${it.quantidade !== 1 ? `${it.quantidade} ${it.unidade || 'un'} · ` : ''}${it.valor ? brl(Math.round(it.valor * 100)) : 'valor ilegível'}${it.duvidaIa ? ` · ${it.duvidaIa}` : ''}</div></div>
+          <div class="chips compactos" role="group" aria-label=${`Categoria de ${it.descricao}`}>
+            ${opcoes.filter(Boolean).map((c) => html`<button type="button" class="chip" aria-pressed=${String(it.categoria_id === c.id)} onClick=${() => setItem(i, { categoria_id: c.id, duvidaIa: '' })}>${c.nome}</button>`)}
+            <select class="chip" aria-label=${`Outra categoria para ${it.descricao}`} value="" onChange=${(e) => { if (e.target.value === '__nova') setNovaPara(i); else if (e.target.value) setItem(i, { categoria_id: e.target.value, duvidaIa: '' }); }}>
+              <option value="">Outra…</option>
+              ${tables.categorias.filter((c) => c.tipo === 'saida' && c.ativa !== false && c.id !== 'cat-dizimo').map((c) => html`<option value=${c.id}>${c.nome}</option>`)}
+              <option value="__nova">＋ Nova categoria…</option>
+            </select>
+          </div>
+          ${novaPara === i && html`<${NovaCategoria} tipo="saida" onCancelar=${() => setNovaPara(null)} onCriada=${(c) => { setNovaPara(null); setItem(i, { categoria_id: c.id, duvidaIa: '' }); }} />`}
+        </li>`;
+      })}
     </ul>
     <div class="painel painel-pad" style="margin-top:10px">
-      <div style="display:flex;justify-content:space-between"><span>Parte do pudim</span><strong>${brl(r.soma.Pudim)}</strong></div>
-      <div style="display:flex;justify-content:space-between;margin-top:6px"><span>Parte da casa</span><strong>${brl(r.soma.Casa)}</strong></div>
+      ${Object.entries(r.soma).filter(([, v]) => v).sort((a, b) => b[1] - a[1]).map(([id, v], k) => html`<div style=${`display:flex;justify-content:space-between;${k ? 'margin-top:6px' : ''}`}><span>${nomeCat(id)}</span><strong>${brl(v)}</strong></div>`)}
       ${r.total !== null && html`<div class="muted" style="font-size:13px;margin-top:6px">Total da nota: ${brl(r.total)}</div>`}
     </div>
-    ${r.diferenca !== 0 && html`<div class="duvida"><${Icone} n="alerta" /><span>A soma dos itens (${brl(r.somaItens)}) é diferente do total da nota (${brl(r.total)}). Onde lançar a diferença de ${brl(Math.abs(r.diferenca))}?
-      <span class="acoes" style="margin-top:8px">${[['Casa', 'Na casa'], ['Pudim', 'No pudim'], ['', 'Ignorar']].map(([v, t]) => html`<button class="btn btn-mini ${nota.diferencaEm === v ? 'btn-pri' : 'btn-sec'}" onClick=${() => setNota({ ...nota, diferencaEm: v })}>${t}</button>`)}</span></span></div>`}
+    ${r.diferenca !== 0 && html`<div class="duvida"><${Icone} n="alerta" /><span>A soma dos itens (${brl(r.somaItens)}) é diferente do total da nota (${brl(r.total)}). A diferença de ${brl(Math.abs(r.diferenca))} vai para:
+      <select aria-label="Categoria da diferença" style="margin-top:8px;width:100%" value=${difEm} onChange=${(e) => setNota({ ...nota, diferencaEm: e.target.value })}>
+        ${tables.categorias.filter((c) => c.tipo === 'saida' && c.ativa !== false && c.id !== 'cat-dizimo').map((c) => html`<option value=${c.id}>${nomeCat(c.id)}</option>`)}
+        <option value="">Ignorar a diferença</option>
+      </select></span></div>`}
   </div>`;
 }
 
@@ -95,7 +120,7 @@ export function FolhaLeitura() {
       const r = conferirLeitura(resp, s.tables, s.hoje);
       if (r.tipo === 'nota' && r.itens.length) {
         const ultimaNota = [...s.tables.lancamentos].reverse().find((l) => l.canal === 'foto' && l.grupo_id);
-        setNota({ ...r, conta_id: ultimaNota?.conta_id || '', diferencaEm: 'Casa' });
+        setNota({ ...r, conta_id: ultimaNota?.conta_id || '', diferencaEm: null });
         setLancs([]);
       } else if (r.lancamentos.length) {
         setLancs(r.lancamentos);
@@ -120,10 +145,10 @@ export function FolhaLeitura() {
   }, [etapa]);
 
   const aSalvar = nota
-    ? (nota.conta_id ? lancamentosDaNota(nota, { conta_id: nota.conta_id, data: nota.data, diferencaEm: nota.diferencaEm }) : [])
+    ? (nota.conta_id ? lancamentosDaNota(nota, { conta_id: nota.conta_id, data: nota.data, diferencaEm: diferencaEfetiva(nota), categorias: s.tables.categorias }) : [])
     : lancs.filter((l) => l.salvar);
   const pendencias = nota
-    ? [!nota.conta_id && 'a conta', resumoNota(nota).semOrigem && `${resumoNota(nota).semOrigem} ${resumoNota(nota).semOrigem === 1 ? 'item sem' : 'itens sem'} pudim/casa`, !nota.dataLida && 'confirmar a data'].filter(Boolean)
+    ? [!nota.conta_id && 'a conta', resumoNota(nota).semCategoria && `${resumoNota(nota).semCategoria} ${resumoNota(nota).semCategoria === 1 ? 'item sem' : 'itens sem'} categoria`, !nota.dataLida && 'confirmar a data'].filter(Boolean)
     : lancs.filter((l) => l.salvar).flatMap(pendenciasLancamento);
 
   const gravar = async () => {
@@ -160,8 +185,8 @@ export function FolhaLeitura() {
     toast((salvos.length === 1 ? 'Lançamento salvo.' : `${salvos.length} lançamentos salvos.`) + avisoItens, avisoItens ? { tom: 'erro', ms: 9000 } : {});
   };
 
-  const resumo = nota ? resumoNota(nota, { diferencaEm: nota.diferencaEm }) : null;
-  const qtd = nota ? (resumo.soma.Pudim > 0 ? 1 : 0) + (resumo.soma.Casa > 0 ? 1 : 0) : aSalvar.length;
+  const resumo = nota ? resumoNota(nota, { diferencaEm: diferencaEfetiva(nota) }) : null;
+  const qtd = nota ? Object.values(resumo.soma).filter((v) => v > 0).length : aSalvar.length;
   const rodape = etapa === 'revisar'
     ? html`<button class="btn btn-pri" disabled=${salvando || pendencias.length > 0 || !aSalvar.length} onClick=${gravar}>
         ${salvando ? 'Salvando…' : qtd > 1 ? `Salvar ${qtd} lançamentos` : 'Salvar lançamento'}</button>`
@@ -185,7 +210,7 @@ export function FolhaLeitura() {
     ${etapa === 'revisar' && html`<div>
       ${previa && html`<details><summary class="muted" style="font-size:13px;cursor:pointer">Ver o print</summary><img src=${previa} alt="Print lido" style="max-width:100%;border-radius:12px;margin-top:8px" /></details>`}
       ${nota
-        ? html`<${RevisarNota} nota=${nota} setNota=${setNota} contas=${contas} />`
+        ? html`<${RevisarNota} nota=${nota} setNota=${setNota} contas=${contas} tables=${s.tables} />`
         : lancs.map((l, i) => html`<${EditorLancamento} key=${l.chave} l=${l} contas=${contas} categorias=${s.tables.categorias}
             set=${(patch) => setLancs((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)))} />`)}
       ${pendencias.length > 0 && html`<p class="muted" style="font-size:13px;margin:12px 2px 0">Para salvar, responda: ${[...new Set(pendencias)].join(', ')}.</p>`}

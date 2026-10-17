@@ -136,7 +136,7 @@ test('print de comprovante: pergunta a conta, salva com canal foto', async () =>
   await ctx.close();
 });
 
-test('print de nota de mercado: separa pudim e casa, trata diferença do total, grava 2 lançamentos ligados', async () => {
+test('print de nota de mercado: categoria por item, categoria nova na hora, diferença do total, 1 lançamento por categoria', async () => {
   const antes = env.abas['Lançamentos'].linhas.length;
   const { ctx, page } = await entrarELer({
     tipo_documento: 'nota_mercado', estabelecimento: 'Assaí', data: '2026-10-16', total: 60,
@@ -147,22 +147,33 @@ test('print de nota de mercado: separa pudim e casa, trata diferença do total, 
     ],
   });
   await page.getByText('Itens (3)').waitFor();
-  assert.equal(await page.getByRole('button', { name: /Salvar 2 lançamentos|Salvar lançamento/ }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: /Salvar/ }).isDisabled(), true);
   await page.locator('.folha').getByLabel('Pago com').selectOption({ label: 'Nubank PJ (dela)' });
-  await page.getByRole('group', { name: 'Origem de Leite integral' }).getByRole('button', { name: 'Pudim' }).click();
-  await page.getByText('Onde lançar a diferença').waitFor();
-  await page.getByRole('button', { name: 'Salvar 2 lançamentos' }).click();
-  await page.locator('.toast', { hasText: '2 lançamentos salvos' }).waitFor();
+  await page.getByRole('group', { name: 'Categoria de Leite integral' }).getByRole('button', { name: 'Ingrediente' }).click();
+  // categoria nova criada na hora para o detergente
+  await page.getByLabel('Outra categoria para Detergente').selectOption({ label: '＋ Nova categoria…' });
+  await page.locator('#nova-categoria-nome').fill('Limpeza');
+  await page.getByRole('group', { name: 'Grupo da categoria' }).getByRole('button', { name: 'Casa' }).click();
+  await page.getByRole('button', { name: 'Criar categoria' }).click();
+  await page.getByRole('group', { name: 'Categoria de Detergente' }).getByRole('button', { name: 'Limpeza', pressed: true }).waitFor();
+  await page.getByText(/A diferença de .* vai para/).waitFor();
+  await page.getByLabel('Categoria da diferença').selectOption({ label: 'Mercado (Casa)' });
+  await page.getByRole('button', { name: 'Salvar 3 lançamentos' }).click();
+  await page.locator('.toast', { hasText: '3 lançamentos salvos' }).waitFor();
   const novas = env.abas['Lançamentos'].linhas.slice(antes);
-  assert.equal(novas.length, 2);
-  assert.equal(novas[0][8], 'Pudim');
-  assert.equal(novas[0][3], 48.92);
-  assert.equal(Math.round((novas[0][3] + novas[1][3]) * 100), 6000);
-  assert.ok(novas[0][12] && novas[0][12] === novas[1][12], 'mesmo grupo_id');
-  assert.match(novas[0][4], /^Assaí — pudim: Leite condensado, Leite integral/);
+  assert.equal(novas.length, 3);
+  const porCat = Object.fromEntries(novas.map((l) => [l[4].split(':')[0], l]));
+  assert.equal(porCat['Assaí — ingrediente'][3], 48.92);
+  assert.equal(porCat['Assaí — ingrediente'][8], 'Pudim');
+  assert.equal(porCat['Assaí — limpeza'][8], 'Casa');
+  assert.equal(porCat['Assaí — mercado'][3], Math.round((60 - 48.92 - 2.99) * 100) / 100);
+  assert.equal(Math.round(novas.reduce((t, l) => t + l[3], 0) * 100), 6000);
+  assert.ok(novas.every((l) => l[12] && l[12] === novas[0][12]), 'mesmo grupo_id');
+  const cats = env.abas['Categorias'].linhas;
+  assert.ok(cats.some((c) => c[1] === 'Limpeza' && c[2] === 'saida' && c[3] === 'Casa'));
   const itens = env.abas['Itens'].linhas.slice(1);
   assert.equal(itens.length, 3);
-  assert.deepEqual(itens.map((i) => [i[3], i[8], i[9] === novas[i[8] === 'Pudim' ? 0 : 1][0]]), [['Leite condensado', 'Pudim', true], ['Detergente', 'Casa', true], ['Leite integral', 'Pudim', true]]);
+  assert.ok(itens.every((i) => i[10] && novas.some((l) => l[0] === i[10] && l[7] === i[8])), 'cada item ligado ao lançamento da sua categoria');
   await ctx.close();
 });
 

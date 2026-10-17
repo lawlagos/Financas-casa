@@ -13,13 +13,16 @@ export const SCHEMA = {
   ],
   baixas: ['id', 'previsto_id', 'ref', 'status', 'lancamento_id', 'nova_data', 'criado_em'],
   config: ['id', 'valor'],
-  itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'origem', 'lancamento_id', 'grupo_id', 'criado_em'],
+  itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'categoria_id', 'origem', 'lancamento_id', 'grupo_id', 'criado_em'],
 };
 
 export const TABELAS = Object.keys(SCHEMA);
 
-export const ORIGENS = ['Casa', 'Pudim', 'Hotmart', 'Salario', 'Consultoria', 'YouTube'];
-export const ORIGEM_LABEL = { Casa: 'Casa', Pudim: 'Pudim', Hotmart: 'Hotmart', Salario: 'Salário', Consultoria: 'Consultoria', YouTube: 'YouTube' };
+export const ORIGENS = ['Casa', 'Pudim', 'Hotmart', 'Outros', 'Salario', 'Consultoria', 'YouTube'];
+// "Hotmart" é o id interno do negócio do marido; na tela aparece como Empresa.
+export const ORIGEM_LABEL = { Casa: 'Casa', Pudim: 'Pudim', Hotmart: 'Empresa', Outros: 'Outros', Salario: 'Salário', Consultoria: 'Consultoria', YouTube: 'YouTube' };
+// Grupos oferecidos ao criar uma categoria, por tipo.
+export const GRUPOS_CATEGORIA = { saida: ['Casa', 'Pudim', 'Hotmart', 'Outros'], entrada: ['Salario', 'Consultoria', 'YouTube', 'Hotmart', 'Pudim', 'Outros'] };
 
 export function uid(prefix = '') {
   const rnd = Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);

@@ -198,6 +198,9 @@ a { color: inherit; }
   flex: none; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
   border-radius: 999px; padding: 7px 13px; font-weight: 600; font-size: 14px; white-space: nowrap;
 }
+.chips.compactos { flex-wrap: wrap; gap: 6px; }
+.chips.compactos .chip { padding: 5px 10px; font-size: 13px; }
+.chips.compactos select.chip { max-width: 120px; }
 .chip[aria-pressed='true'] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .chip .bolinha { display: inline-block; margin-right: 6px; vertical-align: 1px; width: 8px; height: 8px; }
 
