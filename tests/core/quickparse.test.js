@@ -53,3 +53,16 @@ test('categoria pelo nome quando citada', () => {
   assert.equal(categorias.find((c) => c.id === r.categoria_id)?.nome, 'Luz');
   assert.equal(nome(r.conta_id), 'Itaú');
 });
+
+test('valor falado com centavos separados: "54 e 96" é 54,96', async () => {
+  const { parseQuick } = await import('../../app/core/quickparse.js');
+  const v = (t) => parseQuick(t, { contas: [], categorias: [], hoje: '2026-10-17' }).valor;
+  assert.equal(v('gastei 54 e 96 no mercado'), 54.96);
+  assert.equal(v('mercado 54 e 96'), 54.96);
+  assert.equal(v('paguei 54 reais e 96 centavos de luz'), 54.96);
+  assert.equal(v('padaria 12 e 5 centavos'), 12.05);
+  assert.equal(v('chiclete 96 centavos'), 0.96);
+  assert.equal(v('gastei 54 no mercado'), 54);
+  assert.equal(v('mercado 87,50'), 87.5);
+  assert.equal(v('recebi 2 mil e 50'), 2000);
+});

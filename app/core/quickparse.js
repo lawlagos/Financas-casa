@@ -26,8 +26,16 @@ const DICAS_ORIGEM = [
   ['YouTube', ['youtube', 'adsense']],
 ];
 
+// Valor falado com os centavos separados: "54 e 96" → "54,96"; "54 reais e 9 centavos" → "54,09"; "96 centavos" → "0,96".
+export function juntarCentavos(t) {
+  return t
+    .replace(/(?<![\d.,])(\d+)\s*(?:reais?\s+)?e\s+(\d{1,2})\s*centavos?\b/g, (_, r, c) => `${r},${c.padStart(2, '0')}`)
+    .replace(/(?<![\d.,])(\d+)\s*(?:reais?\s+)?e\s+(\d{2})(?![\d.,]|\s*mil\b)/g, '$1,$2')
+    .replace(/(?<![\d.,])(\d{1,2})\s*centavos?\b/g, (_, c) => `0,${c.padStart(2, '0')}`);
+}
+
 export function parseQuick(texto, { contas = [], categorias = [], hoje }) {
-  const t = norm(texto);
+  const t = juntarCentavos(norm(texto));
   const out = { tipo: null, valor: null, descricao: '', conta_id: null, conta_destino_id: null, categoria_id: null, origem: null, data: hoje };
 
   // valor: "87,50", "87.50", "1.200", "2 mil", "87 reais"
