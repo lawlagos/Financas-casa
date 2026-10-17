@@ -12,6 +12,7 @@ import { contasAtivas, origemLabel } from '../derivados.js';
 import { prepararImagem } from '../imagem.js';
 import { CONFIG } from '../../config.js';
 import { SelectConta } from './lancamento.js';
+import { entradasDaCompra } from '../../data/pudim-acoes.js';
 
 const valorTexto = (v) => (v ? Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
 
@@ -178,7 +179,9 @@ export function FolhaLeitura() {
     let avisoItens = '';
     if (nota) {
       try {
-        await salvarVarias('itens', itensDaNota(nota, salvos, { data: nota.data, grupo_id: grupo, criado_em: new Date().toISOString() }));
+        const itensSalvos = await salvarVarias('itens', itensDaNota(nota, salvos, { data: nota.data, grupo_id: grupo, criado_em: new Date().toISOString() }));
+        // Ingredientes do pudim comprados na nota entram no estoque de ingredientes.
+        await entradasDaCompra(itensSalvos.filter((x) => x.origem === 'Pudim'), { data: nota.data }).catch(() => {});
       } catch {
         avisoItens = ' Os itens da nota não foram guardados: atualize o servidor no Apps Script.';
       }

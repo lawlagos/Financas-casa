@@ -9,6 +9,7 @@ import { monthSummary, GRUPOS } from '../../core/balances.js';
 import { businessWeeks, monthlyTithe, refSemana, refMes } from '../../core/tithe.js';
 import { receivables } from '../../core/planning.js';
 import { saldosHoje, contasAtivas, fimPadrao, projetar } from '../derivados.js';
+import { dadosPudim } from './pudim.js';
 
 export function FaixaDemo() {
   const s = useStore();
@@ -42,6 +43,21 @@ function Termometro({ s }) {
     </div>
     <button class="abrir" aria-label="Abrir o Futuro" onClick=${() => (location.hash = '#/futuro')}></button>
   </section>`;
+}
+
+// Pudim abaixo do mínimo ou ingrediente faltando: aviso curto que leva para a tela do pudim.
+function AvisoPudim({ s }) {
+  if (!(s.tables.receitas || []).length) return null;
+  const d = dadosPudim(s);
+  if (!d.abaixo.length && !d.faltas.length && !d.estoque.vencidos) return null;
+  const partes = [
+    d.abaixo.length ? `${d.abaixo.length} pudi${d.abaixo.length > 1 ? 'ns' : 'm'} abaixo do mínimo` : '',
+    d.faltas.length ? `${d.faltas.length} ingrediente${d.faltas.length > 1 ? 's' : ''} faltando` : '',
+    d.estoque.vencidos ? `${d.estoque.vencidos} vencido${d.estoque.vencidos > 1 ? 's' : ''}` : '',
+  ].filter(Boolean);
+  return html`<a class="painel painel-pad cartao-pudim aviso-minimo" href="#/pudim" style="margin-top:12px">
+    <div class="corpo"><div class="rot-mercado">Pudim</div><div style="font-weight:700;margin-top:2px">${partes.join(' · ')}</div></div>
+    <span style="width:18px;color:var(--ink-3)"><${Icone} n="seta" /></span></a>`;
 }
 
 function Dizimo({ s }) {
@@ -147,6 +163,7 @@ export function TelaInicio() {
     <${FaixaDemo} />
     <${Termometro} s=${s} />
     <${AReceber} s=${s} />
+    <${AvisoPudim} s=${s} />
     <${Dizimo} s=${s} />
     <${Contas} s=${s} />
     <${Mes} s=${s} />

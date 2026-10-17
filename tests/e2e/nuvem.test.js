@@ -224,6 +224,10 @@ test('pudim na planilha: receita com ingredientes em texto, produção e venda c
   assert.deepEqual([taxa[2], taxa[3], taxa[5], taxa[7], taxa[12]], ['saida', 7.13, 'ifood', 'cat-taxa-ifood', l[12]]);
   assert.equal(est[2][8], l[0]);
   assert.ok(env.abas['Contas'].linhas.some((c) => c[0] === 'ifood' && c[3] === 'Pudim'));
+  // a produção deu saída dos ingredientes na aba nova (2 unidades = 1 receita = 395 g de leite condensado)
+  const ei = env.abas['Estoque de ingredientes'].linhas;
+  assert.deepEqual(ei[0], SCHEMA.estoque_insumos);
+  assert.deepEqual([ei[1][2], ei[1][3], ei[1][4], ei[1][5], ei[1][6]], ['ins-lc', 'saida', 395, 'producao', est[1][0]]);
   assert.ok(env.abas['Categorias'].linhas.some((c) => c[0] === 'cat-taxa-ifood'));
   await page.goto(`${base}/#/pudim`);
   await page.reload();

@@ -98,13 +98,21 @@ export function custoInsumo(insumo, itens = []) {
 // "completoUnidade" soma tudo; o preço sugerido é o completo mais o markup.
 // Produto de um sabor (ex.: Tradicional 150): usa os ingredientes e o tempo da receita do sabor e soma as
 // embalagens do tamanho; o rendimento é o do tamanho (quantas unidades uma receita do sabor dá).
-export function custoReceita(receita, insumosPorId, itens = [], custos = null, receitasPorId = {}) {
+export function custoReceita(receita, insumosPorId, itens = [], custos = null, receitasPorId = {}, profundidade = 0) {
   const sabor = receita.sabor_id ? receitasPorId[receita.sabor_id] : null;
   const doSabor = sabor ? ingredientesDe(sabor).map((x) => ({ ...x, doSabor: true })) : [];
   const linhas = [...doSabor, ...ingredientesDe(receita)].map((x) => {
+    const qtd = Number(x.quantidade) || 0;
+    // Preparo (ex.: calda de morango): custo da receita dele dividido pelo que rende, em gramas.
+    const preparo = idPreparo(x.insumo_id) && receitasPorId[idPreparo(x.insumo_id)];
+    if (idPreparo(x.insumo_id)) {
+      if (!preparo || profundidade > 3) return { insumo: { id: x.insumo_id, nome: preparo?.nome || 'preparo apagado', tipo: 'ingrediente', unidade: 'g' }, quantidade: qtd, custo: null, preco: { porBase: null }, doSabor: !!x.doSabor, preparo };
+      const cp = custoReceita(preparo, insumosPorId, itens, null, receitasPorId, profundidade + 1);
+      const porGrama = cp.faltando.length ? null : cp.total / (Number(preparo.rendimento) || 1);
+      return { insumo: { id: x.insumo_id, nome: preparo.nome, tipo: 'ingrediente', unidade: 'g' }, quantidade: qtd, custo: porGrama === null ? null : Math.round(porGrama * qtd), preco: { porBase: porGrama }, doSabor: !!x.doSabor, preparo };
+    }
     const insumo = insumosPorId[x.insumo_id];
     const c = insumo ? custoInsumo(insumo, itens) : { porBase: null };
-    const qtd = Number(x.quantidade) || 0;
     return { insumo, quantidade: qtd, custo: c.porBase === null ? null : Math.round(c.porBase * qtd), preco: c, doSabor: !!x.doSabor };
   });
   const total = linhas.reduce((s, l) => s + (l.custo || 0), 0);
@@ -145,6 +153,11 @@ export function custoReceita(receita, insumosPorId, itens = [], custos = null, r
     subiu: ref > 0 && porUnidade >= ref * (1 + ALERTA_CUSTO) ? (porUnidade - ref) / ref : 0,
   };
 }
+
+// Preparo: receita intermediária (calda, base) que rende gramas e entra em outras receitas como ingrediente.
+// Na lista de ingredientes ele aparece como insumo_id "preparo:<id da receita>".
+export const ehPreparo = (r) => r?.tipo === 'preparo';
+export const idPreparo = (insumoId) => (String(insumoId || '').startsWith('preparo:') ? String(insumoId).slice(8) : null);
 
 // Sabor = a receita de uma fornada (ingredientes e tempo), que não se vende sozinha; os produtos são os tamanhos.
 export const ehSabor = (r) => r?.tipo === 'sabor';

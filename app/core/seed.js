@@ -145,15 +145,17 @@ function demoPudim(hoje) {
   const lista = (xs) => JSON.stringify(xs.map(([insumo_id, quantidade]) => ({ insumo_id, quantidade })));
   // Sabor = a receita de uma fornada; os tamanhos são o que se vende (rende 1 de 1100, 6 de 150).
   const S = (id, nome, extra) => ({ id, nome, tipo: 'sabor', sabor_id: '', porcao: '', rendimento: 1, validade_dias: 5, preco_venda: '', preco_sugerido: '', custo_ref: '', tempo_preparo: 60, markup: 0.3, preco_ifood: '', ingredientes: lista([...base, ...extra]), ativo: true });
-  const T = (id, sabor_id, nome, porcao, rendimento, preco_venda, emb, custo_ref) => ({
-    id, nome, tipo: 'produto', sabor_id, porcao, rendimento, validade_dias: 5, preco_venda, preco_sugerido: '', custo_ref, tempo_preparo: '', markup: '', preco_ifood: '', ingredientes: lista(emb), ativo: true,
+  const T = (id, sabor_id, nome, porcao, rendimento, preco_venda, emb, custo_ref, estoque_minimo = '') => ({
+    id, nome, tipo: 'produto', sabor_id, porcao, rendimento, validade_dias: 5, preco_venda, preco_sugerido: '', custo_ref, tempo_preparo: '', markup: '', preco_ifood: '', ingredientes: lista(emb), ativo: true, estoque_minimo,
   });
   const receitas = [
     S('demo-sab-trad', 'Pudim tradicional', []),
     S('demo-sab-ninho', 'Pudim ninho com Nutella', [['demo-ins-nutella', 140]]),
-    T('demo-rec-mini', 'demo-sab-trad', 'Pudim tradicional 150', '150', 6, 12, [['demo-ins-emb150', 6]], 2.6),
-    T('demo-rec-trad', 'demo-sab-trad', 'Pudim tradicional 1100', '1100', 1, 65, [['demo-ins-emb1100', 1]], 22),
+    T('demo-rec-mini', 'demo-sab-trad', 'Pudim tradicional 150', '150', 6, 12, [['demo-ins-emb150', 6]], 2.6, 2),
+    T('demo-rec-trad', 'demo-sab-trad', 'Pudim tradicional 1100', '1100', 1, 65, [['demo-ins-emb1100', 1]], 22, 1),
     T('demo-rec-ninho', 'demo-sab-ninho', 'Pudim ninho com Nutella 1100', '1100', 1, 85, [['demo-ins-emb1100', 1]], 26),
+    // Preparo: calda que entra em outras receitas (rende em gramas).
+    { id: 'demo-prep-calda', nome: 'Calda de morango', tipo: 'preparo', sabor_id: '', porcao: '', rendimento: 400, validade_dias: 5, preco_venda: '', preco_sugerido: '', custo_ref: '', tempo_preparo: '', markup: '', preco_ifood: '', ingredientes: lista([['demo-ins-acucar', 200]]), ativo: true, estoque_minimo: '' },
   ];
   const estoque = [];
   const M = (dias, receita_id, tipo, quantidade, extra = {}) => {
@@ -167,7 +169,10 @@ function demoPudim(hoje) {
   P(5, 'demo-rec-mini', 16, 2.81); P(4, 'demo-rec-ninho', 2, 27.9); P(3, 'demo-rec-trad', 2, 22.4);
   M(3, 'demo-rec-mini', 'venda', 9, { preco_unitario: 12 }); M(2, 'demo-rec-ninho', 'venda', 1, { preco_unitario: 85 });
   M(1, 'demo-rec-mini', 'venda', 3, { preco_unitario: 12 });
-  return { insumos, receitas, estoque };
+  // O que tinha em casa numa contagem de 20 dias atrás (latas, caixinhas, litros, ovos, açúcar, embalagens).
+  const contagem = [['demo-ins-lc', 6 * 395], ['demo-ins-cl', 5 * 200], ['demo-ins-leite', 3000], ['demo-ins-ovos', 30], ['demo-ins-acucar', 2000], ['demo-ins-emb150', 40], ['demo-ins-emb1100', 6]];
+  const estoque_insumos = contagem.map(([insumo_id, quantidade], i) => ({ id: `demo-ei${i + 1}`, data: addDays(hoje, -20), insumo_id, tipo: 'contagem', quantidade, origem: 'contagem', ref: '', obs: '', criado_em: `${addDays(hoje, -20)}T08:00:00Z` }));
+  return { insumos, receitas, estoque, estoque_insumos };
 }
 
 // Mão de obra e despesas fixas de exemplo (a Base Cadastros da planilha).

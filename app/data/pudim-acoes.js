@@ -3,6 +3,35 @@ import { state, salvar, salvarVarias, apagar, config } from './store.js';
 import { uid } from '../core/schema.js';
 import { addDays } from '../core/dates.js';
 import { totaisCarrinho, taxaUnitaria, TAXA_IFOOD_PADRAO, CATEGORIA_TAXA_IFOOD, CONTA_IFOOD, VALIDADE_PADRAO } from '../core/pudim.js';
+import { gastoDaProducao, entradasDeItens } from '../core/estoqueinsumos.js';
+
+const porIdDe = (lista) => Object.fromEntries((lista || []).map((x) => [x.id, x]));
+
+// Produção gasta ingredientes: uma saída por ingrediente, ligada à produção (ref) para voltar se ela for apagada.
+async function saidasDaProducao(producoes, feitos) {
+  const receitasPorId = porIdDe(state.tables.receitas);
+  const agora = new Date().toISOString();
+  const linhas = [];
+  for (const m of producoes) {
+    const gasto = gastoDaProducao(receitasPorId[m.receita_id], m.quantidade, receitasPorId);
+    for (const [insumo_id, q] of Object.entries(gasto)) {
+      if (q > 0) linhas.push({ data: m.data, insumo_id, tipo: 'saida', quantidade: Math.round(q * 1000) / 1000, origem: 'producao', ref: m.id, obs: '', criado_em: agora });
+    }
+  }
+  if (!linhas.length) return [];
+  const salvas = await salvarVarias('estoque_insumos', linhas);
+  if (feitos) for (const x of salvas) feitos.push({ tabela: 'estoque_insumos', id: x.id });
+  return salvas;
+}
+
+// Compra de ingredientes do pudim soma no estoque de ingredientes (itens já gravados, com id).
+export async function entradasDaCompra(itensSalvos, { data, feitos } = {}) {
+  const linhas = entradasDeItens(itensSalvos, state.tables.insumos, { data }).map((x) => ({ ...x, criado_em: new Date().toISOString() }));
+  if (!linhas.length) return [];
+  const salvas = await salvarVarias('estoque_insumos', linhas);
+  if (feitos) for (const x of salvas) feitos.push({ tabela: 'estoque_insumos', id: x.id });
+  return salvas;
+}
 
 const reais = (cents) => Math.round(cents) / 100;
 const qtdTxt = (n) => String(n).replace('.', ',');
@@ -74,22 +103,25 @@ async function gravarVenda({ linhas, canal, data, conta_id, lancar }, feitos) {
 
 // Produção e perda (vários de uma vez, como vêm da fala).
 // itens: [{ tipo, receita, quantidade, custo (ingredientes e embalagem), fixo (mão de obra e despesas), em centavos por unidade }].
-export async function registrarMovimentos(itens, { data, motivo = 'vencido' }) {
+export async function registrarMovimentos(itens, { data, motivo = 'vencido' }, feitos = null) {
   const agora = new Date().toISOString();
   const linhas = itens.filter((i) => i.receita && i.quantidade > 0 && (i.tipo === 'producao' || i.tipo === 'perda')).map((i) => ({
     data, receita_id: i.receita.id, tipo: i.tipo, quantidade: i.quantidade,
     custo_unitario: i.tipo === 'producao' ? reais(i.custo || 0) : '', custo_fixo_unitario: i.tipo === 'producao' ? reais(i.fixo || 0) : '', preco_unitario: '',
-    validade: i.tipo === 'producao' ? addDays(data, Number(i.receita.validade_dias) || VALIDADE_PADRAO) : '',
+    validade: i.tipo === 'producao' ? i.validade || addDays(data, Number(i.receita.validade_dias) || VALIDADE_PADRAO) : '',
     lancamento_id: '', obs: i.tipo === 'perda' ? motivo : '', criado_em: agora, canal: '', taxa_unitaria: '',
   }));
-  return linhas.length ? salvarVarias('estoque', linhas) : [];
+  if (!linhas.length) return [];
+  const salvos = await salvarVarias('estoque', linhas);
+  if (feitos) for (const x of salvos) feitos.push({ tabela: 'estoque', id: x.id });
+  await saidasDaProducao(salvos.filter((x) => x.tipo === 'producao'), feitos);
+  return salvos;
 }
 
 // Produção/perda e venda ditas na mesma frase: se a venda falhar, a produção e a perda também são desfeitas.
 export function registrarFala({ movimentos, venda, data, motivo }) {
   return tudoOuNada(async (feitos) => {
-    const salvos = await registrarMovimentos(movimentos, { data, motivo });
-    for (const x of salvos) feitos.push({ tabela: 'estoque', id: x.id });
+    const salvos = await registrarMovimentos(movimentos, { data, motivo }, feitos);
     const v = venda ? await gravarVenda({ ...venda, data }, feitos) : null;
     return { movimentos: salvos.length, venda: v };
   });
@@ -101,6 +133,8 @@ export async function apagarMovimento(m) {
     // Venda sem lançamento no caixa: os itens do mesmo carrinho foram gravados juntos (mesmo dia e mesma hora).
     const juntos = m.tipo === 'venda' ? state.tables.estoque.filter((x) => x.tipo === 'venda' && !x.lancamento_id && x.data === m.data && x.criado_em === m.criado_em) : [m];
     for (const x of juntos) await apagar('estoque', x.id);
+    // Produção apagada devolve os ingredientes que ela tinha gastado.
+    if (m.tipo === 'producao') for (const x of (state.tables.estoque_insumos || []).filter((e) => e.ref === m.id && e.origem === 'producao')) await apagar('estoque_insumos', x.id);
     return { itens: juntos.length, lancamentos: 0 };
   }
   const irmaos = state.tables.estoque.filter((x) => x.lancamento_id === m.lancamento_id);
@@ -144,6 +178,7 @@ export function registrarCompra({ linhas, data, conta_id }) {
       };
     }));
     for (const x of itens) feitos.push({ tabela: 'itens', id: x.id });
+    await entradasDaCompra(itens, { data, feitos });
     return { total: validas.reduce((s, x) => s + x.preco * x.quantidade, 0), itens: itens.length };
   });
 }

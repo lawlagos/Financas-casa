@@ -6,8 +6,11 @@ import { useStore, abrirFolha, salvarVarias, toast, config } from '../../data/st
 import { apagarMovimento } from '../../data/pudim-acoes.js';
 import { brl, brlSigned } from '../../core/money.js';
 import { fmtDay, addDays, businessWeekStart } from '../../core/dates.js';
-import { custoReceita, processarEstoque, estoqueAtual, semanaPudim, custoInsumo, lerCustos, valorMinuto, ehSabor } from '../../core/pudim.js';
+import { custoReceita, processarEstoque, estoqueAtual, semanaPudim, custoInsumo, lerCustos, valorMinuto, ehSabor, ehPreparo } from '../../core/pudim.js';
+import { saldos, minimos, faltas, pudinsAbaixo, baseDe, embalagemBase } from '../../core/estoqueinsumos.js';
 import { porId } from '../derivados.js';
+import { chaveProduto } from '../../core/mercado.js';
+import { adicionarItens } from '../../data/lista-acoes.js';
 import { FaixaDemo } from './inicio.js';
 
 const ativo = (x) => x.ativo !== false && x.ativo !== 'FALSE';
@@ -19,7 +22,8 @@ export function dadosPudim(s) {
   const receitasPorId = porId(s.tables.receitas || []);
   // Tamanho de um sabor desligado também sai da venda (volta junto quando o sabor é religado).
   const saborDesligado = (r) => r.sabor_id && receitasPorId[r.sabor_id] && !ativo(receitasPorId[r.sabor_id]);
-  const receitas = (s.tables.receitas || []).filter((r) => ativo(r) && !ehSabor(r) && !saborDesligado(r)).sort((a, b) => a.nome.localeCompare(b.nome));
+  const receitas = (s.tables.receitas || []).filter((r) => ativo(r) && !ehSabor(r) && !ehPreparo(r) && !saborDesligado(r)).sort((a, b) => a.nome.localeCompare(b.nome));
+  const preparos = (s.tables.receitas || []).filter((r) => ativo(r) && ehPreparo(r)).sort((a, b) => a.nome.localeCompare(b.nome));
   const sabores = (s.tables.receitas || []).filter((r) => ativo(r) && ehSabor(r)).sort((a, b) => a.nome.localeCompare(b.nome));
   const itens = s.tables.itens || [];
   const custosFixos = lerCustos(config('custos_pudim', ''));
@@ -28,8 +32,28 @@ export function dadosPudim(s) {
   const movimentos = s.tables.estoque || [];
   const { lotes, saidas } = processarEstoque(movimentos, (id) => ({ direto: custos[id]?.porUnidade || 0, fixo: custos[id]?.fixoUnidade || 0 }));
   const estoque = estoqueAtual(lotes, receitasPorId, s.hoje);
-  return { insumosPorId, receitas, sabores, receitasPorId, custos, custosFixos, movimentos, saidas, estoque, itens };
+  // Estoque de ingredientes e mínimos (em fornadas, no produto).
+  const { saldo, contadoEm } = saldos(s.tables.estoque_insumos || []);
+  const minimo = minimos(receitas, receitasPorId);
+  const prontos = Object.fromEntries(estoque.lista.map((x) => [x.receita_id, x.quantidade]));
+  return {
+    insumosPorId, receitas, sabores, preparos, receitasPorId, custos, custosFixos, movimentos, saidas, estoque, itens,
+    saldo, contadoEm, minimo, faltas: faltas({ saldo, minimo, insumosPorId }), abaixo: pudinsAbaixo(receitas, prontos),
+  };
 }
+
+// "1,2 kg", "800 g", "1,5 l", "12 un"
+export function fmtQtd(q, insumo) {
+  const b = baseDe(insumo);
+  const n = (v, d = 1) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString('pt-BR');
+  if (b === 'g') return Math.abs(q) >= 1000 ? `${n(q / 1000, 2)} kg` : `${n(q, 0)} g`;
+  if (b === 'ml') return Math.abs(q) >= 1000 ? `${n(q / 1000, 2)} l` : `${n(q, 0)} ml`;
+  return `${n(q, 1)} un`;
+}
+export const embalagensTxt = (q, insumo) => {
+  const e = embalagemBase(insumo);
+  return e > 1 ? `${(Math.round((q / e) * 10) / 10).toLocaleString('pt-BR')} emb. de ${fmtQtd(e, insumo)}` : '';
+};
 
 const ROTULO_MOV = { producao: 'Produziu', venda: 'Vendeu', perda: 'Perdeu' };
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
@@ -76,6 +100,15 @@ function AbaEstoque({ s, d }) {
       <div><strong>${plural(e.vencidos, 'pudim venceu', 'pudins venceram')}</strong>
         <div class="muted" style="font-size:13px">${brl(e.custoVencido)} em ingredientes. ${e.lista.filter((x) => x.vencidos).map((x) => `${x.vencidos} ${x.receita?.nome || ''}`).join(', ')}</div></div>
       <button class="btn btn-perigo btn-mini" style="white-space:nowrap" onClick=${darBaixa}>Dar baixa</button>
+    </div>`}
+
+    ${(d.abaixo.length > 0 || d.faltas.length > 0) && html`<div class="painel painel-pad aviso-minimo" role="alert" aria-label="Estoque mínimo">
+      ${d.abaixo.length > 0 && html`<div class="rot-mercado">Abaixo do mínimo</div>
+        <ul class="lista-minimo">${d.abaixo.map((x) => html`<li>
+          <div><strong>${x.receita.nome}</strong><div class="muted" style="font-size:12.5px">tem ${x.tem}, mínimo ${x.minimo}</div></div>
+          <button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('movimento', { tipo: 'producao', receita_id: x.receita.id, quantidade: x.fornadas * (Number(x.receita.rendimento) || 1) })}>Fazer ${x.fornadas} fornada${x.fornadas > 1 ? 's' : ''}</button>
+        </li>`)}</ul>`}
+      ${d.faltas.length > 0 && html`<a class="link" href="#/pudim?aba=ingredientes" style="display:block;margin-top:${d.abaixo.length ? 10 : 0}px">Faltam ${d.faltas.length} ingrediente${d.faltas.length > 1 ? 's' : ''} para o estoque mínimo →</a>`}
     </div>`}
 
     <div class="acoes acoes-pudim">
@@ -149,7 +182,7 @@ export const porTamanho = (a, b) => (Number(b.porcao) || 0) - (Number(a.porcao) 
 function ItemProduto({ r, c }) {
   return html`<li><button class="item item-btn" onClick=${() => abrirFolha('receita', { receita: r })}>
     <div class="corpo"><div class="tit">${r.nome}</div>
-      <div class="meta">Rende ${r.rendimento || 1}, custo ${brl(c.completoUnidade)} cada${c.faltando.length ? ', falta preço' : ''}</div>
+      <div class="meta">Rende ${r.rendimento || 1}, custo ${brl(c.completoUnidade)} cada${Number(r.estoque_minimo) > 0 ? `, mínimo ${r.estoque_minimo} fornada${Number(r.estoque_minimo) > 1 ? 's' : ''}` : ''}${c.faltando.length ? ', falta preço' : ''}</div>
       ${!c.preco && html`<div class="muted" style="font-size:12.5px">Sugerido ${brl(c.sugerido)}</div>`}
       ${c.subiu > 0 && html`<div style="margin-top:4px"><span class="etiqueta atraso">Custo subiu ${Math.round(c.subiu * 100)}%</span></div>`}</div>
     <div class=${`valor ${c.margem !== null && c.margem < 0 ? 'neg' : ''}`}>${c.preco ? brl(c.preco) : '—'}<small>${c.margem !== null ? `lucro ${Math.round(c.margem * 100)}%` : 'sem preço'}</small></div>
@@ -168,7 +201,16 @@ function AbaReceitas({ s, d }) {
         ${configurado && html`<div class="muted" style="font-size:12.5px;margin-top:2px">Entram no custo de cada receita pelo tempo de preparo.</div>`}</div>
       <span style="width:18px;color:var(--ink-3)"><${Icone} n="seta" /></span>
     </button>
-    <div class="acoes" style="justify-content:flex-end;margin-top:10px"><button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('receita', { novoSabor: true })}><${Icone} n="mais" />Novo sabor</button></div>
+    <div class="acoes" style="justify-content:flex-end;margin-top:10px">
+      <button class="btn btn-sec btn-mini" onClick=${() => abrirFolha('receita', { novoPreparo: true })}><${Icone} n="mais" />Novo preparo</button>
+      <button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('receita', { novoSabor: true })}><${Icone} n="mais" />Novo sabor</button></div>
+    ${d.preparos.length > 0 && html`<section class="sabor" aria-label="Preparos"><div class="sabor-cab"><div class="corpo"><div class="tit">Preparos</div><div class="meta">Caldas e bases que entram em outras receitas</div></div></div>
+      <ul class="lista painel">${d.preparos.map((p) => {
+        const c = d.custos[p.id];
+        return html`<li><button class="item item-btn" onClick=${() => abrirFolha('receita', { receita: p })}><div class="corpo"><div class="tit">${p.nome}</div>
+          <div class="meta">Rende ${p.rendimento} g${c.faltando.length ? ', falta preço' : ''}</div></div>
+          <div class="valor">${brl(Math.round((c.total / (Number(p.rendimento) || 1)) * 100))}<small>por 100 g</small></div></button></li>`;
+      })}</ul></section>`}
     ${d.sabores.map((sabor) => {
       const c = d.custos[sabor.id];
       const tamanhos = d.receitas.filter((r) => r.sabor_id === sabor.id).sort(porTamanho);
@@ -189,6 +231,32 @@ function AbaReceitas({ s, d }) {
     <${Desativados} lista=${(s.tables.receitas || []).filter((r) => !ativo(r))} tipo="receitas" folha="receita" chave="receita" />`;
 }
 
+// Estoque de ingredientes: o que falta para o mínimo, com um toque para pôr na lista de compras.
+function PainelEstoqueInsumos({ s, d }) {
+  const nuncaContou = !Object.keys(d.contadoEm).length && !(s.tables.estoque_insumos || []).length;
+  const naLista = new Set((s.tables.lista || []).filter((x) => !x.comprado).map((x) => chaveProduto(x.nome)));
+  const paraLista = d.faltas.filter((f) => !naLista.has(chaveProduto(f.insumo.produto || f.insumo.nome)));
+  const porNaLista = async () => {
+    await adicionarItens(paraLista.map((f) => ({ nome: f.insumo.produto || f.insumo.nome, quantidade: f.embalagens, unidade: 'un', origem: 'Pudim' })));
+    toast(`${paraLista.length} ingrediente${paraLista.length > 1 ? 's' : ''} na lista de compras`);
+  };
+  return html`<div class="painel painel-pad" style="margin-top:10px">
+    <div class="rot-mercado">Estoque de ingredientes</div>
+    ${nuncaContou
+      ? html`<p style="margin:6px 0 10px">Conte o que tem em casa uma vez. Depois a produção desconta sozinha e as compras somam.</p>`
+      : d.faltas.length
+        ? html`<ul class="lista-minimo">${d.faltas.map((f) => html`<li><div><strong>${f.insumo.nome}</strong>
+            <div class="muted" style="font-size:12.5px">tem ${fmtQtd(f.tem, f.insumo)}, mínimo ${fmtQtd(f.minimo, f.insumo)}</div></div>
+            <span class="neg" style="font-weight:700;white-space:nowrap">comprar ${f.embalagens}</span></li>`)}</ul>`
+        : html`<p class="pos" style="margin:6px 0 10px;font-weight:700">Tudo acima do mínimo.</p>`}
+    <div class="acoes" style="margin-top:8px">
+      ${!nuncaContou && paraLista.length > 0 && html`<button class="btn btn-pri" style="flex:1" onClick=${porNaLista}><${Icone} n="lista" />Pôr na lista de compras</button>`}
+      <button class="btn btn-sec" style="flex:1" onClick=${() => abrirFolha('contagem', {})}>Contar o que tem em casa</button>
+    </div>
+    ${!Object.keys(d.minimo).length && html`<p class="muted" style="font-size:12.5px;margin:8px 0 0">O mínimo vem do "estoque mínimo" de cada pudim (em fornadas), na aba Receitas.</p>`}
+  </div>`;
+}
+
 function AbaIngredientes({ s, d }) {
   const insumos = (s.tables.insumos || []).filter(ativo).sort((a, b) => a.nome.localeCompare(b.nome));
   const bloco = (tipo, titulo) => {
@@ -199,8 +267,11 @@ function AbaIngredientes({ s, d }) {
         const c = custoInsumo(x, d.itens);
         const base = c.base === 'un' ? 'un' : c.base === 'g' ? 'kg' : 'l';
         const porBase = c.porBase === null ? null : Math.round(c.porBase * (c.base === 'un' ? 1 : 1000));
+        const tem = d.saldo[x.id];
+        const min = d.minimo[x.id] || 0;
         return html`<li><button class="item item-btn" onClick=${() => abrirFolha('insumo', { insumo: x })}>
           <div class="corpo"><div class="tit">${x.nome}${x.marca && x.marca !== '-' ? html` <span class="muted">${x.marca}</span>` : ''}</div>
+            ${(tem !== undefined || min > 0) && html`<div class=${`meta ${min > 0 && (tem || 0) < min ? 'neg' : ''}`}>Em casa: ${tem !== undefined ? fmtQtd(tem, x) : '?'}${min > 0 ? ` · mínimo ${fmtQtd(min, x)}` : ''}</div>`}
             <div class="meta">${c.fonte === 'nota' ? `nota de ${fmtDay(c.data)}${c.mercado ? `, ${c.mercado}` : ''}` : c.fonte === 'cadastro' ? `preço digitado${c.data ? ` em ${fmtDay(c.data)}` : ''}` : 'sem preço'}</div></div>
           <div class="valor">${porBase === null ? '—' : brl(porBase)}<small>por ${base}</small></div>
         </button></li>`;
@@ -208,6 +279,7 @@ function AbaIngredientes({ s, d }) {
   };
   return html`
     <div class="acoes" style="justify-content:flex-end"><button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('insumo', {})}><${Icone} n="mais" />Novo</button></div>
+    <${PainelEstoqueInsumos} s=${s} d=${d} />
     <a class="btn btn-pri btn-larga" style="margin-top:10px" href="#/pudim/compras"><${Icone} n="busca" />Pesquisar preços e comprar</a>
     <p class="muted" style="font-size:13px;margin:8px 2px">O preço vem da nota de mercado mais recente do produto. Sem nota, vale o preço digitado aqui.</p>
     <ul class="lista painel">${bloco('ingrediente', 'Ingredientes')}${bloco('embalagem', 'Embalagens')}</ul>

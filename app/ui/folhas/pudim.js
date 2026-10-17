@@ -5,14 +5,15 @@ import { Folha, Segmento, Chips, Campo } from '../componentes.js';
 import { useStore, salvar, salvarVarias, fecharFolha, toast, config, abrirFolha } from '../../data/store.js';
 import { brl, parseBRL, toCents } from '../../core/money.js';
 import { addDays, fmtDay } from '../../core/dates.js';
-import { custoReceita, custoInsumo, ingredientesDe, VALIDADE_PADRAO, precoNoCanal, totaisCarrinho, CANAIS, MARKUP_PADRAO, lerCustos, valorMinuto, ehSabor, produtosDoSabor, TAMANHOS_PADRAO } from '../../core/pudim.js';
+import { custoReceita, custoInsumo, ingredientesDe, VALIDADE_PADRAO, precoNoCanal, totaisCarrinho, CANAIS, MARKUP_PADRAO, lerCustos, valorMinuto, ehSabor, ehPreparo, idPreparo, produtosDoSabor, TAMANHOS_PADRAO } from '../../core/pudim.js';
 import { interpretarEstoque } from '../../core/vozestoque.js';
 import { registrarFala, taxaIfood } from '../../data/pudim-acoes.js';
 import { CampoFala } from '../voz.js';
 import { chaveProduto, produtoDoItem, produtos } from '../../core/mercado.js';
 import { contasAtivas } from '../derivados.js';
 import { SelectConta } from './lancamento.js';
-import { dadosPudim, porTamanho } from '../telas/pudim.js';
+import { dadosPudim, porTamanho, fmtQtd } from '../telas/pudim.js';
+import { embalagemBase } from '../../core/estoqueinsumos.js';
 
 // "1,5" e "1.5" são um e meio; "1.500" (com vírgula ou três casas depois do ponto) é mil e quinhentos.
 const numero = (t) => {
@@ -34,16 +35,16 @@ const UNIDADES = [['g', 'g'], ['kg', 'kg'], ['ml', 'ml'], ['l', 'litro'], ['un',
 const BASE_TXT = { g: 'g', kg: 'g', ml: 'ml', l: 'ml', un: 'un' };
 
 // Produzi ou Perdi: um movimento de estoque. Venda é pela tela Vender (PDV) ou pela voz.
-export function FolhaMovimento({ tipo = 'producao' }) {
+export function FolhaMovimento({ tipo = 'producao', receita_id: receitaPedida, quantidade: qtdPedida }) {
   const s = useStore();
   const d = dadosPudim(s);
   const ultimoMov = [...d.movimentos].reverse().find((m) => m.tipo === tipo && d.receitasPorId[m.receita_id]);
   // Só receitas em uso: a última usada pode ter sido desativada.
-  const inicial = (ultimoMov && d.receitas.find((r) => r.id === ultimoMov.receita_id)?.id) || d.receitas[0]?.id || '';
+  const inicial = (receitaPedida && d.receitas.find((r) => r.id === receitaPedida)?.id) || (ultimoMov && d.receitas.find((r) => r.id === ultimoMov.receita_id)?.id) || d.receitas[0]?.id || '';
   const qtdPadrao = (id) => (tipo === 'producao' ? String(d.receitasPorId[id]?.rendimento || 1) : '1');
   const [f, setF] = useState({
     receita_id: inicial,
-    quantidade: qtdPadrao(inicial),
+    quantidade: qtdPedida ? String(qtdPedida) : qtdPadrao(inicial),
     data: s.hoje,
     validade: '',
     motivo: 'vencido',
@@ -61,14 +62,12 @@ export function FolhaMovimento({ tipo = 'producao' }) {
   const guardar = async () => {
     setTentou(true);
     if (!ok) return;
-    await salvar('estoque', {
-      data: f.data, receita_id: f.receita_id, tipo, quantidade: qtd,
-      custo_unitario: tipo === 'producao' ? reais(c.porUnidade) : '',
-      custo_fixo_unitario: tipo === 'producao' ? reais(c.fixoUnidade) : '',
-      preco_unitario: '',
-      validade: tipo === 'producao' ? validade : '',
-      lancamento_id: '', obs: tipo === 'perda' ? f.motivo : '', criado_em: new Date().toISOString(), canal: '', taxa_unitaria: '',
-    });
+    // Mesmo caminho da fala: grava o movimento e, na produção, a saída dos ingredientes (tudo ou nada).
+    try {
+      await registrarFala({ movimentos: [{ tipo, receita: r, quantidade: qtd, custo: c.porUnidade, fixo: c.fixoUnidade, validade: tipo === 'producao' ? validade : '' }], venda: null, data: f.data, motivo: f.motivo });
+    } catch {
+      return;
+    }
     fecharFolha();
     toast(tipo === 'producao' ? `${virgula(qtd)} ${r.nome} no estoque` : 'Perda registrada');
   };
@@ -109,12 +108,12 @@ export function FolhaMovimento({ tipo = 'producao' }) {
 // Cadastro de receita: rendimento, validade, preço e ingredientes com o custo de cada um.
 // Três jeitos de receita: sabor (ingredientes de uma fornada, não se vende), tamanho de um sabor (rendimento,
 // embalagens e preço; os ingredientes vêm do sabor) e receita avulsa (tudo nela mesma, como antes).
-export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
+export function FolhaReceita({ receita, novoSabor, novoPreparo, sabor_id: novoTamanhoDe }) {
   const s = useStore();
   const d = dadosPudim(s);
   const saborDoTamanho = d.receitasPorId[receita?.sabor_id || novoTamanhoDe] || null;
   // Sabor apagado na planilha: o tamanho vira receita avulsa para dar para corrigir ou desligar.
-  const modo = ehSabor(receita) || novoSabor ? 'sabor' : saborDoTamanho ? 'tamanho' : 'avulsa';
+  const modo = ehPreparo(receita) || novoPreparo ? 'preparo' : ehSabor(receita) || novoSabor ? 'sabor' : saborDoTamanho ? 'tamanho' : 'avulsa';
   const sabor = modo === 'tamanho' ? saborDoTamanho : null;
   const insumos = (s.tables.insumos || []).filter((x) => x.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
   const [f, setF] = useState(() => ({
@@ -131,6 +130,7 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
     ingredientes: ingredientesDe(receita).map((x) => ({ insumo_id: x.insumo_id, quantidade: virgula(x.quantidade) })),
     ativo: receita?.ativo !== false,
     criarTamanhos: true,
+    estoque_minimo: virgula(receita?.estoque_minimo ?? ''),
   }));
   const [tentou, setTentou] = useState(false);
   const set = (p) => setF((x) => ({ ...x, ...p }));
@@ -138,15 +138,16 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
   const montar = () => ({
     ...(receita || {}),
     nome: f.nome.trim(),
-    tipo: modo === 'sabor' ? 'sabor' : modo === 'tamanho' ? 'produto' : receita?.tipo || '',
+    tipo: modo === 'sabor' ? 'sabor' : modo === 'preparo' ? 'preparo' : modo === 'tamanho' ? 'produto' : receita?.tipo || '',
     sabor_id: modo === 'tamanho' ? sabor?.id || '' : '',
     porcao: modo === 'tamanho' ? f.porcao.trim() : '',
     rendimento: modo === 'sabor' ? 1 : numero(f.rendimento) || 1,
+    estoque_minimo: modo === 'sabor' || modo === 'preparo' ? '' : numero(f.estoque_minimo) || '',
     validade_dias: numero(f.validade_dias) || VALIDADE_PADRAO,
     tempo_preparo: modo === 'tamanho' ? '' : numero(f.tempo_preparo) || '',
     markup: String(f.markup).trim() === '' ? '' : numero(f.markup) / 100,
-    preco_venda: modo === 'sabor' ? '' : parseBRL(f.preco_venda) || '',
-    preco_ifood: modo === 'sabor' ? '' : parseBRL(f.preco_ifood) || '',
+    preco_venda: modo === 'sabor' || modo === 'preparo' ? '' : parseBRL(f.preco_venda) || '',
+    preco_ifood: modo === 'sabor' || modo === 'preparo' ? '' : parseBRL(f.preco_ifood) || '',
     ingredientes: JSON.stringify(f.ingredientes.filter((x) => x.insumo_id && numero(x.quantidade) > 0).map((x) => ({ insumo_id: x.insumo_id, quantidade: numero(x.quantidade) }))),
     ativo: f.ativo,
   });
@@ -163,7 +164,7 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
     if (!nova.nome || (modo === 'tamanho' && !sabor)) return;
     // O custo de referência (para o alerta de alta) é o custo do momento em que o preço foi definido.
     const mudouPreco = toCents(nova.preco_venda || 0) !== toCents(receita?.preco_venda || 0);
-    const custo_ref = modo === 'sabor' ? '' : mudouPreco || zerarAlerta || !receita?.custo_ref ? reais(c.porUnidade) : receita.custo_ref;
+    const custo_ref = modo === 'sabor' || modo === 'preparo' ? '' : mudouPreco || zerarAlerta || !receita?.custo_ref ? reais(c.porUnidade) : receita.custo_ref;
     const salvo = await salvar('receitas', { ...nova, custo_ref });
     if (modo === 'sabor') {
       // Sabor renomeado: os tamanhos que tinham o nome antigo acompanham.
@@ -173,7 +174,7 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
       if (!receita && f.criarTamanhos) await salvarVarias('receitas', produtosDoSabor(salvo, s.tables.insumos));
     }
     fecharFolha();
-    toast(modo === 'sabor' ? (receita ? 'Sabor salvo' : `Sabor criado${f.criarTamanhos ? ' com os tamanhos 1100, 550 e 150' : ''}`) : receita ? 'Receita salva' : 'Tamanho criado');
+    toast(modo === 'sabor' ? (receita ? 'Sabor salvo' : `Sabor criado${f.criarTamanhos ? ' com os tamanhos 1100, 550 e 150' : ''}`) : modo === 'preparo' ? 'Preparo salvo' : receita ? 'Receita salva' : 'Tamanho criado');
   };
   const criarPadrao = async () => {
     // Tamanho que já existiu (desligado) volta como estava, com preço e nome; só os novos nascem do padrão.
@@ -181,10 +182,10 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
     await salvarVarias('receitas', produtosDoSabor(receita, s.tables.insumos, faltamPadrao).map((novo) => (porId[novo.id] ? { ...porId[novo.id], ativo: true } : novo)));
     toast(`Tamanhos criados: ${faltamPadrao.map((t) => t.porcao).join(', ')}`);
   };
-  const titulo = receita ? receita.nome : modo === 'sabor' ? 'Novo sabor' : modo === 'tamanho' ? `Novo tamanho de ${sabor?.nome || ''}` : 'Nova receita';
-  const rotuloLista = modo === 'sabor' ? 'Ingredientes de uma receita (uma fornada)' : modo === 'tamanho' ? 'Embalagens e extras (por receita do sabor)' : 'Ingredientes e embalagens da receita inteira';
+  const titulo = receita ? receita.nome : modo === 'preparo' ? 'Novo preparo' : modo === 'sabor' ? 'Novo sabor' : modo === 'tamanho' ? `Novo tamanho de ${sabor?.nome || ''}` : 'Nova receita';
+  const rotuloLista = modo === 'preparo' ? 'Ingredientes de um preparo' : modo === 'sabor' ? 'Ingredientes de uma receita (uma fornada)' : modo === 'tamanho' ? 'Embalagens e extras (por receita do sabor)' : 'Ingredientes e embalagens da receita inteira';
 
-  return html`<${Folha} titulo=${titulo} rodape=${html`<button class="btn btn-pri" onClick=${() => guardar()}>${modo === 'sabor' ? 'Salvar sabor' : 'Salvar receita'}</button>`}>
+  return html`<${Folha} titulo=${titulo} rodape=${html`<button class="btn btn-pri" onClick=${() => guardar()}>${modo === 'sabor' ? 'Salvar sabor' : modo === 'preparo' ? 'Salvar preparo' : 'Salvar receita'}</button>`}>
     ${receita?.sabor_id && !saborDoTamanho && html`<div class="duvida" style="margin-top:0"><${Icone} n="alerta" /><span>O sabor deste tamanho foi apagado da planilha. Ele passa a ser uma receita avulsa: confira os ingredientes ou desligue.</span></div>`}
     ${modo === 'tamanho' && sabor && html`<div class="duvida" style="margin-top:0"><${Icone} n="info" /><span>Os ingredientes e o tempo de preparo vêm do sabor <strong>${sabor.nome}</strong>. Aqui ficam o rendimento, as embalagens e o preço.
       <button class="link" style="display:block;margin-top:4px" onClick=${() => abrirFolha('receita', { receita: sabor })}>Abrir o sabor</button></span></div>`}
@@ -193,13 +194,17 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
       <${Campo} rotulo="Tamanho (ml)"><input id="receita-porcao" value=${f.porcao} onInput=${(e) => set({ porcao: e.target.value })} /><//>
       <${Campo} rotulo="Rende (por receita)" ajuda="Quantas unidades uma receita do sabor dá."><input id="receita-rendimento" inputmode="decimal" value=${f.rendimento} onInput=${(e) => set({ rendimento: e.target.value })} /><//>
     </div>`}
+    ${modo === 'preparo' && html`<div class="duvida" style="margin-top:0"><${Icone} n="info" /><span>Preparo é uma receita que entra em outras (calda, base). Diga quanto ela rende em gramas; nas receitas ele aparece em "Preparos" para escolher.</span></div>
+      <${Campo} rotulo="Rende (gramas)"><input id="receita-rendimento" inputmode="decimal" value=${f.rendimento} onInput=${(e) => set({ rendimento: e.target.value })} /><//>`}
     ${modo === 'avulsa' && html`<${Campo} rotulo="Rende (unidades)"><input id="receita-rendimento" inputmode="decimal" value=${f.rendimento} onInput=${(e) => set({ rendimento: e.target.value })} /><//>`}
-    <div class="linha2">
+    ${modo !== 'preparo' && html`<div class="linha2">
       ${modo !== 'tamanho' && html`<${Campo} rotulo="Tempo de preparo (min)"><input id="receita-tempo" inputmode="numeric" value=${f.tempo_preparo} onInput=${(e) => set({ tempo_preparo: e.target.value })} /><//>`}
       <${Campo} rotulo="Validade (dias)"><input inputmode="numeric" value=${f.validade_dias} onInput=${(e) => set({ validade_dias: e.target.value })} /><//>
       <${Campo} rotulo="Markup (%)"><input id="receita-markup" inputmode="decimal" placeholder=${modo === 'tamanho' ? `do sabor: ${Math.round(c.markup * 1000) / 10}` : ''} value=${f.markup} onInput=${(e) => set({ markup: e.target.value })} /><//>
-    </div>
-    ${modo !== 'sabor' && html`
+    </div>`}
+    ${(modo === 'tamanho' || modo === 'avulsa') && html`<${Campo} rotulo="Estoque mínimo (fornadas)" ajuda=${`Avisa quando houver menos de ${Math.round((numero(f.estoque_minimo) || 0) * (numero(f.rendimento) || 1))} prontos e calcula os ingredientes para manter em casa.`}>
+      <input id="receita-minimo" inputmode="decimal" placeholder="0" value=${f.estoque_minimo} onInput=${(e) => set({ estoque_minimo: e.target.value })} /><//>`}
+    ${modo !== 'sabor' && modo !== 'preparo' && html`
     <${Campo} rotulo="Preço de venda de cada" ajuda=${receita?.preco_sugerido ? `A planilha sugeria ${brl(toCents(receita.preco_sugerido))} (com salário e despesas fixas).` : ''}>
       <input id="receita-preco" inputmode="decimal" placeholder="0,00" value=${f.preco_venda} onInput=${(e) => set({ preco_venda: e.target.value })} />
     <//>
@@ -209,7 +214,12 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
       <input id="receita-preco-ifood" inputmode="decimal" placeholder=${ifood.calculado ? (ifood.preco / 100).toFixed(2).replace('.', ',') : '0,00'} value=${f.preco_ifood} onInput=${(e) => set({ preco_ifood: e.target.value })} />
     <//>`}
 
-    <div class="painel painel-pad" style="margin-top:14px">
+    ${modo === 'preparo' && html`<div class="painel painel-pad" style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between"><span>Custo do preparo inteiro</span><strong>${brl(c.total)}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px"><span>Custo de 100 g</span><strong>${brl(Math.round((c.total / (numero(f.rendimento) || 1)) * 100))}</strong></div>
+      ${c.faltando.length > 0 && html`<p class="muted" style="font-size:12.5px;margin:8px 0 0">Sem preço: ${c.faltando.join(', ')}.</p>`}
+    </div>`}
+    ${modo !== 'preparo' && html`<div class="painel painel-pad" style="margin-top:14px">
       <div class="rot-mercado" style="margin-bottom:4px">${modo === 'sabor' ? 'Custo de uma receita do sabor' : 'Custo da receita inteira'}</div>
       <${LinhaCusto} rot="(A) Mão de obra" valor=${c.maoDeObra} ajuda=${c.maoDeObra || !d.custosFixos.salario ? '' : 'informe o tempo de preparo'} />
       <${LinhaCusto} rot="(B) Ingredientes" valor=${c.ingredientes} />
@@ -223,7 +233,7 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
       ${!d.custosFixos.salario && !d.custosFixos.despesas.length && html`<p class="muted" style="font-size:12.5px;margin:8px 0 0">Mão de obra e despesas fixas estão zeradas. Configure em Receitas > Mão de obra e despesas fixas.</p>`}
       ${receita && modo !== 'sabor' && c.subiu > 0 && html`<div class="duvida" style="margin-top:10px"><${Icone} n="alerta" /><span>O custo subiu ${Math.round(c.subiu * 100)}% desde que o preço foi definido (era ${brl(toCents(receita.custo_ref))}).
         <button class="link" style="display:block;margin-top:4px" onClick=${() => guardar(true)}>Manter o preço e tirar o aviso</button></span></div>`}
-    </div>
+    </div>`}
 
     ${modo === 'sabor' && receita && html`<div class="rot-mercado" style="margin:16px 0 6px">Tamanhos (o que vocês vendem)</div>
       <ul class="lista painel">
@@ -244,12 +254,14 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
     <div class="rot-mercado" style="margin:16px 0 6px">${rotuloLista}</div>
     <ul class="lista painel">
       ${f.ingredientes.map((x, i) => {
-        const ins = d.insumosPorId[x.insumo_id];
+        const prep = idPreparo(x.insumo_id) ? d.receitasPorId[idPreparo(x.insumo_id)] : null;
+        const ins = prep ? { nome: prep.nome, unidade: 'g' } : d.insumosPorId[x.insumo_id];
         const linha = c.linhas.find((l) => !l.doSabor && l.insumo?.id === x.insumo_id && l.quantidade === numero(x.quantidade));
         return html`<li class="item ing-linha">
           <select aria-label=${`Ingrediente ${i + 1}`} value=${x.insumo_id} onChange=${(e) => setIng(i, { insumo_id: e.target.value })}>
             <option value="">Escolha</option>
             ${insumos.map((o) => html`<option value=${o.id}>${o.nome}${o.tipo === 'embalagem' ? ' (embalagem)' : ''}</option>`)}
+            ${d.preparos.filter((p) => p.id !== receita?.id).length > 0 && html`<optgroup label="Preparos (caldas, bases)">${d.preparos.filter((p) => p.id !== receita?.id).map((p) => html`<option value=${`preparo:${p.id}`}>${p.nome}</option>`)}</optgroup>`}
           </select>
           <input aria-label=${`Quantidade de ${ins?.nome || 'ingrediente'}`} inputmode="decimal" value=${x.quantidade} onInput=${(e) => setIng(i, { quantidade: e.target.value })} />
           <span class="muted ing-un">${BASE_TXT[ins?.unidade] || ''}</span>
@@ -260,7 +272,7 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
       ${!f.ingredientes.length && html`<li class="item muted">${modo === 'tamanho' ? 'Sem embalagem.' : 'Sem ingredientes.'}</li>`}
     </ul>
     <button class="btn btn-sec btn-larga" style="margin-top:10px" onClick=${() => set({ ingredientes: [...f.ingredientes, { insumo_id: '', quantidade: '' }] })}><${Icone} n="mais" />${modo === 'tamanho' ? 'Embalagem ou extra' : 'Ingrediente ou embalagem'}</button>
-    ${receita && html`<label class="interruptor"><span>${modo === 'sabor' ? 'Sabor em uso' : 'Receita em uso'}</span><input type="checkbox" checked=${f.ativo} onChange=${(e) => set({ ativo: e.target.checked })} /></label>`}
+    ${receita && html`<label class="interruptor"><span>${modo === 'sabor' ? 'Sabor em uso' : modo === 'preparo' ? 'Preparo em uso' : 'Receita em uso'}</span><input type="checkbox" checked=${f.ativo} onChange=${(e) => set({ ativo: e.target.checked })} /></label>`}
   <//>`;
 }
 
@@ -453,5 +465,45 @@ export function FolhaCustosPudim() {
       <div style="display:flex;justify-content:space-between;margin-top:6px"><span>Minuto de trabalho</span><strong>R$ ${minuto(m.maoDeObra)}</strong></div>
       <div style="display:flex;justify-content:space-between;margin-top:6px"><span>Minuto de despesas</span><strong>R$ ${minuto(m.despesas)}</strong></div>
     </div>
+  <//>`;
+}
+
+// Contagem do que tem em casa (em embalagens: latas, caixinhas, pacotes; aceita meio, 0,5). Vira o ponto de partida
+// do estoque de cada ingrediente; depois disso a produção desconta e as compras somam sozinhas.
+export function FolhaContagem() {
+  const s = useStore();
+  const d = dadosPudim(s);
+  const insumos = (s.tables.insumos || []).filter((x) => x.ativo !== false)
+    .sort((a, b) => (d.minimo[b.id] ? 1 : 0) - (d.minimo[a.id] ? 1 : 0) || a.nome.localeCompare(b.nome));
+  const [valores, setValores] = useState(() => Object.fromEntries(insumos.map((x) => [x.id, d.saldo[x.id] === undefined ? '' : virgula(Math.round((Math.max(0, d.saldo[x.id]) / embalagemBase(x)) * 10) / 10)])));
+  const [salvando, setSalvando] = useState(false);
+  const mudados = insumos.filter((x) => {
+    const v = valores[x.id];
+    if (String(v).trim() === '') return false;
+    const antes = d.saldo[x.id] === undefined ? null : Math.round((Math.max(0, d.saldo[x.id]) / embalagemBase(x)) * 10) / 10;
+    return numero(v) !== antes;
+  });
+  const guardar = async () => {
+    setSalvando(true);
+    try {
+      const agora = new Date().toISOString();
+      await salvarVarias('estoque_insumos', mudados.map((x) => ({
+        data: s.hoje, insumo_id: x.id, tipo: 'contagem', quantidade: Math.round(numero(valores[x.id]) * embalagemBase(x) * 1000) / 1000, origem: 'contagem', ref: '', obs: '', criado_em: agora,
+      })));
+      fecharFolha();
+      toast(`Contagem de ${mudados.length} ingrediente${mudados.length > 1 ? 's' : ''} salva`);
+    } catch {
+      setSalvando(false);
+    }
+  };
+  return html`<${Folha} titulo="O que tem em casa" rodape=${html`<button class="btn btn-pri" disabled=${salvando || !mudados.length} onClick=${guardar}>${salvando ? 'Salvando…' : mudados.length ? `Salvar ${mudados.length} contage${mudados.length > 1 ? 'ns' : 'm'}` : 'Nada mudou'}</button>`}>
+    <p class="muted" style="font-size:13px;margin:0 0 8px">Quantas embalagens tem de cada um (aceita 0,5 para meio pacote). Deixe em branco o que não quer contar agora.</p>
+    <ul class="lista painel">
+      ${insumos.map((x) => html`<li class="item contagem-linha">
+        <div class="corpo"><div class="tit">${x.nome}</div>
+          <div class="meta">1 emb. = ${fmtQtd(embalagemBase(x), x)}${d.minimo[x.id] ? ` · mínimo ${virgula(Math.ceil((d.minimo[x.id] / embalagemBase(x)) * 10) / 10)} emb.` : ''}</div></div>
+        <input aria-label=${`Quantas embalagens de ${x.nome}`} inputmode="decimal" placeholder="—" value=${valores[x.id]} onInput=${(e) => setValores((v) => ({ ...v, [x.id]: e.target.value }))} />
+      </li>`)}
+    </ul>
   <//>`;
 }

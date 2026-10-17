@@ -3,7 +3,7 @@
 import { state, salvar, salvarVarias, apagar, quem } from './store.js';
 import { uid } from '../core/schema.js';
 import { estimar } from '../core/listacompras.js';
-import { tudoOuNada } from './pudim-acoes.js';
+import { tudoOuNada, entradasDaCompra } from './pudim-acoes.js';
 
 const reais = (cents) => Math.round(cents) / 100;
 
@@ -55,6 +55,7 @@ export function finalizarCompra({ itens, mercado, data, conta_id }) {
       };
     }));
     for (const x of salvos) feitos.push({ tabela: 'itens', id: x.id });
+    await entradasDaCompra(salvos.filter((x) => x.origem === 'Pudim'), { data, feitos });
     for (const x of comprados) await apagar('lista', x.id);
     return { total: comprados.reduce((s, x) => s + Math.round(Number(x.preco_pago) * 100), 0), itens: comprados.length };
   });

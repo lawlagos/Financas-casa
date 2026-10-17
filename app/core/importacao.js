@@ -64,7 +64,8 @@ export function prepararImportacao(texto, contasExistentes, previstosExistentes 
     if (!r?.id || !r.nome) return erros.push(`Receita ${i + 1}: falta id ou nome.`);
     if (r.sabor_id && !idsReceitas.has(r.sabor_id)) return erros.push(`Receita ${r.nome}: sabor desconhecido (${r.sabor_id}).`);
     const ings = Array.isArray(r.ingredientes) ? r.ingredientes : null;
-    const sem = (ings || []).filter((x) => !idsInsumos.has(x.insumo_id));
+    // Ingrediente pode ser um preparo (calda, base): "preparo:<id da receita>".
+    const sem = (ings || []).filter((x) => !idsInsumos.has(x.insumo_id) && !(String(x.insumo_id).startsWith('preparo:') && idsReceitas.has(String(x.insumo_id).slice(8))));
     if (sem.length) return erros.push(`Receita ${r.nome}: ingrediente desconhecido (${sem[0].insumo_id}).`);
     // Sem lista de ingredientes no arquivo, mantém a que já existe.
     const linha = juntar({ ...Object.fromEntries(SCHEMA.receitas.map((c) => [c, r[c] ?? ''])), ingredientes: ings ? JSON.stringify(ings) : '' }, receitasExistentes.find((e) => e.id === r.id));

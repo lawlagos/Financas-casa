@@ -536,3 +536,60 @@ test('revisão: sabor desligado tira os tamanhos dele da venda; religar devolve'
   assert.equal(await page.locator('.pdv-produto').count(), 1);
   assert.deepEqual(erros, []);
 });
+
+test('estoque de ingredientes: produção desconta pela receita, apagar devolve, contagem, falta vai para a lista', async () => {
+  const emCasa = async (nome) => (await page.locator('.item-btn', { hasText: nome }).locator('.meta').first().innerText()).match(/Em casa: ([^·]+)/)[1].trim();
+  await page.goto(`${base}/?demo#/pudim`);
+  // abaixo do mínimo: 2 fornadas de 6 do tradicional 150
+  await page.getByRole('alert', { name: 'Estoque mínimo' }).getByRole('button', { name: 'Fazer 2 fornadas' }).click();
+  assert.equal(await page.locator('#mov-quantidade').inputValue(), '12');
+  await page.getByRole('button', { name: 'Pôr no estoque' }).click();
+  await toast().filter({ hasText: '12 Pudim tradicional 150 no estoque' }).waitFor();
+  await page.goto(`${base}/?demo#/pudim?aba=ingredientes`);
+  assert.equal(await emCasa('Leite condensado'), '1,58 kg'); // 6 latas − 2 fornadas × 395 g
+
+  // apagar a produção devolve os ingredientes
+  await page.goto(`${base}/?demo#/pudim`);
+  const mov = page.locator('.arrastavel', { hasText: 'Produziu 12 Pudim tradicional 150' }).first();
+  await mov.scrollIntoViewIfNeeded();
+  const caixa = await mov.boundingBox();
+  await page.mouse.move(caixa.x + caixa.width - 20, caixa.y + caixa.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(caixa.x + 40, caixa.y + caixa.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await toast().filter({ hasText: 'Movimento apagado' }).waitFor();
+  await page.goto(`${base}/?demo#/pudim?aba=ingredientes`);
+  assert.equal(await emCasa('Leite condensado'), '2,37 kg');
+
+  // contagem: só 1 lata em casa → falta para o mínimo (3 latas) e vai para a lista
+  await page.getByRole('button', { name: 'Contar o que tem em casa' }).click();
+  await page.getByLabel('Quantas embalagens de Leite condensado').fill('1');
+  await page.getByRole('button', { name: 'Salvar 1 contagem' }).click();
+  await toast().filter({ hasText: 'Contagem de 1 ingrediente salva' }).waitFor();
+  assert.equal(await emCasa('Leite condensado'), '395 g');
+  const painel = page.locator('.painel', { hasText: 'Estoque de ingredientes' });
+  await painel.getByText('comprar 2').waitFor();
+  await painel.getByRole('button', { name: 'Pôr na lista de compras' }).click();
+  await toast().filter({ hasText: '1 ingrediente na lista de compras' }).waitFor();
+  await page.goto(`${base}/?demo#/lista`);
+  assert.match(await page.locator('.item-lista', { hasText: 'Leite condensado' }).innerText(), /Leite condensado\s*2/);
+  // aviso na tela inicial
+  await page.goto(`${base}/?demo#/inicio`);
+  await page.locator('a.aviso-minimo', { hasText: 'ingrediente faltando' }).waitFor();
+  assert.deepEqual(erros, []);
+});
+
+test('preparo (calda) entra no custo e no gasto de ingredientes de outra receita', async () => {
+  await page.goto(`${base}/?demo#/pudim?aba=receitas`);
+  await page.getByRole('region', { name: 'Preparos' }).getByText('Calda de morango').waitFor();
+  await page.locator('.sabor-cab', { hasText: 'Pudim ninho com Nutella' }).click();
+  await page.getByRole('button', { name: 'Ingrediente ou embalagem' }).click();
+  const n = await page.locator('.ing-linha select').count();
+  await page.getByLabel(`Ingrediente ${n}`).selectOption({ label: 'Calda de morango' });
+  await page.getByLabel('Quantidade de Calda de morango').fill('200');
+  // calda: 200 g de açúcar (R$ 0,76) rende 400 g → 200 g custam R$ 0,38
+  await page.locator('.ing-linha', { hasText: 'g' }).last().getByText('R$ 0,38').waitFor();
+  await page.getByRole('button', { name: 'Salvar sabor' }).click();
+  await toast().filter({ hasText: 'Sabor salvo' }).waitFor();
+  assert.deepEqual(erros, []);
+});
