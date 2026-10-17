@@ -17,6 +17,7 @@ import { FolhaLeitura } from './folhas/leitura.js';
 import { TelaMercado, FolhaProduto } from './telas/mercado.js';
 import { TelaPudim } from './telas/pudim.js';
 import { TelaPdv } from './telas/pdv.js';
+import { TelaCompras } from './telas/compras.js';
 import { FolhaMovimento, FolhaReceita, FolhaInsumo, FolhaVozEstoque, FolhaCustosPudim } from './folhas/pudim.js';
 
 const TELAS = {
@@ -26,6 +27,7 @@ const TELAS = {
   '/negocios': TelaNegocios,
   '/pudim': TelaPudim,
   '/pudim/vender': TelaPdv,
+  '/pudim/compras': TelaCompras,
   '/mais': TelaMais,
   '/mais/mercado': TelaMercado,
   '/mais/previstos': TelaPrevistos,

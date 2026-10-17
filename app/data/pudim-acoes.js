@@ -110,3 +110,40 @@ export async function apagarMovimento(m) {
   for (const l of lancs) await apagar('lancamentos', l.id);
   return { itens: irmaos.length, lancamentos: lancs.length };
 }
+
+// Compra feita a partir da pesquisa de preços: um gasto do Pudim por categoria (ingrediente, embalagem) e os itens,
+// como numa nota de mercado. Os itens fazem o custo das receitas usar o preço pago.
+// linhas: [{ insumo, oferta, quantidade (embalagens), preco (centavos por embalagem, o que foi pago) }]
+export function registrarCompra({ linhas, data, conta_id }) {
+  return tudoOuNada(async (feitos) => {
+    const validas = linhas.filter((l) => l.insumo && l.quantidade > 0 && l.preco > 0);
+    const grupo_id = uid('cmp');
+    const porCategoria = {};
+    for (const l of validas) (porCategoria[l.insumo.tipo === 'embalagem' ? 'cat-embalagem' : 'cat-ingrediente'] ||= []).push(l);
+    const lancPorCat = {};
+    for (const [categoria_id, ls] of Object.entries(porCategoria)) {
+      const lojas = [...new Set(ls.map((l) => l.oferta.loja.nome))].join(', ');
+      const l = await salvar('lancamentos', {
+        tipo: 'saida', valor: reais(ls.reduce((s, x) => s + x.preco * x.quantidade, 0)), data,
+        descricao: `${lojas} — ${categoria_id === 'cat-embalagem' ? 'embalagens' : 'ingredientes'}`.slice(0, 120),
+        conta_id, conta_destino_id: '', categoria_id, origem: 'Pudim', canal: 'compras', grupo_id, previsto_id: '',
+      });
+      feitos.push({ tabela: 'lancamentos', id: l.id });
+      lancPorCat[categoria_id] = l.id;
+    }
+    const agora = new Date().toISOString();
+    const itens = await salvarVarias('itens', validas.map((l) => {
+      const categoria_id = l.insumo.tipo === 'embalagem' ? 'cat-embalagem' : 'cat-ingrediente';
+      const porPeso = ['g', 'kg', 'ml', 'l'].includes(l.insumo.unidade);
+      return {
+        data, mercado: l.oferta.loja.nome, descricao: l.oferta.titulo, quantidade: l.quantidade, unidade: 'un',
+        valor: reais(l.preco * l.quantidade), preco_unitario: reais(l.preco), origem: 'Pudim', categoria_id,
+        lancamento_id: lancPorCat[categoria_id], grupo_id, criado_em: agora,
+        produto: l.insumo.produto || l.insumo.nome, marca: l.oferta.marca || '',
+        tamanho: porPeso ? l.oferta.qtd : '', tamanho_unidade: porPeso ? l.insumo.unidade : '',
+      };
+    }));
+    for (const x of itens) feitos.push({ tabela: 'itens', id: x.id });
+    return { total: validas.reduce((s, x) => s + x.preco * x.quantidade, 0), itens: itens.length };
+  });
+}

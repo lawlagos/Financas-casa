@@ -432,3 +432,26 @@ test('revisão: quantidade do PDV aceita apagar e digitar 1,5 sem sumir; receita
   await page.locator('.lista .item-btn', { hasText: 'Pudim ninho com Nutella 1100' }).first().waitFor();
   assert.deepEqual(erros, []);
 });
+
+test('comprar insumos: pesquisa simulada, carrinho, preço pago e registro que atualiza o custo das receitas', async () => {
+  await page.goto(`${base}/?demo#/pudim?aba=ingredientes`);
+  await page.getByRole('link', { name: /Pesquisar preços e comprar/ }).click();
+  await page.getByRole('note').filter({ hasText: 'Preços simulados' }).waitFor();
+  await page.getByLabel('Pesquisar insumos').fill('creme');
+  assert.equal(await page.locator('.grupo-ofertas').count(), 1);
+  assert.equal(await page.locator('.grupo-ofertas').getByText('Menor preço').count(), 1);
+  assert.match(await page.locator('.grupo-ofertas a.link').getAttribute('href'), /google\.com\/search\?tbm=shop&q=Creme%20de%20leite/);
+  await page.locator('.grupo-ofertas .oferta-add').first().click();
+  await page.getByRole('button', { name: /^Mais Creme de leite/ }).first().click();
+  const preco = page.getByLabel(/^Preço pago em Creme de leite/);
+  await preco.fill('3,10');
+  await page.locator('#compra').getByText('R$ 6,20').first().waitFor();
+  await page.getByRole('button', { name: 'Registrar compra · R$ 6,20' }).click();
+  await toast().filter({ hasText: 'Compra de R$ 6,20 registrada' }).waitFor();
+  await page.goto(`${base}/?demo#/lancamentos`);
+  await page.locator('.item', { hasText: '— ingredientes' }).first().waitFor();
+  await page.goto(`${base}/?demo#/pudim?aba=ingredientes`);
+  const hojeTxt = (await hoje()).split('-').reverse().slice(0, 2).join('/');
+  assert.match(await page.locator('.item-btn', { hasText: 'Creme de leite' }).innerText(), new RegExp(`nota de ${hojeTxt}`));
+  assert.deepEqual(erros, []);
+});

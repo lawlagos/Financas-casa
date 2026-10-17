@@ -1,7 +1,7 @@
 // Ponto de entrada do Web App. O app manda POST com {acao, sessao, dados}.
 
 // Mude a cada atualização do servidor: abrir o endereço /exec no navegador mostra este número.
-var VERSAO_SERVIDOR = '2026-10-17.8';
+var VERSAO_SERVIDOR = '2026-10-17.9';
 
 function doPost(e) {
   var resposta;

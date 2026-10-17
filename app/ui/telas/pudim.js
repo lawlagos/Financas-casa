@@ -186,6 +186,7 @@ function AbaIngredientes({ s, d }) {
   };
   return html`
     <div class="acoes" style="justify-content:flex-end"><button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('insumo', {})}><${Icone} n="mais" />Novo</button></div>
+    <a class="btn btn-pri btn-larga" style="margin-top:10px" href="#/pudim/compras"><${Icone} n="busca" />Pesquisar preços e comprar</a>
     <p class="muted" style="font-size:13px;margin:8px 2px">O preço vem da nota de mercado mais recente do produto. Sem nota, vale o preço digitado aqui.</p>
     <ul class="lista painel">${bloco('ingrediente', 'Ingredientes')}${bloco('embalagem', 'Embalagens')}</ul>
     <${Desativados} lista=${(s.tables.insumos || []).filter((x) => !ativo(x))} tipo="ingredientes" folha="insumo" chave="insumo" />`;
