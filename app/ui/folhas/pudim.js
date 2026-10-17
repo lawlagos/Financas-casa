@@ -14,6 +14,7 @@ import { contasAtivas } from '../derivados.js';
 import { SelectConta } from './lancamento.js';
 import { dadosPudim, porTamanho, fmtQtd } from '../telas/pudim.js';
 import { embalagemBase, locaisDoProduto } from '../../core/estoqueinsumos.js';
+import { cartoesEstoque } from '../../core/cardapio.js';
 
 // "1,5" e "1.5" são um e meio; "1.500" (com vírgula ou três casas depois do ponto) é mil e quinhentos.
 const numero = (t) => {
@@ -139,9 +140,13 @@ export function FolhaLote({ local: localPedido }) {
   const [validade, setValidade] = useState('');
   const [qtds, setQtds] = useState({});
   const [salvando, setSalvando] = useState(false);
-  const lista = produtosDoLocal(d, local).sort((a, b) => (a.sabor_id || a.id).localeCompare(b.sabor_id || b.id) || porTamanho(a, b));
-  const vence = validade || addDays(data, VALIDADE_PADRAO);
+  // Na ordem do cardápio (copo, 1 kg e 500 g, geladinhos).
+  const grupos = cartoesEstoque(d.receitas, [], s.hoje, { local, locais: d.locais });
+  const lista = grupos.flatMap((g) => g.cartoes.map((c) => c.receita));
   const itens = lista.map((r) => ({ receita: r, quantidade: numero(qtds[r.id]) })).filter((i) => i.quantidade > 0);
+  // Validade sugerida: a menor entre os pudins do lote (copo 25 dias, 1 kg e 500 g 7 dias, geladinho 60).
+  const diasMin = Math.min(...itens.map((i) => Number(i.receita.validade_dias) || VALIDADE_PADRAO));
+  const vence = validade || addDays(data, Number.isFinite(diasMin) ? diasMin : VALIDADE_PADRAO);
   const total = itens.reduce((t, i) => t + i.quantidade, 0);
   const custo = itens.reduce((t, i) => t + i.quantidade * (d.custos[i.receita.id]?.porUnidade || 0), 0);
   const guardar = async () => {
@@ -162,7 +167,8 @@ export function FolhaLote({ local: localPedido }) {
       <${Campo} rotulo="Feito no dia"><input type="date" value=${data} onInput=${(e) => setData(e.target.value)} /><//>
       <${Campo} rotulo="Vence em"><input type="date" aria-label="Vence em" value=${vence} onInput=${(e) => setValidade(e.target.value)} /><//>
     </div>
-    <${Quantidades} lista=${lista} qtds=${qtds} setQtd=${(id, v) => setQtds((x) => ({ ...x, [id]: v }))} extra=${(r) => `rende ${r.rendimento || 1} por fornada`} />
+    ${grupos.map((g) => html`<h3 class="cardapio-tit" style="margin-top:14px">${g.titulo}</h3>
+      <${Quantidades} lista=${g.cartoes.map((c) => c.receita)} qtds=${qtds} setQtd=${(id, v) => setQtds((x) => ({ ...x, [id]: v }))} extra=${(r) => `rende ${r.rendimento || 1} por fornada · vale ${r.validade_dias || VALIDADE_PADRAO} dias`} />`)}
     ${itens.length > 0 && html`<p class="muted" style="font-size:13px;margin:10px 2px 0">${total} pudins, ${brl(Math.round(custo))} em ingredientes e embalagens (sai do estoque de ingredientes).</p>`}
   <//>`;
 }
@@ -209,6 +215,56 @@ export function FolhaEnvio({ de: dePedido, para: paraPedido, quantidades = {} })
       ? html`<${Quantidades} lista=${lista} qtds=${qtds} setQtd=${(id, v) => setQtds((x) => ({ ...x, [id]: v }))} extra=${(r) => `tem ${temEm(de, r.id)} em ${nome(de)}, ${temEm(para, r.id)} em ${nome(para)}`} />`
       : html`<p class="muted" style="margin-top:12px">${nome(de)} não tem pudim pronto para enviar.</p>`}
     ${passa.length > 0 && html`<div class="duvida" style="margin-top:10px"><${Icone} n="alerta" /><span>${passa.map((i) => `${nome(de)} só tem ${temEm(de, i.receita.id)} ${i.receita.nome}`).join('; ')}. O que passar chega com a validade de hoje e fica devendo na origem até a próxima produção.</span></div>`}
+  <//>`;
+}
+
+// Um pudim do estoque: quanto tem em cada local, por validade, quanto custa e quanto sobra em cada canal.
+export function FolhaEstoqueProduto({ receita_id, local: localTela = '' }) {
+  const s = useStore();
+  const d = dadosPudim(s);
+  const r = d.receitasPorId[receita_id];
+  if (!r) return html`<${Folha} titulo="Pudim"><p class="muted">Esse pudim não existe mais.</p><//>`;
+  const c = d.custos[r.id];
+  const taxaPct = taxaIfood();
+  const direta = toCents(r.preco_venda || 0);
+  const ifood = precoNoCanal(r, 'ifood', taxaPct);
+  const liquidoIfood = ifood.preco - Math.round((ifood.preco * taxaPct) / 100);
+  const amanha = addDays(s.hoje, 1);
+  const locais = locaisDoProduto(r, d.locais);
+  const porLocal = locais.map((l) => {
+    const porValidade = {};
+    for (const lt of d.lotes) if (lt.receita_id === r.id && lt.local === l.id) porValidade[lt.validade] = (porValidade[lt.validade] || 0) + lt.restante;
+    const linhas = Object.entries(porValidade).sort(([a], [b]) => (a < b ? -1 : 1)).map(([validade, quantidade]) => ({ validade, quantidade, vencido: validade < s.hoje }));
+    const minimo = Math.ceil((Number(r.estoque_minimo) || 0) * (Number(r.rendimento) || 1) * (Number(l.fator) || 0));
+    return { local: l, linhas, prontos: linhas.filter((x) => !x.vencido).reduce((t, x) => t + x.quantidade, 0), minimo };
+  });
+  const opLocal = d.locaisPorId[localTela] && locais.some((l) => l.id === localTela) ? localTela : locais[0]?.id || d.locais[0].id;
+  const quando = (v) => (v < s.hoje ? `venceu ${fmtDay(v)}` : v === s.hoje ? 'vence hoje' : v === amanha ? 'vence amanhã' : `vence ${fmtDay(v)}`);
+  const ir = (tipo, props) => abrirFolha(tipo, props);
+  return html`<${Folha} titulo=${r.nome}>
+    <div class="painel painel-pad">
+      <div style="display:flex;justify-content:space-between;gap:10px"><span>Custo de cada (ingredientes e embalagem)</span><strong style="white-space:nowrap">${brl(c.completoUnidade)}</strong></div>
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:6px"><span>Venda direta ${direta ? brl(direta) : '—'}</span><strong class=${direta - c.completoUnidade < 0 ? 'neg' : 'pos'}>${direta ? `lucro ${brl(direta - c.completoUnidade)}` : 'sem preço'}</strong></div>
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:6px"><span>iFood ${ifood.preco ? brl(ifood.preco) : '—'}${ifood.calculado ? '*' : ''}</span><strong class=${liquidoIfood - c.completoUnidade < 0 ? 'neg' : 'pos'}>${ifood.preco ? `lucro ${brl(liquidoIfood - c.completoUnidade)}` : 'sem preço'}</strong></div>
+      <div class="muted" style="font-size:12.5px;margin-top:6px">Validade de ${r.validade_dias || VALIDADE_PADRAO} dias. Uma fornada rende ${r.rendimento || 1}.${ifood.calculado ? ' * Sem preço de iFood cadastrado: calculado para sobrar o mesmo da venda direta.' : ''}</div>
+    </div>
+    ${porLocal.map((x) => html`<div class="estoque-local">
+      <h4><span>${x.local.nome}</span><span class=${x.minimo > 0 && x.prontos < x.minimo ? 'neg' : ''}>${x.prontos} pronto${x.prontos === 1 ? '' : 's'}${x.minimo ? ` · mín. ${x.minimo}` : ''}</span></h4>
+      ${x.linhas.length
+        ? html`<ul class="lista painel">${x.linhas.map((l) => html`<li class="item"><div class="corpo"><div class="tit">${l.quantidade} ${l.quantidade === 1 ? 'unidade' : 'unidades'}</div></div>
+            <div class=${`valor ${l.vencido ? 'neg' : l.validade <= amanha ? 'atencao' : ''}`} style="font-size:14px">${quando(l.validade)}</div></li>`)}</ul>`
+        : html`<p class="muted" style="margin:2px 0 0;font-size:13.5px">Nenhum.</p>`}
+    </div>`)}
+    <div class="acoes acoes-pudim" style="margin-top:16px">
+      <button class="btn btn-pri" onClick=${() => ir('movimento', { tipo: 'producao', receita_id: r.id, quantidade: Number(r.rendimento) || 1, local: opLocal })}>Produzi</button>
+      <a class="btn btn-sec" href=${`#/pudim/vender?local=${opLocal}`} onClick=${() => fecharFolha()}>Vender</a>
+      <button class="btn btn-sec" onClick=${() => ir('movimento', { tipo: 'perda', receita_id: r.id, local: opLocal })}>Perdi</button>
+    </div>
+    ${locais.length > 1 && html`<button class="btn btn-sec btn-larga" style="margin-top:8px" onClick=${() => {
+      const de = porLocal.slice().sort((a, b) => b.prontos - a.prontos)[0].local.id;
+      ir('envio', { de, quantidades: {} });
+    }}>Enviar para outro local</button>`}
+    <button class="link" style="margin-top:12px" onClick=${() => ir('receita', { receita: r })}>Preço, receita e validade</button>
   <//>`;
 }
 
@@ -360,13 +416,13 @@ export function FolhaReceita({ receita, novoSabor, novoPreparo, sabor_id: novoTa
       if (!receita && f.criarTamanhos) await salvarVarias('receitas', produtosDoSabor(salvo, s.tables.insumos));
     }
     fecharFolha();
-    toast(modo === 'sabor' ? (receita ? 'Sabor salvo' : `Sabor criado${f.criarTamanhos ? ' com os tamanhos 1100, 550 e 150' : ''}`) : modo === 'preparo' ? 'Preparo salvo' : receita ? 'Receita salva' : 'Tamanho criado');
+    toast(modo === 'sabor' ? (receita ? 'Sabor salvo' : `Sabor criado${f.criarTamanhos ? ' com 1 kg, 500 g e copo' : ''}`) : modo === 'preparo' ? 'Preparo salvo' : receita ? 'Receita salva' : 'Tamanho criado');
   };
   const criarPadrao = async () => {
     // Tamanho que já existiu (desligado) volta como estava, com preço e nome; só os novos nascem do padrão.
     const porId = d.receitasPorId;
     await salvarVarias('receitas', produtosDoSabor(receita, s.tables.insumos, faltamPadrao).map((novo) => (porId[novo.id] ? { ...porId[novo.id], ativo: true } : novo)));
-    toast(`Tamanhos criados: ${faltamPadrao.map((t) => t.porcao).join(', ')}`);
+    toast(`Tamanhos criados: ${faltamPadrao.map((t) => t.nome).join(', ')}`);
   };
   const titulo = receita ? receita.nome : modo === 'preparo' ? 'Novo preparo' : modo === 'sabor' ? 'Novo sabor' : modo === 'tamanho' ? `Novo tamanho de ${sabor?.nome || ''}` : 'Nova receita';
   const rotuloLista = modo === 'preparo' ? 'Ingredientes de um preparo' : modo === 'sabor' ? 'Ingredientes de uma receita (uma fornada)' : modo === 'tamanho' ? 'Embalagens e extras (por receita do sabor)' : 'Ingredientes e embalagens da receita inteira';
@@ -435,7 +491,7 @@ export function FolhaReceita({ receita, novoSabor, novoPreparo, sabor_id: novoTa
         ${faltamPadrao.length > 0 && html`<button class="btn btn-sec" style="flex:1" onClick=${criarPadrao}>Criar ${faltamPadrao.map((t) => t.porcao).join(', ')}</button>`}
         <button class="btn btn-sec" style="flex:1" onClick=${() => abrirFolha('receita', { sabor_id: receita.id })}><${Icone} n="mais" />Outro tamanho</button>
       </div>`}
-    ${modo === 'sabor' && !receita && html`<label class="interruptor"><span>Criar os tamanhos 1100 (rende 1), 550 (rende 2) e 150 (rende 6)</span><input type="checkbox" checked=${f.criarTamanhos} onChange=${(e) => set({ criarTamanhos: e.target.checked })} /></label>`}
+    ${modo === 'sabor' && !receita && html`<label class="interruptor"><span>Criar 1 kg (rende 1), 500 g (rende 2) e copo de 150 (rende 6)</span><input type="checkbox" checked=${f.criarTamanhos} onChange=${(e) => set({ criarTamanhos: e.target.checked })} /></label>`}
 
     <div class="rot-mercado" style="margin:16px 0 6px">${rotuloLista}</div>
     <ul class="lista painel">
@@ -574,9 +630,9 @@ export function FolhaVozEstoque({ local: localPedido = '' }) {
 
   return html`<${Folha} titulo="Estoque por voz" rodape=${r && html`<button class="btn btn-pri" disabled=${!ok || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : 'Confirmar'}</button>`}>
     <${CampoFala} id="voz-estoque" rotulo="O que aconteceu" frase=${frase} setFrase=${setFrase} onPronto=${entender}
-      placeholder="Ex.: fiz uma fornada de mini 150 e vendi 3 tradicionais 1100 no iFood" />
+      placeholder="Ex.: fiz uma fornada de tradicional no copo e vendi 2 brigadeirão de 1 kg no iFood" />
     <div class="acoes" style="margin-top:8px;justify-content:flex-end"><button class="btn btn-sec btn-mini" disabled=${!frase.trim()} onClick=${() => entender(frase)}>Entender</button></div>
-    ${r && !itens.length && html`<div class="duvida" style="margin-top:10px"><${Icone} n="alerta" /><span>Não reconheci nenhum pudim. Fale o nome como está nas receitas, com o tamanho (ex.: "tradicional 1100").</span></div>`}
+    ${r && !itens.length && html`<div class="duvida" style="margin-top:10px"><${Icone} n="alerta" /><span>Não reconheci nenhum pudim. Fale o nome como está nas receitas, com o tamanho (ex.: "tradicional no copo", "brigadeirão 1 kg").</span></div>`}
     ${r && itens.length > 0 && html`
       <${Campo} rotulo="Dia"><input type="date" value=${r.data} onInput=${(e) => setR({ ...r, data: e.target.value })} /><//>
       <${EscolheLocal} locais=${d.locais} valor=${onde} onChange=${setOnde} />

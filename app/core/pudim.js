@@ -164,11 +164,14 @@ export const ehSabor = (r) => r?.tipo === 'sabor';
 
 // Tamanhos de sempre: quantas unidades uma receita rende em cada um e a embalagem de cada unidade
 // (procurada pelo nome entre os ingredientes/embalagens cadastrados).
+// Validade: 7 dias no 1 kg e no 500 g, 25 dias no copo.
 export const TAMANHOS_PADRAO = [
-  { porcao: '1100', rendimento: 1, embalagens: [['embalagem pudim 1100', 1]] },
-  { porcao: '550', rendimento: 2, embalagens: [['embalagem pudim 500', 1]] },
-  { porcao: '150', rendimento: 6, embalagens: [['copo americano', 1], ['tampa rojek', 1]] },
+  { porcao: '1000', nome: '1 kg', rendimento: 1, validade_dias: 7, embalagens: [['embalagem pudim 1100', 1]] },
+  { porcao: '500', nome: '500 g', rendimento: 2, validade_dias: 7, embalagens: [['embalagem pudim 500', 1]] },
+  { porcao: '150', nome: 'no copo', rendimento: 6, validade_dias: 25, embalagens: [['copo americano', 1], ['tampa rojek', 1]] },
 ];
+// Geladinho fica congelado: 60 dias.
+export const VALIDADE_GELADINHO = 60;
 
 const semAcento = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 
@@ -177,12 +180,12 @@ export function produtosDoSabor(sabor, insumos, tamanhos = TAMANHOS_PADRAO) {
   const porNome = Object.fromEntries((insumos || []).filter((x) => x.ativo !== false).map((x) => [semAcento(x.nome), x]));
   return tamanhos.map((t) => ({
     id: `${sabor.id}-${t.porcao}`.replace(/^pp-sab-/, 'pp-pro-'),
-    nome: `${sabor.nome} ${t.porcao}`,
+    nome: `${sabor.nome} ${t.nome || t.porcao}`,
     tipo: 'produto',
     sabor_id: sabor.id,
     porcao: t.porcao,
     rendimento: t.rendimento,
-    validade_dias: sabor.validade_dias || VALIDADE_PADRAO,
+    validade_dias: t.validade_dias || sabor.validade_dias || VALIDADE_PADRAO,
     preco_venda: '',
     preco_ifood: '',
     custo_ref: '',

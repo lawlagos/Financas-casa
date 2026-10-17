@@ -140,7 +140,7 @@ export function TelaPdv({ params = {} }) {
     ${d.locais.length > 1 && html`<${Segmento} rotulo="Local" classe="pdv-local" opcoes=${d.locais.map((l) => [l.id, l.nome])} valor=${local} onChange=${trocarLocal} />`}
     <${Segmento} rotulo="Canal" classe=${d.locais.length > 1 ? 'mt8' : ''} opcoes=${[['direta', CANAIS.direta], ['ifood', CANAIS.ifood]]} valor=${canal} onChange=${setCanal} />
     ${canal === 'ifood' && html`<p class="muted" style="font-size:12.5px;margin:6px 2px 0">Preços do iFood; a taxa de ${qtdTxt(taxaPct)}% sai do valor da venda.</p>`}
-    ${falando && html`<div style="margin-top:10px"><${CampoFala} id="pdv-frase" rotulo="O que vendeu" frase=${frase} setFrase=${setFrase} onPronto=${ouvido} placeholder="Ex.: 3 tradicionais 1100 e 2 de ninho com nutella" /></div>`}
+    ${falando && html`<div style="margin-top:10px"><${CampoFala} id="pdv-frase" rotulo="O que vendeu" frase=${frase} setFrase=${setFrase} onPronto=${ouvido} placeholder="Ex.: 3 tradicionais no copo e 2 geladinhos de ninho com nutella" /></div>`}
 
     <div class="campo" style="margin-top:10px"><input class="pdv-busca" type="search" aria-label="Buscar pudim" placeholder="Buscar pudim" value=${busca} onInput=${(e) => setBusca(e.target.value)} /></div>
     ${duvida && html`<div class="duvida" style="margin-top:10px"><${Icone} n="info" /><span>Qual destes é "${duvida.trecho}"? Toque no certo para pôr ${qtdTxt(duvida.quantidade || 1)} no carrinho.

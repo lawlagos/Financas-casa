@@ -14,18 +14,26 @@ const NUMEROS = {
 const DEZENAS = 'vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa';
 const UNIDADES = 'um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove';
 // Jeitos de falar o tamanho sem dizer os ml.
-const TAMANHO_POR_PALAVRA = { mini: '150', copinho: '150', copo: '150', pequeno: '150', pequena: '150', medio: '550', media: '550', grande: '1100' };
+// Os números antigos (1100, 550) também valem para os tamanhos de agora (1 kg, 500 g): `TAMANHO_EQUIVALENTE`.
+const TAMANHO_POR_PALAVRA = { mini: '150', copinho: '150', copo: '150', pequeno: '150', pequena: '150', medio: '500', media: '500', grande: '1000', quilo: '1000', kilo: '1000', kg: '1000' };
+const TAMANHO_EQUIVALENTE = { 1100: ['1100', '1000'], 1000: ['1000', '1100'], 550: ['550', '500'], 500: ['500', '550'] };
+// Jeitos diferentes de dizer o mesmo sabor.
+const SINONIMOS = { brigadeiro: 'brigadeirao' };
 // Palavras que podem vir entre o verbo e a quantidade sem mudar o sentido ("vendi ontem 30 de café").
 const ENCHIMENTO = new Set(['ontem', 'hoje', 'anteontem', 'so', 'mais', 'ja', 'eu', 'ela', 'nos', 'a', 'o', 'tambem', 'agora']);
 
 // Números por extenso viram algarismos antes de cortar a frase: "vinte e cinco" → 25, "duas duzias" → 24.
 function numerosEmAlgarismos(t) {
   return t
+    .replace(/\bmeio (quilo|kilo|kg)\b/g, '500')
     .replace(new RegExp(`\\b(${DEZENAS}) e (${UNIDADES})\\b`, 'g'), (_, d, u) => String(NUMEROS[d] + NUMEROS[u]))
     .replace(/\bmeia duzia\b/g, '6')
     .replace(new RegExp(`\\b(\\d+|${Object.keys(NUMEROS).join('|')}) duzias?\\b`, 'g'), (_, n) => String((/^\\d+$/.test(n) ? Number(n) : NUMEROS[n]) * 12))
     .replace(/\bduzias?\b/g, '12')
-    .replace(new RegExp(`\\b(${Object.keys(NUMEROS).join('|')})\\b`, 'g'), (n) => String(NUMEROS[n]));
+    .replace(new RegExp(`\\b(${Object.keys(NUMEROS).join('|')})\\b`, 'g'), (n) => String(NUMEROS[n]))
+    // "1 kg", "um quilo" e "500 g" são tamanho, não quantidade.
+    .replace(/\b1 ?(quilo|kilo|kg)s?\b/g, '1000')
+    .replace(/\b(\d{3,4}) ?(g|gramas|ml)\b/g, '$1');
 }
 
 const VERBOS = [
@@ -36,7 +44,7 @@ const VERBOS = [
 ];
 const MOTIVOS = [['quebrou', ['quebrou', 'quebraram', 'caiu', 'estragou', 'estragaram', 'derreteu']], ['consumo', ['comemos', 'comi', 'dei', 'brinde', 'presente', 'provamos']], ['vencido', ['venceu', 'venceram', 'vencido', 'vencidos', 'validade']]];
 // Palavras que não ajudam a achar a receita.
-const VAZIAS = new Set(['de', 'do', 'da', 'dos', 'das', 'com', 'e', 'o', 'a', 'os', 'as', 'no', 'na', 'nos', 'nas', 'um', 'uma', 'pudim', 'que', 'pro', 'pra', 'para', 'em', 'ml', 'g', 'gramas', 'hoje', 'ontem', 'anteontem', 'mais', 'ja', 'unidade', 'unidades', 'eu', 'ela', 'nos']);
+const VAZIAS = new Set(['de', 'do', 'da', 'dos', 'das', 'com', 'e', 'o', 'a', 'os', 'as', 'no', 'na', 'nos', 'nas', 'um', 'uma', 'pudim', 'kg', 'copo', 'quilo', 'que', 'pro', 'pra', 'para', 'em', 'ml', 'g', 'gramas', 'hoje', 'ontem', 'anteontem', 'mais', 'ja', 'unidade', 'unidades', 'eu', 'ela', 'nos']);
 
 // Singular aproximado: "tradicionais" → "tradicional", "pudins" → "pudim", "limões" → "limao".
 function raiz(p) {
@@ -48,7 +56,7 @@ function raiz(p) {
   if (p.endsWith('s')) return p.slice(0, -1);
   return p;
 }
-const palavras = (t) => norm(t).split(/[^a-z0-9]+/).filter(Boolean).map(raiz);
+const palavras = (t) => norm(t).split(/[^a-z0-9]+/).filter(Boolean).map(raiz).map((p) => SINONIMOS[p] || p);
 // Compara já no singular aproximado dos dois lados ("fizemos" e "comemos" perdem o "s" como a frase).
 const tem = (lista, ps) => ps.some((p) => lista.includes(raiz(p)));
 
@@ -67,15 +75,16 @@ function candidatos(trecho, receitas, tamanhos, porPalavra = []) {
     const ps = palavras(r.nome).filter((p) => !VAZIAS.has(p));
     const tamanhoReceita = ps.filter((p) => /^\d+$/.test(p)).concat(r.porcao ? [String(r.porcao)] : []);
     const nomes = ps.filter((p) => !/^\d+$/.test(p));
-    if (tamanhos.length && !tamanhos.some((t) => tamanhoReceita.includes(t))) continue;
+    const bate = (t) => (TAMANHO_EQUIVALENTE[t] || [t]).some((x) => tamanhoReceita.includes(x));
+    if (tamanhos.length && !tamanhos.some(bate)) continue;
     const temTamanho = tamanhoReceita.length > 0;
-    const bateTamanhoPalavra = porPalavra.length && temTamanho && porPalavra.some((t) => tamanhoReceita.includes(t));
+    const bateTamanhoPalavra = porPalavra.length && temTamanho && porPalavra.some(bate);
     if (porPalavra.length && temTamanho && !bateTamanhoPalavra) continue;
-    const bate = nomes.filter((p) => ditas.has(p)).length;
+    const acertos = nomes.filter((p) => ditas.has(p)).length;
     // Só o tamanho dito ("uma fornada de 150"): entram todos daquele tamanho, para escolher.
-    if (!bate && !tamanhos.length && !bateTamanhoPalavra) continue;
+    if (!acertos && !tamanhos.length && !bateTamanhoPalavra) continue;
     // Sem nenhuma palavra do nome, só o tamanho: todos empatam (o app pergunta qual).
-    out.push({ r, nota: bate ? bate - 0.3 * (nomes.length - bate) + (tamanhos.length ? 0.5 : 0) : 0 });
+    out.push({ r, nota: acertos ? acertos - 0.3 * (nomes.length - acertos) + (tamanhos.length ? 0.5 : 0) : 0 });
   }
   return out.sort((a, b) => b.nota - a.nota);
 }
@@ -141,8 +150,9 @@ export function interpretarEstoque(texto, { receitas = [], hoje, estoque = {}, l
     let antes = primeiro ? primeiro.i - 1 : -1;
     while (antes >= 0 && ENCHIMENTO.has(ps[antes])) antes -= 1;
     const depois = primeiro ? ps[primeiro.i + 1] : '';
-    const ehTamanho = primeiro && nums.length === 1 && primeiro.n >= 20 && antes >= 0
-      && !VERBOS.some(([, vs]) => vs.map(raiz).includes(ps[antes])) && !['de', 'do', 'da'].includes(depois);
+    // Número sozinho que é um tamanho de pudim (1000, 500, 150...) também é tamanho: "vendi 1 kg de tradicional".
+    const ehTamanho = primeiro && nums.length === 1 && primeiro.n >= 20 && ((antes >= 0
+      && !VERBOS.some(([, vs]) => vs.map(raiz).includes(ps[antes])) && !['de', 'do', 'da'].includes(depois)) || [150, 500, 550, 1000, 1100].includes(primeiro.n));
     if (ehTamanho) {
       tamanhos.push(String(primeiro.n));
       quantidade = null;

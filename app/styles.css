@@ -512,3 +512,37 @@ button.cartao-custos { width: 100%; text-align: left; font: inherit; cursor: poi
 .lista-minimo .btn { white-space: nowrap; }
 .contagem-linha input { width: 70px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; text-align: right; }
 .segmento.mt8 { margin-top: 8px; }
+
+/* Estoque do pudim como o cardápio */
+.hero-compacto { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.hero-compacto .num-mercado { font-size: 26px; margin-bottom: 0; }
+.cardapio-cat { margin-top: 18px; }
+.cardapio-tit { font: 700 17px/1.2 var(--display); margin: 0 2px 8px; letter-spacing: -0.01em; }
+.grade-estoque { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 620px) { .grade-estoque { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.cartao-estoque {
+  display: flex; flex-direction: column; align-items: stretch; text-align: left; gap: 2px; min-width: 0;
+  padding: 10px 12px 10px 14px; border: 1px solid var(--line); border-left: 5px solid var(--pos); border-radius: var(--r-card);
+  background: var(--surface); color: var(--ink); font: inherit; box-shadow: var(--shadow); cursor: pointer;
+}
+.cartao-estoque:active { transform: scale(0.98); }
+.cartao-estoque.st-baixo, .cartao-estoque.st-zerado { border-left-color: var(--neg); }
+.cartao-estoque.st-vence { border-left-color: var(--caramel); }
+.cartao-estoque.st-vazio { border-left-color: var(--line); }
+.ce-nome { font-weight: 700; font-size: 14.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.ce-num { font: 700 32px/1.05 var(--display); letter-spacing: -0.02em; margin: 2px 0; }
+.st-zerado .ce-num { color: var(--neg); }
+.st-vazio .ce-num { color: var(--ink-3); }
+.ce-locais { display: flex; flex-direction: column; gap: 1px; font-size: 13px; color: var(--ink-2); }
+.ce-locais > span { display: flex; justify-content: space-between; gap: 8px; }
+.ce-locais b { color: var(--ink); }
+.ce-locais b.neg { color: var(--neg); }
+.ce-info { font-size: 12px; color: var(--ink-3); margin-top: 3px; line-height: 1.3; }
+.st-baixo .ce-info, .st-zerado .ce-info { color: var(--neg); }
+.st-vence .ce-info { color: var(--caramel-ink); }
+.acoes-pudim .btn svg { width: 16px; height: 16px; }
+.estoque-local { margin-top: 12px; }
+.estoque-local h4 { margin: 0 0 4px; font-size: 15px; display: flex; justify-content: space-between; }
+.ce-vazios { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 13px; }
+.ce-vazios .chip { font-size: 13px; padding: 6px 10px; }
+.item .meta.quebra { white-space: normal; overflow: visible; text-overflow: clip; }

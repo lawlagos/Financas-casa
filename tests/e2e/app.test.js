@@ -357,7 +357,7 @@ test('estoque por voz: produz, vende e perde numa frase; o que faltou é respond
   await page.goto(`${base}/?demo#/pudim`);
   const pudins = async () => Number((await page.locator('.hero-pudim .num-mercado').innerText()).match(/\d+/)[0]);
   const antes = await pudins();
-  await page.getByRole('button', { name: /Falar o que produziu/ }).click();
+  await page.getByRole('button', { name: 'Falar', exact: true }).click();
   await page.locator('#voz-estoque').fill('fiz uma fornada de mini pudim 150, vendi 1 pudim tradicional 1100 e perdi um ninho que caiu');
   await page.keyboard.press('Enter');
   await page.getByLabel('Pudim do item 1').waitFor();
@@ -368,7 +368,7 @@ test('estoque por voz: produz, vende e perde numa frase; o que faltou é respond
   assert.equal(await pudins(), antes + 6 - 1 - 1);
 
   // sem dizer o que houve: o app pergunta
-  await page.getByRole('button', { name: /Falar o que produziu/ }).click();
+  await page.getByRole('button', { name: 'Falar', exact: true }).click();
   await page.locator('#voz-estoque').fill('2 de ninho');
   await page.getByRole('button', { name: 'Entender' }).click();
   await page.getByText('Responda os ❓ para confirmar.').waitFor();
@@ -408,7 +408,7 @@ test('custos do pudim: mão de obra e despesas fixas entram na receita pelo temp
   await folha().getByText(/Preço sugerido \(markup 50%\)/).waitFor();
   await folha().getByText('Os ingredientes e o tempo de preparo vêm do sabor').waitFor();
   await page.keyboard.press('Escape');
-  assert.match(await page.locator('.item-btn', { hasText: 'Pudim tradicional 150' }).innerText(), /custo R\$ [\d,]+ cada/);
+  assert.match(await page.locator('.item-btn', { hasText: 'Pudim tradicional 150' }).innerText(), /Custo R\$ [\d,]+ cada/);
   assert.deepEqual(erros, []);
 });
 
@@ -459,7 +459,7 @@ test('comprar insumos: pesquisa simulada, carrinho, preço pago e registro que a
   assert.deepEqual(erros, []);
 });
 
-test('sabor novo nasce com 1100, 550 e 150 (rende 1, 2 e 6); sabor não aparece para vender', async () => {
+test('sabor novo nasce com 1 kg, 500 g e copo (rende 1, 2 e 6); sabor não aparece para vender', async () => {
   await page.goto(`${base}/?demo#/pudim?aba=receitas`);
   await page.getByRole('button', { name: 'Novo sabor' }).click();
   await page.locator('#receita-nome').fill('Pudim de coco');
@@ -468,13 +468,13 @@ test('sabor novo nasce com 1100, 550 e 150 (rende 1, 2 e 6); sabor não aparece 
   await page.getByLabel('Ingrediente 1').selectOption({ label: 'Leite condensado' });
   await page.getByLabel('Quantidade de Leite condensado').fill('395');
   await page.getByRole('button', { name: 'Salvar sabor' }).click();
-  await toast().filter({ hasText: 'Sabor criado com os tamanhos 1100, 550 e 150' }).waitFor();
+  await toast().filter({ hasText: 'Sabor criado com 1 kg, 500 g e copo' }).waitFor();
   const sabor = page.getByRole('region', { name: 'Pudim de coco' });
-  assert.deepEqual(await sabor.locator('.item-btn .tit').allInnerTexts(), ['Pudim de coco 1100', 'Pudim de coco 550', 'Pudim de coco 150']);
-  assert.match(await sabor.locator('.item-btn', { hasText: 'Pudim de coco 150' }).innerText(), /Rende 6/);
+  assert.deepEqual(await sabor.locator('.item-btn .tit').allInnerTexts(), ['Pudim de coco 1 kg', 'Pudim de coco 500 g', 'Pudim de coco no copo']);
+  assert.match(await sabor.locator('.item-btn', { hasText: 'Pudim de coco no copo' }).innerText(), /rende 6 · vale 25 dias/);
   await page.goto(`${base}/?demo#/pudim/vender`);
   await page.getByLabel('Buscar pudim').fill('coco');
-  assert.deepEqual(await page.locator('.pdv-nome').allInnerTexts(), ['Pudim de coco 1100', 'Pudim de coco 150', 'Pudim de coco 550']);
+  assert.deepEqual(await page.locator('.pdv-nome').allInnerTexts(), ['Pudim de coco 1 kg', 'Pudim de coco 500 g', 'Pudim de coco no copo']);
   assert.deepEqual(erros, []);
 });
 
@@ -660,6 +660,12 @@ test('dois locais: lote com vários sabores, envio para Ibiúna, perda lançada 
   await lotes.locator('.item', { hasText: '2 Pudim ninho com Nutella 1100' }).filter({ hasText: '03/01' }).waitFor();
   await lotes.locator('.item', { hasText: 'Ibiúna' }).filter({ hasText: '03/01' }).waitFor();
   assert.equal(await lotes.locator('.item', { hasText: '05/01' }).count(), 0);
+
+  // cartões do estoque como o cardápio: tocar abre o pudim com o que tem em cada local
+  await local('Todos');
+  await page.getByRole('region', { name: 'Pudim no copo' }).getByRole('button', { name: /^Pudim tradicional 150: \d+ prontos$/ }).click();
+  await folha().locator('.estoque-local', { hasText: 'Ibiúna' }).getByText('6 prontos · mín. 6').waitFor();
+  await page.keyboard.press('Escape');
 
   // Ibiúna não vende geladinho e o PDV abre no local escolhido
   await page.goto(`${base}/?demo#/pudim/vender?local=ibiuna`);

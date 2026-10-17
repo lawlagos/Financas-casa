@@ -240,7 +240,7 @@ test('revisão: preço com vírgula vindo como texto da planilha conta', () => {
   assert.equal(custoInsumo({ nome: 'X', unidade: 'un', qtd_embalagem: 1, preco_embalagem: '12,50' }).porBase, 1250);
 });
 
-test('sabor e tamanhos: a receita do sabor rende 1 de 1100, 2 de 550 e 6 de 150, cada um com a sua embalagem', () => {
+test('sabor e tamanhos: a receita do sabor rende 1 de 1 kg, 2 de 500 g e 6 no copo, cada um com a sua embalagem', () => {
   const ins = [
     { id: 'lc', nome: 'Leite condensado', tipo: 'ingrediente', qtd_embalagem: 395, unidade: 'g', preco_embalagem: 6.32 },
     { id: 'e1100', nome: 'Embalagem Pudim 1100', tipo: 'embalagem', qtd_embalagem: 1, unidade: 'un', preco_embalagem: 5.71 },
@@ -252,10 +252,12 @@ test('sabor e tamanhos: a receita do sabor rende 1 de 1100, 2 de 550 e 6 de 150,
   assert.ok(ehSabor(sabor));
   const prods = produtosDoSabor(sabor, ins);
   assert.deepEqual(prods.map((p) => [p.id, p.nome, p.rendimento, p.sabor_id]), [
-    ['pp-pro-trad-1100', 'Pudim tradicional 1100', 1, 'pp-sab-trad'],
-    ['pp-pro-trad-550', 'Pudim tradicional 550', 2, 'pp-sab-trad'],
-    ['pp-pro-trad-150', 'Pudim tradicional 150', 6, 'pp-sab-trad'],
+    ['pp-pro-trad-1000', 'Pudim tradicional 1 kg', 1, 'pp-sab-trad'],
+    ['pp-pro-trad-500', 'Pudim tradicional 500 g', 2, 'pp-sab-trad'],
+    ['pp-pro-trad-150', 'Pudim tradicional no copo', 6, 'pp-sab-trad'],
   ]);
+  // validade: 7 dias no 1 kg e no 500 g, 25 no copo
+  assert.deepEqual(prods.map((p) => p.validade_dias), [7, 7, 25]);
   assert.equal(prods[2].ingredientes, JSON.stringify([{ insumo_id: 'copo', quantidade: 6 }, { insumo_id: 'tampa', quantidade: 6 }]));
   const porId = Object.fromEntries(ins.map((x) => [x.id, x]));
   const receitas = { [sabor.id]: sabor };

@@ -111,3 +111,22 @@ test('local e envio: "em Ibiúna", "mandei pra Ibiúna", "de São Roque"', () =>
   // Local dito no trecho não atrapalha herdar o pudim anterior.
   assert.deepEqual(res(l('vendi 5 tradicional 150 em são roque e perdi 2 em ibiúna')), [['venda', 5, 't150', 'sao-roque', ''], ['perda', 2, 't150', 'ibiuna', '']]);
 });
+
+test('cardápio: copo, 1 kg, 500 g, "meio quilo", "brigadeiro" = brigadeirão, e os números antigos 1100/550', () => {
+  const rs = [
+    R('tc', 'Tradicional no copo', 6), R('tk', 'Tradicional 1 kg'), R('tm', 'Tradicional 500 g', 2),
+    R('bc', 'Brigadeirão no copo', 6), R('bk', 'Brigadeirão 1 kg'), R('gp', 'Geladinho de pudim', 15),
+  ].map((r) => ({ ...r, porcao: / no copo$/.test(r.nome) ? '150' : / 1 kg$/.test(r.nome) ? '1000' : / 500 g$/.test(r.nome) ? '500' : '' }));
+  const res = (t) => interpretarEstoque(t, { receitas: rs, hoje }).itens.map((i) => [i.tipo, i.quantidade, i.receita_id || i.candidatos.join('|')]);
+  assert.deepEqual(res('vendi 3 tradicionais no copo'), [['venda', 3, 'tc']]);
+  assert.deepEqual(res('vendi 2 tradicional de 1 kg'), [['venda', 2, 'tk']]);
+  assert.deepEqual(res('vendi um tradicional de um quilo'), [['venda', 1, 'tk']]);
+  assert.deepEqual(res('vendi 1 kg de tradicional'), [['venda', 1, 'tk']]);
+  assert.deepEqual(res('vendi 2 tradicional de meio quilo'), [['venda', 2, 'tm']]);
+  assert.deepEqual(res('vendi 2 tradicional 500 g'), [['venda', 2, 'tm']]);
+  assert.deepEqual(res('vendi um tradicional 1100 e um tradicional 550'), [['venda', 1, 'tk'], ['venda', 1, 'tm']]);
+  assert.deepEqual(res('vendi 4 brigadeiro no copo'), [['venda', 4, 'bc']]);
+  assert.deepEqual(res('vendi um brigadeirão grande'), [['venda', 1, 'bk']]);
+  assert.deepEqual(res('vendi 3 tradicionais'), [['venda', 3, 'tc|tk|tm']]);
+  assert.deepEqual(res('fiz uma fornada de geladinho'), [['producao', 15, 'gp']]);
+});

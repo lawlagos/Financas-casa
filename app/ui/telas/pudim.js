@@ -3,12 +3,13 @@ import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Topo, Secao, Segmento, Vazio, Arrastavel } from '../componentes.js';
 import { useStore, abrirFolha, salvarVarias, toast, config } from '../../data/store.js';
-import { apagarMovimento } from '../../data/pudim-acoes.js';
+import { apagarMovimento, taxaIfood } from '../../data/pudim-acoes.js';
 import { brl, brlSigned } from '../../core/money.js';
 import { fmtDay, addDays, businessWeekStart } from '../../core/dates.js';
-import { custoReceita, processarEstoque, estoqueAtual, lotesNaGeladeira, lerLocais, localDe, semanaPudim, custoInsumo, lerCustos, valorMinuto, ehSabor, ehPreparo } from '../../core/pudim.js';
+import { precoNoCanal, VALIDADE_PADRAO, custoReceita, processarEstoque, estoqueAtual, lotesNaGeladeira, lerLocais, localDe, semanaPudim, custoInsumo, lerCustos, valorMinuto, ehSabor, ehPreparo } from '../../core/pudim.js';
 import { saldos, minimos, faltas, pudinsAbaixo, baseDe, embalagemBase } from '../../core/estoqueinsumos.js';
 import { porId } from '../derivados.js';
+import { cartoesEstoque } from '../../core/cardapio.js';
 import { chaveProduto } from '../../core/mercado.js';
 import { adicionarItens } from '../../data/lista-acoes.js';
 import { FaixaDemo } from './inicio.js';
@@ -67,6 +68,41 @@ function Linha({ rot, valor, classe = '', forte }) {
   return html`<div style="display:flex;justify-content:space-between;gap:12px;margin-top:7px"><span>${rot}</span>${forte ? html`<strong class=${classe} style="white-space:nowrap">${valor}</strong>` : html`<span class=${classe} style="white-space:nowrap">${valor}</span>`}</div>`;
 }
 
+// Estoque como o cardápio: um cartão por pudim, com o que tem em cada local. Toque abre o pudim.
+// O que está zerado e não tem mínimo (feito por encomenda, como o de 1 kg) fica numa linha só, para não poluir.
+function GradeEstoque({ d, s, local }) {
+  const grupos = cartoesEstoque(d.receitas, d.lotes, s.hoje, { local: local || null, locais: d.locais });
+  const amanha = addDays(s.hoje, 1);
+  const quando = (v) => (v === s.hoje ? 'vence hoje' : v === amanha ? 'vence amanhã' : `vence ${fmtDay(v)}`);
+  const abrir = (c) => abrirFolha('estoque-produto', { receita_id: c.receita.id, local });
+  const info = (c) => {
+    const falta = c.porLocal.reduce((t, x) => t + Math.max(0, x.minimo - x.quantidade), 0);
+    return [
+      c.status === 'zerado' ? 'acabou' : c.status === 'baixo' ? `faltam ${falta}` : '',
+      c.total && c.proximaValidade ? quando(c.proximaValidade) : '',
+      c.vencidos ? `${c.vencidos} vencido${c.vencidos > 1 ? 's' : ''}` : '',
+    ].filter(Boolean).join(' · ');
+  };
+  if (!grupos.length) return null;
+  return html`${grupos.map((g) => {
+    const cheios = g.cartoes.filter((c) => c.status !== 'vazio' || c.vencidos);
+    const vazios = g.cartoes.filter((c) => c.status === 'vazio' && !c.vencidos);
+    return html`<section class="cardapio-cat" aria-label=${g.titulo}>
+    <h3 class="cardapio-tit">${g.titulo}</h3>
+    ${cheios.length > 0 && html`<div class="grade-estoque">
+      ${cheios.map((c) => html`<button class=${`cartao-estoque st-${c.status}`} aria-label=${`${c.receita.nome}: ${c.total} pronto${c.total === 1 ? '' : 's'}`} onClick=${() => abrir(c)}>
+        <span class="ce-nome">${c.nome}</span>
+        <span class="ce-num">${c.total}</span>
+        ${c.porLocal.length > 1 && html`<span class="ce-locais">${c.porLocal.map((x) => html`<span><span>${x.local.nome}</span><b class=${x.minimo > 0 && x.quantidade < x.minimo ? 'neg' : ''}>${x.quantidade}</b></span>`)}</span>`}
+        <span class="ce-info">${info(c)}</span>
+      </button>`)}
+    </div>`}
+    ${vazios.length > 0 && html`<div class="ce-vazios"><span class="muted">Sem estoque:</span>
+      ${vazios.map((c) => html`<button class="chip" aria-label=${`${c.receita.nome}: 0 prontos`} onClick=${() => abrir(c)}>${c.nome}</button>`)}</div>`}
+  </section>`;
+  })}`;
+}
+
 function AbaEstoque({ s, d }) {
   // Sem nada na semana que acabou de começar (sábado, dia de pagar o dízimo), abre na semana que fechou.
   const [data, setData] = useState(() => {
@@ -107,23 +143,33 @@ function AbaEstoque({ s, d }) {
 
   return html`
     ${d.locais.length > 1 && html`<${Segmento} rotulo="Local" opcoes=${[['', 'Todos'], ...d.locais.map((l) => [l.id, l.nome])]} valor=${local} onChange=${setLocal} />`}
-    <div class="painel painel-pad hero-pudim" style=${d.locais.length > 1 ? 'margin-top:10px' : ''}>
-      <div class="rot-mercado">Pronto para vender${local ? ` em ${nomeLocal(local)}` : ''}</div>
-      <div class="num-mercado">${plural(e.quantidade, 'pudim', 'pudins')}</div>
-      ${!local && d.locais.length > 1 && html`<div class="muted" style="font-size:13px">${d.locais.map((l) => `${l.nome}: ${Object.values(d.prontos[l.id] || {}).reduce((t, q) => t + q, 0)}`).join(' · ')}</div>`}
-      <div class="dupla" style="margin-top:10px">
-        <div><div class="rot-mercado">Se vender tudo</div><strong style="font-size:18px">${brl(e.potencial)}</strong></div>
-        <div><div class="rot-mercado">Lucro potencial</div><strong style="font-size:18px" class=${e.lucroPotencial < 0 ? 'neg' : 'pos'}>${brlSigned(e.lucroPotencial)}</strong></div>
-      </div>
-      <div class="muted" style="font-size:12.5px;margin-top:6px">Custo dos ingredientes do que está pronto: ${brl(e.custo)}${e.venceLogo ? `. ${plural(e.venceLogo, 'vence', 'vencem')} até amanhã.` : ''}</div>
-      ${e.semPreco.length > 0 && html`<div class="duvida" style="margin-top:10px"><${Icone} n="alerta" /><span>Sem preço de venda: ${e.semPreco.join(', ')}. Defina em Receitas para entrar no potencial.</span></div>`}
+    <div class="painel painel-pad hero-pudim hero-compacto" style=${d.locais.length > 1 ? 'margin-top:10px' : ''}>
+      <div><div class="rot-mercado">Pronto para vender${local ? ` em ${nomeLocal(local)}` : ''}</div>
+        <div class="num-mercado">${plural(e.quantidade, 'pudim', 'pudins')}</div></div>
+      <div style="text-align:right"><div class="rot-mercado">Se vender tudo</div><strong style="font-size:17px">${brl(e.potencial)}</strong>
+        <div class=${e.lucroPotencial < 0 ? 'neg' : 'pos'} style="font-size:13px;font-weight:700">lucro ${brlSigned(e.lucroPotencial)}</div></div>
     </div>
+    ${e.semPreco.length > 0 && html`<div class="duvida" style="margin-top:8px"><${Icone} n="alerta" /><span>Sem preço de venda: ${e.semPreco.join(', ')}. Defina em Receitas.</span></div>`}
 
     ${e.vencidos > 0 && html`<div class="painel painel-pad aviso-vencido" role="alert">
       <div><strong>${plural(e.vencidos, 'pudim venceu', 'pudins venceram')}</strong>
         <div class="muted" style="font-size:13px">${brl(e.custoVencido)} em ingredientes. ${e.lista.flatMap((x) => Object.entries(x.porLocal).filter(([loc, q]) => q.vencidos && (!local || loc === local)).map(([loc, q]) => `${q.vencidos} ${x.receita?.nome || ''}${local ? '' : ` (${nomeLocal(loc)})`}`)).join(', ')}</div></div>
       <button class="btn btn-perigo btn-mini" style="white-space:nowrap" onClick=${darBaixa}>Dar baixa</button>
     </div>`}
+
+    <div class="acoes acoes-pudim">
+      <button class="btn btn-pri" onClick=${() => abrirFolha('movimento', { tipo: 'producao', local: opLocal })}>Produzi</button>
+      <a class="btn btn-sec" href=${`#/pudim/vender${local ? `?local=${local}` : ''}`}>Vender</a>
+      <button class="btn btn-sec" onClick=${() => abrirFolha('movimento', { tipo: 'perda', local: opLocal })}>Perdi</button>
+    </div>
+    <div class="acoes acoes-pudim" style="margin-top:8px">
+      <button class="btn btn-sec" onClick=${() => abrirFolha('lote', { local: opLocal })}>Novo lote</button>
+      ${d.locais.length > 1 && html`<button class="btn btn-sec" onClick=${() => abrirFolha('envio', { de: local && local !== d.locais[0].id ? local : d.locais[0].id })}>Enviar</button>`}
+      <button class="btn btn-sec" onClick=${() => abrirFolha('voz-estoque', { local })}><${Icone} n="mic" />Falar</button>
+    </div>
+
+
+    <${GradeEstoque} d=${d} s=${s} local=${local} />
 
     ${(abaixo.length > 0 || d.faltas.length > 0) && html`<div class="painel painel-pad aviso-minimo" role="alert" aria-label="Estoque mínimo">
       ${abaixo.length > 0 && html`<div class="rot-mercado">Abaixo do mínimo</div>
@@ -135,17 +181,6 @@ function AbaEstoque({ s, d }) {
         </li>`)}</ul>`}
       ${d.faltas.length > 0 && html`<a class="link" href="#/pudim?aba=ingredientes" style="display:block;margin-top:${abaixo.length ? 10 : 0}px">Faltam ${d.faltas.length} ingrediente${d.faltas.length > 1 ? 's' : ''} para o estoque mínimo →</a>`}
     </div>`}
-
-    <div class="acoes acoes-pudim">
-      <button class="btn btn-pri" onClick=${() => abrirFolha('movimento', { tipo: 'producao', local: opLocal })}>Produzi</button>
-      <a class="btn btn-sec" href=${`#/pudim/vender${local ? `?local=${local}` : ''}`}>Vender</a>
-      <button class="btn btn-sec" onClick=${() => abrirFolha('movimento', { tipo: 'perda', local: opLocal })}>Perdi</button>
-    </div>
-    <div class="acoes acoes-pudim" style="margin-top:8px">
-      <button class="btn btn-sec" onClick=${() => abrirFolha('lote', { local: opLocal })}>Novo lote</button>
-      ${d.locais.length > 1 && html`<button class="btn btn-sec" onClick=${() => abrirFolha('envio', { de: local && local !== d.locais[0].id ? local : d.locais[0].id })}>Enviar</button>`}
-    </div>
-    <button class="btn btn-sec btn-larga" style="margin-top:8px" onClick=${() => abrirFolha('voz-estoque', { local })}><${Icone} n="mic" />Falar o que produziu, vendeu ou perdeu</button>
 
     <${Secao} titulo=${atual ? 'Esta semana' : `Semana de ${fmtDay(sem.inicio)}`}>
       <div class="painel painel-pad">
@@ -171,16 +206,6 @@ function AbaEstoque({ s, d }) {
         <p class="muted" style="font-size:12.5px;margin:8px 0 0">O dízimo continua pelo caixa (entradas menos saídas do Pudim), como na tela Negócios.</p>
       </div>
     <//>
-
-    ${e.lista.length > 0 && html`<${Secao} titulo="Na geladeira">
-      <ul class="lista painel">
-        ${e.lista.map((x) => html`<li class="item"><div class="corpo"><div class="tit">${x.receita?.nome || 'Receita apagada'}</div>
-          <div class="meta">${x.quantidade ? `${plural(x.quantidade, 'unidade', 'unidades')}, vence ${fmtDay(x.proximaValidade)}` : ''}${x.vencidos ? html`${x.quantidade ? ', ' : ''}<span class="neg">${x.vencidos} vencido${x.vencidos > 1 ? 's' : ''}</span>` : ''}</div>
-          ${!local && Object.keys(x.porLocal).length > 1 && html`<div class="meta">${Object.entries(x.porLocal).map(([loc, q]) => `${nomeLocal(loc)}: ${q.quantidade}${q.vencidos ? ` (+${q.vencidos} vencido${q.vencidos > 1 ? 's' : ''})` : ''}`).join(' · ')}</div>`}
-          ${!local && Object.keys(x.porLocal).length === 1 && d.locais.length > 1 && html`<div class="meta">${nomeLocal(Object.keys(x.porLocal)[0])}</div>`}</div>
-          <div class="valor">${brl(x.potencial)}<small>custo ${brl(x.custo)}</small></div></li>`)}
-      </ul>
-    <//>`}
 
     ${lotes.length > 0 && html`<${Secao} titulo="Validade dos lotes">
       <ul class="lista painel" aria-label="Lotes">
@@ -217,16 +242,20 @@ function Desativados({ lista, tipo, folha, chave }) {
   </div>`;
 }
 
-// Do maior para o menor (1100, 550, 150, 40); tamanho sem número por último.
+// Do maior para o menor (1 kg, 500 g, copo); tamanho sem número por último.
 export const porTamanho = (a, b) => (Number(b.porcao) || 0) - (Number(a.porcao) || 0) || a.nome.localeCompare(b.nome);
 
 function ItemProduto({ r, c }) {
+  const taxaPct = taxaIfood();
+  const ifood = precoNoCanal(r, 'ifood', taxaPct);
+  const liquidoIfood = ifood.preco - Math.round((ifood.preco * taxaPct) / 100);
   return html`<li><button class="item item-btn" onClick=${() => abrirFolha('receita', { receita: r })}>
     <div class="corpo"><div class="tit">${r.nome}</div>
-      <div class="meta">Rende ${r.rendimento || 1}, custo ${brl(c.completoUnidade)} cada${Number(r.estoque_minimo) > 0 ? `, mínimo ${r.estoque_minimo} fornada${Number(r.estoque_minimo) > 1 ? 's' : ''}` : ''}${c.faltando.length ? ', falta preço' : ''}</div>
+      <div class="meta quebra">Custo ${brl(c.completoUnidade)} cada · rende ${r.rendimento || 1} · vale ${r.validade_dias || VALIDADE_PADRAO} dias${Number(r.estoque_minimo) > 0 ? ` · mínimo ${r.estoque_minimo} fornada${Number(r.estoque_minimo) > 1 ? 's' : ''}` : ''}${c.faltando.length ? ' · falta preço' : ''}</div>
+      ${c.preco > 0 && ifood.preco > 0 && html`<div class="meta quebra">iFood ${brl(ifood.preco)}${ifood.calculado ? '*' : ''}: sobra ${brl(liquidoIfood)}, lucro <span class=${liquidoIfood - c.completoUnidade < 0 ? 'neg' : ''}>${brl(liquidoIfood - c.completoUnidade)}</span></div>`}
       ${!c.preco && html`<div class="muted" style="font-size:12.5px">Sugerido ${brl(c.sugerido)}</div>`}
       ${c.subiu > 0 && html`<div style="margin-top:4px"><span class="etiqueta atraso">Custo subiu ${Math.round(c.subiu * 100)}%</span></div>`}</div>
-    <div class=${`valor ${c.margem !== null && c.margem < 0 ? 'neg' : ''}`}>${c.preco ? brl(c.preco) : '—'}<small>${c.margem !== null ? `lucro ${Math.round(c.margem * 100)}%` : 'sem preço'}</small></div>
+    <div class=${`valor ${c.margem !== null && c.margem < 0 ? 'neg' : ''}`}>${c.preco ? brl(c.preco) : '—'}<small>${c.margem !== null ? `lucro ${brl(c.preco - c.completoUnidade)}` : 'sem preço'}</small></div>
   </button></li>`;
 }
 
@@ -238,7 +267,7 @@ function AbaReceitas({ s, d }) {
       <div class="corpo"><div class="rot-mercado">Mão de obra e despesas fixas</div>
         <div style="font-weight:700;margin-top:2px">${configurado
           ? `${brl(Math.round(m.maoDeObra * 60))} por hora de trabalho + ${brl(Math.round(m.despesas * 60))} de despesas`
-          : 'Ainda não configurado: o custo das receitas está só com ingredientes e embalagens'}</div>
+          : 'Custo só com ingredientes e embalagens (sem mão de obra e energia)'}</div>
         ${configurado && html`<div class="muted" style="font-size:12.5px;margin-top:2px">Entram no custo de cada receita pelo tempo de preparo.</div>`}</div>
       <span style="width:18px;color:var(--ink-3)"><${Icone} n="seta" /></span>
     </button>
@@ -263,7 +292,7 @@ function AbaReceitas({ s, d }) {
         </button>
         <ul class="lista painel">
           ${tamanhos.map((r) => html`<${ItemProduto} r=${r} c=${d.custos[r.id]} />`)}
-          ${!tamanhos.length && html`<li class="item muted">Sem tamanhos. Abra o sabor para criar 1100, 550 e 150.</li>`}
+          ${!tamanhos.length && html`<li class="item muted">Sem tamanhos. Abra o sabor para criar 1 kg, 500 g e copo.</li>`}
         </ul>
       </section>`;
     })}

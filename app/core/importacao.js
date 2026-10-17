@@ -6,6 +6,7 @@
 //   custos_pudim: { salario, decimo, dias, horas, despesas: [ { nome, valor, divisor } ] },
 //   desativar_receitas: ['pp-rec-'] }  (opcional: receitas com esses prefixos que não vieram no arquivo são desativadas,
 //   não apagadas, porque o estoque pode apontar para elas)
+//   desativar_insumos_sem_uso: true  (opcional: ingredientes que nenhuma receita ativa usa, depois da importação, são desativados)
 // Reimportar ingrediente ou receita que já existe atualiza só o que veio preenchido: o resto (ex.: preço de venda
 // digitado no app) fica como está.
 import { SCHEMA } from './schema.js';
@@ -75,6 +76,32 @@ export function prepararImportacao(texto, contasExistentes, previstosExistentes 
   const vieram = new Set(receitas.map((r) => r.id));
   for (const r of receitasExistentes) {
     if (r.ativo !== false && !vieram.has(r.id) && prefixosReceitas.some((x) => String(r.id).startsWith(x))) receitas.push({ ...r, ativo: false });
+  }
+  if (dados?.desativar_insumos_sem_uso) {
+    // Receitas como ficam depois da importação (as do arquivo por cima das que já existem).
+    const finais = new Map(receitasExistentes.map((r) => [r.id, r]));
+    for (const r of receitas) finais.set(r.id, r);
+    const usados = new Set();
+    for (const r of finais.values()) {
+      if (r.ativo === false || r.ativo === 'FALSE') continue;
+      let ings = r.ingredientes;
+      if (typeof ings === 'string') {
+        try {
+          ings = JSON.parse(ings || '[]');
+        } catch {
+          ings = [];
+        }
+      }
+      for (const x of ings || []) usados.add(x.insumo_id);
+    }
+    const porId = new Map(insumosExistentes.map((x) => [x.id, x]));
+    for (const x of insumos) porId.set(x.id, x);
+    for (const x of porId.values()) {
+      if (x.ativo === false || x.ativo === 'FALSE' || usados.has(x.id)) continue;
+      const i = insumos.findIndex((y) => y.id === x.id);
+      if (i >= 0) insumos[i] = { ...insumos[i], ativo: false };
+      else insumos.push({ ...x, ativo: false });
+    }
   }
   const config = [];
   if (dados?.custos_pudim) {
