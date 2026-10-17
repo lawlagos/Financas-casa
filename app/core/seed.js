@@ -142,14 +142,18 @@ function demoPudim(hoje) {
     I('demo-ins-emb1100', 'Embalagem 1100 ml', 'embalagem', 1, 'un', 5.71),
   ];
   const base = [['demo-ins-lc', 395], ['demo-ins-cl', 200], ['demo-ins-leite', 300], ['demo-ins-ovos', 4], ['demo-ins-acucar', 100]];
-  const R = (id, nome, rendimento, preco_venda, extra, custo_ref) => ({
-    id, nome, rendimento, validade_dias: 5, preco_venda, preco_sugerido: '', custo_ref, tempo_preparo: 60, markup: 0.3, preco_ifood: '',
-    ingredientes: JSON.stringify([...base, ...extra].map(([insumo_id, quantidade]) => ({ insumo_id, quantidade }))), ativo: true,
+  const lista = (xs) => JSON.stringify(xs.map(([insumo_id, quantidade]) => ({ insumo_id, quantidade })));
+  // Sabor = a receita de uma fornada; os tamanhos são o que se vende (rende 1 de 1100, 6 de 150).
+  const S = (id, nome, extra) => ({ id, nome, tipo: 'sabor', sabor_id: '', porcao: '', rendimento: 1, validade_dias: 5, preco_venda: '', preco_sugerido: '', custo_ref: '', tempo_preparo: 60, markup: 0.3, preco_ifood: '', ingredientes: lista([...base, ...extra]), ativo: true });
+  const T = (id, sabor_id, nome, porcao, rendimento, preco_venda, emb, custo_ref) => ({
+    id, nome, tipo: 'produto', sabor_id, porcao, rendimento, validade_dias: 5, preco_venda, preco_sugerido: '', custo_ref, tempo_preparo: '', markup: '', preco_ifood: '', ingredientes: lista(emb), ativo: true,
   });
   const receitas = [
-    R('demo-rec-mini', 'Mini pudim tradicional 150', 8, 12, [['demo-ins-emb150', 8]], 2.6),
-    R('demo-rec-trad', 'Pudim tradicional 1100', 1, 65, [['demo-ins-emb1100', 1]], 22),
-    R('demo-rec-ninho', 'Pudim ninho com Nutella 1100', 1, 85, [['demo-ins-emb1100', 1], ['demo-ins-nutella', 140]], 26),
+    S('demo-sab-trad', 'Pudim tradicional', []),
+    S('demo-sab-ninho', 'Pudim ninho com Nutella', [['demo-ins-nutella', 140]]),
+    T('demo-rec-mini', 'demo-sab-trad', 'Pudim tradicional 150', '150', 6, 12, [['demo-ins-emb150', 6]], 2.6),
+    T('demo-rec-trad', 'demo-sab-trad', 'Pudim tradicional 1100', '1100', 1, 65, [['demo-ins-emb1100', 1]], 22),
+    T('demo-rec-ninho', 'demo-sab-ninho', 'Pudim ninho com Nutella 1100', '1100', 1, 85, [['demo-ins-emb1100', 1]], 26),
   ];
   const estoque = [];
   const M = (dias, receita_id, tipo, quantidade, extra = {}) => {

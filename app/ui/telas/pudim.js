@@ -6,7 +6,7 @@ import { useStore, abrirFolha, salvarVarias, toast, config } from '../../data/st
 import { apagarMovimento } from '../../data/pudim-acoes.js';
 import { brl, brlSigned } from '../../core/money.js';
 import { fmtDay, addDays, businessWeekStart } from '../../core/dates.js';
-import { custoReceita, processarEstoque, estoqueAtual, semanaPudim, custoInsumo, lerCustos, valorMinuto } from '../../core/pudim.js';
+import { custoReceita, processarEstoque, estoqueAtual, semanaPudim, custoInsumo, lerCustos, valorMinuto, ehSabor } from '../../core/pudim.js';
 import { porId } from '../derivados.js';
 import { FaixaDemo } from './inicio.js';
 
@@ -15,16 +15,18 @@ const ativo = (x) => x.ativo !== false && x.ativo !== 'FALSE';
 // Tudo que as telas do pudim precisam, calculado de uma vez a partir das tabelas.
 export function dadosPudim(s) {
   const insumosPorId = porId(s.tables.insumos || []);
-  const receitas = (s.tables.receitas || []).filter(ativo).sort((a, b) => a.nome.localeCompare(b.nome));
+  // "receitas" são os produtos que se vendem (tamanhos); os sabores só dão os ingredientes.
+  const receitas = (s.tables.receitas || []).filter((r) => ativo(r) && !ehSabor(r)).sort((a, b) => a.nome.localeCompare(b.nome));
+  const sabores = (s.tables.receitas || []).filter((r) => ativo(r) && ehSabor(r)).sort((a, b) => a.nome.localeCompare(b.nome));
   const receitasPorId = porId(s.tables.receitas || []);
   const itens = s.tables.itens || [];
   const custosFixos = lerCustos(config('custos_pudim', ''));
   const custos = {};
-  for (const r of s.tables.receitas || []) custos[r.id] = custoReceita(r, insumosPorId, itens, custosFixos);
+  for (const r of s.tables.receitas || []) custos[r.id] = custoReceita(r, insumosPorId, itens, custosFixos, receitasPorId);
   const movimentos = s.tables.estoque || [];
   const { lotes, saidas } = processarEstoque(movimentos, (id) => ({ direto: custos[id]?.porUnidade || 0, fixo: custos[id]?.fixoUnidade || 0 }));
   const estoque = estoqueAtual(lotes, receitasPorId, s.hoje);
-  return { insumosPorId, receitas, receitasPorId, custos, custosFixos, movimentos, saidas, estoque, itens };
+  return { insumosPorId, receitas, sabores, receitasPorId, custos, custosFixos, movimentos, saidas, estoque, itens };
 }
 
 const ROTULO_MOV = { producao: 'Produziu', venda: 'Vendeu', perda: 'Perdeu' };
@@ -139,6 +141,19 @@ function Desativados({ lista, tipo, folha, chave }) {
   </div>`;
 }
 
+// Do maior para o menor (1100, 550, 150, 40); tamanho sem número por último.
+export const porTamanho = (a, b) => (Number(b.porcao) || 0) - (Number(a.porcao) || 0) || a.nome.localeCompare(b.nome);
+
+function ItemProduto({ r, c }) {
+  return html`<li><button class="item item-btn" onClick=${() => abrirFolha('receita', { receita: r })}>
+    <div class="corpo"><div class="tit">${r.nome}</div>
+      <div class="meta">Rende ${r.rendimento || 1}, custo ${brl(c.completoUnidade)} cada${c.faltando.length ? ', falta preço' : ''}</div>
+      ${!c.preco && html`<div class="muted" style="font-size:12.5px">Sugerido ${brl(c.sugerido)}</div>`}
+      ${c.subiu > 0 && html`<div style="margin-top:4px"><span class="etiqueta atraso">Custo subiu ${Math.round(c.subiu * 100)}%</span></div>`}</div>
+    <div class=${`valor ${c.margem !== null && c.margem < 0 ? 'neg' : ''}`}>${c.preco ? brl(c.preco) : '—'}<small>${c.margem !== null ? `lucro ${Math.round(c.margem * 100)}%` : 'sem preço'}</small></div>
+  </button></li>`;
+}
+
 function AbaReceitas({ s, d }) {
   const m = valorMinuto(d.custosFixos);
   const configurado = m.maoDeObra > 0 || m.despesas > 0;
@@ -151,19 +166,24 @@ function AbaReceitas({ s, d }) {
         ${configurado && html`<div class="muted" style="font-size:12.5px;margin-top:2px">Entram no custo de cada receita pelo tempo de preparo.</div>`}</div>
       <span style="width:18px;color:var(--ink-3)"><${Icone} n="seta" /></span>
     </button>
-    <div class="acoes" style="justify-content:flex-end;margin-top:10px"><button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('receita', {})}><${Icone} n="mais" />Nova receita</button></div>
-    <ul class="lista painel" style="margin-top:10px">
-      ${d.receitas.map((r) => {
-        const c = d.custos[r.id];
-        return html`<li><button class="item item-btn" onClick=${() => abrirFolha('receita', { receita: r })}>
-          <div class="corpo"><div class="tit">${r.nome}</div>
-            <div class="meta">Rende ${r.rendimento || 1}, custo ${brl(c.completoUnidade)} cada${c.faltando.length ? ', falta preço de algum ingrediente' : ''}</div>
-            ${!c.preco && html`<div class="muted" style="font-size:12.5px">Sugerido ${brl(c.sugerido)}</div>`}
-            ${c.subiu > 0 && html`<div style="margin-top:4px"><span class="etiqueta atraso">Custo subiu ${Math.round(c.subiu * 100)}%</span></div>`}</div>
-          <div class=${`valor ${c.margem !== null && c.margem < 0 ? 'neg' : ''}`}>${c.preco ? brl(c.preco) : '—'}<small>${c.margem !== null ? `lucro ${Math.round(c.margem * 100)}%` : 'sem preço'}</small></div>
-        </button></li>`;
-      })}
-    </ul>
+    <div class="acoes" style="justify-content:flex-end;margin-top:10px"><button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('receita', { novoSabor: true })}><${Icone} n="mais" />Novo sabor</button></div>
+    ${d.sabores.map((sabor) => {
+      const c = d.custos[sabor.id];
+      const tamanhos = d.receitas.filter((r) => r.sabor_id === sabor.id).sort(porTamanho);
+      return html`<section class="sabor" aria-label=${sabor.nome}>
+        <button class="sabor-cab" onClick=${() => abrirFolha('receita', { receita: sabor })}>
+          <div class="corpo"><div class="tit">${sabor.nome}</div>
+            <div class="meta">Receita: ${brl(c.ingredientes)} de ingredientes, ${sabor.tempo_preparo || '?'} min${c.faltando.length ? ', falta preço de algum ingrediente' : ''}</div></div>
+          <span class="link" style="white-space:nowrap">Ingredientes</span>
+        </button>
+        <ul class="lista painel">
+          ${tamanhos.map((r) => html`<${ItemProduto} r=${r} c=${d.custos[r.id]} />`)}
+          ${!tamanhos.length && html`<li class="item muted">Sem tamanhos. Abra o sabor para criar 1100, 550 e 150.</li>`}
+        </ul>
+      </section>`;
+    })}
+    ${d.receitas.some((r) => !r.sabor_id || !d.receitasPorId[r.sabor_id]) && html`<section class="sabor"><div class="sabor-cab"><div class="corpo"><div class="tit">Outros produtos</div><div class="meta">Com receita própria, sem sabor</div></div></div>
+      <ul class="lista painel">${d.receitas.filter((r) => !r.sabor_id || !d.receitasPorId[r.sabor_id]).map((r) => html`<${ItemProduto} r=${r} c=${d.custos[r.id]} />`)}</ul></section>`}
     <${Desativados} lista=${(s.tables.receitas || []).filter((r) => !ativo(r))} tipo="receitas" folha="receita" chave="receita" />`;
 }
 

@@ -475,3 +475,11 @@ button.cartao-custos { width: 100%; text-align: left; font: inherit; cursor: poi
 .oferta-add { margin-top: 8px; }
 .oferta-contador { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
 .oferta-contador .icone-btn { width: 32px; height: 32px; font-size: 18px; font-weight: 700; }
+
+/* Receitas por sabor */
+.sabor { margin-top: 16px; }
+.sabor-cab { display: flex; align-items: center; gap: 12px; width: 100%; padding: 4px 2px 8px; background: none; border: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.sabor-cab .corpo { flex: 1; min-width: 0; }
+.sabor-cab .tit { font: 700 17px var(--display); }
+.sabor-cab .meta { font-size: 12.5px; color: var(--ink-3); }
+.sabor-cab .link, a.link { color: var(--caramel-ink); font-weight: 700; font-size: 14px; }

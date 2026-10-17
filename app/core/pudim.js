@@ -96,24 +96,29 @@ export function custoInsumo(insumo, itens = []) {
 // Custo da receita como na ficha técnica: (A) mão de obra + (B) ingredientes + (C) embalagens + (D) despesas fixas.
 // A e D são o tempo de preparo vezes o valor do minuto. "porUnidade" é só B + C (o que vai no pudim);
 // "completoUnidade" soma tudo; o preço sugerido é o completo mais o markup.
-export function custoReceita(receita, insumosPorId, itens = [], custos = null) {
-  const linhas = ingredientesDe(receita).map((x) => {
+// Produto de um sabor (ex.: Tradicional 150): usa os ingredientes e o tempo da receita do sabor e soma as
+// embalagens do tamanho; o rendimento é o do tamanho (quantas unidades uma receita do sabor dá).
+export function custoReceita(receita, insumosPorId, itens = [], custos = null, receitasPorId = {}) {
+  const sabor = receita.sabor_id ? receitasPorId[receita.sabor_id] : null;
+  const doSabor = sabor ? ingredientesDe(sabor).map((x) => ({ ...x, doSabor: true })) : [];
+  const linhas = [...doSabor, ...ingredientesDe(receita)].map((x) => {
     const insumo = insumosPorId[x.insumo_id];
     const c = insumo ? custoInsumo(insumo, itens) : { porBase: null };
     const qtd = Number(x.quantidade) || 0;
-    return { insumo, quantidade: qtd, custo: c.porBase === null ? null : Math.round(c.porBase * qtd), preco: c };
+    return { insumo, quantidade: qtd, custo: c.porBase === null ? null : Math.round(c.porBase * qtd), preco: c, doSabor: !!x.doSabor };
   });
   const total = linhas.reduce((s, l) => s + (l.custo || 0), 0);
   const ingredientes = linhas.filter((l) => l.insumo?.tipo !== 'embalagem').reduce((s, l) => s + (l.custo || 0), 0);
   const rendimento = Math.max(1, Number(receita.rendimento) || 1);
   const porUnidade = Math.round(total / rendimento);
   const minuto = valorMinuto(custos);
-  const tempo = Number(receita.tempo_preparo) || 0;
+  const tempo = Number(receita.tempo_preparo) || Number(sabor?.tempo_preparo) || 0;
   const maoDeObra = Math.round(tempo * minuto.maoDeObra);
   const despesas = Math.round(tempo * minuto.despesas);
   const completo = total + maoDeObra + despesas;
   const completoUnidade = Math.round(completo / rendimento);
-  const markup = receita.markup === '' || receita.markup === undefined || receita.markup === null ? MARKUP_PADRAO : Number(receita.markup) || 0;
+  const vazio = (v) => v === '' || v === undefined || v === null;
+  const markup = !vazio(receita.markup) ? Number(receita.markup) || 0 : sabor && !vazio(sabor.markup) ? Number(sabor.markup) || 0 : MARKUP_PADRAO;
   const preco = toCents(receita.preco_venda || 0);
   const ref = toCents(receita.custo_ref || 0);
   return {
@@ -136,6 +141,40 @@ export function custoReceita(receita, insumosPorId, itens = [], custos = null) {
     margem: preco ? (preco - completoUnidade) / preco : null,
     subiu: ref > 0 && porUnidade >= ref * (1 + ALERTA_CUSTO) ? (porUnidade - ref) / ref : 0,
   };
+}
+
+// Sabor = a receita de uma fornada (ingredientes e tempo), que não se vende sozinha; os produtos são os tamanhos.
+export const ehSabor = (r) => r?.tipo === 'sabor';
+
+// Tamanhos de sempre: quantas unidades uma receita rende em cada um e a embalagem de cada unidade
+// (procurada pelo nome entre os ingredientes/embalagens cadastrados).
+export const TAMANHOS_PADRAO = [
+  { porcao: '1100', rendimento: 1, embalagens: [['embalagem pudim 1100', 1]] },
+  { porcao: '550', rendimento: 2, embalagens: [['embalagem pudim 500', 1]] },
+  { porcao: '150', rendimento: 6, embalagens: [['copo americano', 1], ['tampa rojek', 1]] },
+];
+
+const semAcento = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+
+// Linhas dos produtos de um sabor nos tamanhos pedidos (as embalagens entram por receita: unidades × rendimento).
+export function produtosDoSabor(sabor, insumos, tamanhos = TAMANHOS_PADRAO) {
+  const porNome = Object.fromEntries((insumos || []).filter((x) => x.ativo !== false).map((x) => [semAcento(x.nome), x]));
+  return tamanhos.map((t) => ({
+    id: `${sabor.id}-${t.porcao}`.replace(/^pp-sab-/, 'pp-pro-'),
+    nome: `${sabor.nome} ${t.porcao}`,
+    tipo: 'produto',
+    sabor_id: sabor.id,
+    porcao: t.porcao,
+    rendimento: t.rendimento,
+    validade_dias: sabor.validade_dias || VALIDADE_PADRAO,
+    preco_venda: '',
+    preco_ifood: '',
+    custo_ref: '',
+    tempo_preparo: '',
+    markup: '',
+    ingredientes: JSON.stringify(t.embalagens.map(([nome, porUnidade]) => porNome[semAcento(nome)] && { insumo_id: porNome[semAcento(nome)].id, quantidade: porUnidade * t.rendimento }).filter(Boolean)),
+    ativo: true,
+  }));
 }
 
 // Repassa os movimentos em ordem e devolve os lotes que sobraram e o custo de cada venda/perda.

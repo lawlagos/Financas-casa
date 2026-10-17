@@ -3,7 +3,9 @@
 //   substituir_prefixos: ['imp-'],  (opcional: apaga previstos importados antes com esses prefixos)
 //   insumos: [ { id, nome, tipo, qtd_embalagem, unidade, preco_embalagem, ... } ],
 //   receitas: [ { id, nome, rendimento, ingredientes: [ { insumo_id, quantidade } ], ... } ],
-//   custos_pudim: { salario, decimo, dias, horas, despesas: [ { nome, valor, divisor } ] } }
+//   custos_pudim: { salario, decimo, dias, horas, despesas: [ { nome, valor, divisor } ] },
+//   desativar_receitas: ['pp-rec-'] }  (opcional: receitas com esses prefixos que não vieram no arquivo são desativadas,
+//   não apagadas, porque o estoque pode apontar para elas)
 // Reimportar ingrediente ou receita que já existe atualiza só o que veio preenchido: o resto (ex.: preço de venda
 // digitado no app) fica como está.
 import { SCHEMA } from './schema.js';
@@ -57,8 +59,10 @@ export function prepararImportacao(texto, contasExistentes, previstosExistentes 
   });
   const idsInsumos = new Set([...(dados?.insumos || []).map((x) => x?.id), ...insumosExistentes.map((x) => x.id)]);
   const receitas = [];
+  const idsReceitas = new Set([...(dados?.receitas || []).map((r) => r?.id), ...receitasExistentes.map((r) => r.id)]);
   (dados?.receitas || []).forEach((r, i) => {
     if (!r?.id || !r.nome) return erros.push(`Receita ${i + 1}: falta id ou nome.`);
+    if (r.sabor_id && !idsReceitas.has(r.sabor_id)) return erros.push(`Receita ${r.nome}: sabor desconhecido (${r.sabor_id}).`);
     const ings = Array.isArray(r.ingredientes) ? r.ingredientes : null;
     const sem = (ings || []).filter((x) => !idsInsumos.has(x.insumo_id));
     if (sem.length) return erros.push(`Receita ${r.nome}: ingrediente desconhecido (${sem[0].insumo_id}).`);
@@ -66,6 +70,11 @@ export function prepararImportacao(texto, contasExistentes, previstosExistentes 
     const linha = juntar({ ...Object.fromEntries(SCHEMA.receitas.map((c) => [c, r[c] ?? ''])), ingredientes: ings ? JSON.stringify(ings) : '' }, receitasExistentes.find((e) => e.id === r.id));
     receitas.push({ ...linha, ativo: linha.ativo === '' ? true : linha.ativo, ingredientes: linha.ingredientes || '[]' });
   });
+  const prefixosReceitas = [].concat(dados?.desativar_receitas || []).filter(Boolean);
+  const vieram = new Set(receitas.map((r) => r.id));
+  for (const r of receitasExistentes) {
+    if (r.ativo !== false && !vieram.has(r.id) && prefixosReceitas.some((x) => String(r.id).startsWith(x))) receitas.push({ ...r, ativo: false });
+  }
   const config = [];
   if (dados?.custos_pudim) {
     const c = dados.custos_pudim;

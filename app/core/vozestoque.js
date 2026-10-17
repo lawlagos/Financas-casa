@@ -12,6 +12,8 @@ const NUMEROS = {
 };
 const DEZENAS = 'vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa';
 const UNIDADES = 'um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove';
+// Jeitos de falar o tamanho sem dizer os ml.
+const TAMANHO_POR_PALAVRA = { mini: '150', copinho: '150', copo: '150', pequeno: '150', pequena: '150', medio: '550', media: '550', grande: '1100' };
 // Palavras que podem vir entre o verbo e a quantidade sem mudar o sentido ("vendi ontem 30 de café").
 const ENCHIMENTO = new Set(['ontem', 'hoje', 'anteontem', 'so', 'mais', 'ja', 'eu', 'ela', 'nos', 'a', 'o', 'tambem', 'agora']);
 
@@ -59,12 +61,14 @@ function candidatos(trecho, receitas, tamanhos) {
   const out = [];
   for (const r of receitas) {
     const ps = palavras(r.nome).filter((p) => !VAZIAS.has(p));
-    const tamanhoReceita = ps.filter((p) => /^\d+$/.test(p));
+    const tamanhoReceita = ps.filter((p) => /^\d+$/.test(p)).concat(r.porcao ? [String(r.porcao)] : []);
     const nomes = ps.filter((p) => !/^\d+$/.test(p));
     if (tamanhos.length && !tamanhos.some((t) => tamanhoReceita.includes(t))) continue;
     const bate = nomes.filter((p) => ditas.has(p)).length;
-    if (!bate) continue;
-    out.push({ r, nota: bate - 0.3 * (nomes.length - bate) + (tamanhos.length ? 0.5 : 0) });
+    // Só o tamanho dito ("uma fornada de 150"): entram todos daquele tamanho, para escolher.
+    if (!bate && !tamanhos.length) continue;
+    // Sem nenhuma palavra do nome, só o tamanho: todos empatam (o app pergunta qual).
+    out.push({ r, nota: bate ? bate - 0.3 * (nomes.length - bate) + (tamanhos.length ? 0.5 : 0) : 0 });
   }
   return out.sort((a, b) => b.nota - a.nota);
 }
@@ -106,6 +110,7 @@ export function interpretarEstoque(texto, { receitas = [], hoje, estoque = {} })
       tamanhos.push(String(primeiro.n));
       quantidade = null;
     }
+    if (!tamanhos.length) for (const p of ps) if (TAMANHO_POR_PALAVRA[p]) tamanhos.push(TAMANHO_POR_PALAVRA[p]);
     let lista = candidatos(trecho, receitas, tamanhos);
     // "vendemos 28 vidrinhos e comemos dois": sem nome de pudim, é o mesmo do item anterior.
     const anterior = itens[itens.length - 1];
@@ -120,11 +125,14 @@ export function interpretarEstoque(texto, { receitas = [], hoje, estoque = {} })
     }
     const receita = melhores.length === 1 ? melhores[0] : null;
     const fornadas = /\bfornada/.test(trecho);
-    if (fornadas && receita) quantidade = (quantidade || 1) * (Number(receita.rendimento) || 1);
+    // "uma fornada": vira unidades pelo rendimento; se o pudim ainda não é certo, guarda as fornadas para depois.
+    const numFornadas = fornadas ? quantidade || 1 : 0;
+    if (fornadas) quantidade = receita ? numFornadas * (Number(receita.rendimento) || 1) : null;
     itens.push({
       trecho,
       tipo,
       quantidade: quantidade || (fornadas ? null : 1),
+      numFornadas,
       receita_id: receita?.id || '',
       candidatos: receita ? [] : melhores.slice(0, 6).map((r) => r.id),
       fornadas: fornadas && !receita,

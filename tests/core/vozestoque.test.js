@@ -77,3 +77,13 @@ test('revisão: trecho sem nome de pudim usa o pudim do item anterior', () => {
   assert.deepEqual(resumo(ler('vendemos 5 de limão e comemos dois')), [['venda', 5, 'limao'], ['perda', 2, 'limao']]);
   assert.deepEqual(resumo(ler('vendi 2 e mais nada')), []);
 });
+
+test('tamanho falado do jeito de casa: mini/copinho = 150, médio = 550, grande = 1100; só o tamanho mostra os daquele tamanho', () => {
+  const rs = [R('t150', 'Pudim tradicional 150', 6), R('t1100', 'Pudim tradicional 1100'), R('n150', 'Pudim ninho com Nutella 150', 6), R('n550', 'Pudim ninho com Nutella 550', 2)];
+  const l = (t) => interpretarEstoque(t, { receitas: rs, hoje });
+  const res = (r) => r.itens.map((i) => [i.tipo, i.quantidade, i.receita_id || i.candidatos.join('|')]);
+  assert.deepEqual(res(l('vendi 3 mini tradicionais')), [['venda', 3, 't150']]);
+  assert.deepEqual(res(l('vendi um ninho médio')), [['venda', 1, 'n550']]);
+  assert.deepEqual(res(l('vendi um tradicional grande')), [['venda', 1, 't1100']]);
+  assert.deepEqual(res(l('fiz uma fornada de copinho')), [['producao', null, 't150|n150']]);
+});

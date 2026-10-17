@@ -74,3 +74,21 @@ test('revisão: reimportar não reativa receita desligada nem apaga a lista de i
   assert.deepEqual([r.receitas[1].ativo, r.receitas[1].ingredientes], [true, '[]']);
   assert.equal(r.insumos[0].ativo, false);
 });
+
+test('sabores e tamanhos: tamanho precisa de sabor conhecido; receitas antigas por prefixo são desativadas', () => {
+  const imp = {
+    versao: 1,
+    insumos: [{ id: 'pp-lc', nome: 'Leite condensado', unidade: 'g' }],
+    receitas: [
+      { id: 'pp-sab-trad', nome: 'Pudim tradicional', tipo: 'sabor', ingredientes: [{ insumo_id: 'pp-lc', quantidade: 395 }] },
+      { id: 'pp-pro-trad-150', nome: 'Pudim tradicional 150', tipo: 'produto', sabor_id: 'pp-sab-trad', porcao: '150', rendimento: 6, ingredientes: [] },
+    ],
+    desativar_receitas: ['pp-rec-'],
+  };
+  const antigas = [{ id: 'pp-rec-mini', nome: 'Mini', ativo: true }, { id: 'rec-minha', nome: 'Minha', ativo: true }];
+  const r = prepararImportacao(JSON.stringify(imp), [], [], [], antigas);
+  assert.deepEqual(r.erros, []);
+  assert.deepEqual(r.receitas.map((x) => [x.id, x.ativo]), [['pp-sab-trad', true], ['pp-pro-trad-150', true], ['pp-rec-mini', false]]);
+  imp.receitas[1].sabor_id = 'pp-sab-nada';
+  assert.match(prepararImportacao(JSON.stringify(imp), [], []).erros[0], /sabor desconhecido/);
+});

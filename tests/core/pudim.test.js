@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { custoInsumo, custoReceita, processarEstoque, estoqueAtual, semanaPudim, ingredientesDe, precoNoCanal, totaisCarrinho, valorMinuto, lerCustos } from '../../app/core/pudim.js';
+import { custoInsumo, custoReceita, processarEstoque, estoqueAtual, semanaPudim, ingredientesDe, precoNoCanal, totaisCarrinho, valorMinuto, lerCustos, produtosDoSabor, ehSabor } from '../../app/core/pudim.js';
 
 const hoje = '2026-10-17'; // sábado
 const lc = { id: 'ins-lc', nome: 'Leite condensado', tipo: 'ingrediente', qtd_embalagem: 395, unidade: 'g', preco_embalagem: 6.39, data_preco: '2025-12-01', produto: 'Leite condensado' };
@@ -238,4 +238,35 @@ test('revisão: venda com data antes da produção baixa o estoque da produção
 
 test('revisão: preço com vírgula vindo como texto da planilha conta', () => {
   assert.equal(custoInsumo({ nome: 'X', unidade: 'un', qtd_embalagem: 1, preco_embalagem: '12,50' }).porBase, 1250);
+});
+
+test('sabor e tamanhos: a receita do sabor rende 1 de 1100, 2 de 550 e 6 de 150, cada um com a sua embalagem', () => {
+  const ins = [
+    { id: 'lc', nome: 'Leite condensado', tipo: 'ingrediente', qtd_embalagem: 395, unidade: 'g', preco_embalagem: 6.32 },
+    { id: 'e1100', nome: 'Embalagem Pudim 1100', tipo: 'embalagem', qtd_embalagem: 1, unidade: 'un', preco_embalagem: 5.71 },
+    { id: 'e500', nome: 'Embalagem Pudim 500', tipo: 'embalagem', qtd_embalagem: 1, unidade: 'un', preco_embalagem: 3.5 },
+    { id: 'copo', nome: 'Copo americano', tipo: 'embalagem', qtd_embalagem: 1, unidade: 'un', preco_embalagem: 1.28 },
+    { id: 'tampa', nome: 'TAMPA ROJEK', tipo: 'embalagem', qtd_embalagem: 1, unidade: 'un', preco_embalagem: 1.26 },
+  ];
+  const sabor = { id: 'pp-sab-trad', nome: 'Pudim tradicional', tipo: 'sabor', tempo_preparo: 60, markup: 0.3, ingredientes: [{ insumo_id: 'lc', quantidade: 790 }] };
+  assert.ok(ehSabor(sabor));
+  const prods = produtosDoSabor(sabor, ins);
+  assert.deepEqual(prods.map((p) => [p.id, p.nome, p.rendimento, p.sabor_id]), [
+    ['pp-pro-trad-1100', 'Pudim tradicional 1100', 1, 'pp-sab-trad'],
+    ['pp-pro-trad-550', 'Pudim tradicional 550', 2, 'pp-sab-trad'],
+    ['pp-pro-trad-150', 'Pudim tradicional 150', 6, 'pp-sab-trad'],
+  ]);
+  assert.equal(prods[2].ingredientes, JSON.stringify([{ insumo_id: 'copo', quantidade: 6 }, { insumo_id: 'tampa', quantidade: 6 }]));
+  const porId = Object.fromEntries(ins.map((x) => [x.id, x]));
+  const receitas = { [sabor.id]: sabor };
+  const c150 = custoReceita(prods[2], porId, [], CUSTOS, receitas);
+  // ingredientes do sabor (2 latas = 12,64) + 6 copos e 6 tampas (15,24), mão de obra e despesas de 60 min do sabor
+  assert.deepEqual([c150.ingredientes, c150.embalagens, c150.maoDeObra, c150.despesas], [1264, 1524, 361, 2436]);
+  assert.equal(c150.completoUnidade, Math.round((1264 + 1524 + 361 + 2436) / 6));
+  assert.equal(c150.markup, 0.3);
+  const c1100 = custoReceita(prods[0], porId, [], CUSTOS, receitas);
+  assert.equal(c1100.porUnidade, 1264 + 571);
+  // mudar o sabor muda todos os tamanhos
+  const mais = { ...sabor, ingredientes: [{ insumo_id: 'lc', quantidade: 1185 }] };
+  assert.equal(custoReceita(prods[0], porId, [], CUSTOS, { [sabor.id]: mais }).ingredientes, 1896);
 });
