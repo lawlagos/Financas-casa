@@ -25,7 +25,7 @@ async function garantirIfood(data) {
 // Venda de um carrinho. linhas: [{ receita, quantidade, preco (centavos), custo (centavos por unidade) }].
 // No iFood a entrada é o valor cheio na conta iFood e a taxa sai como gasto do Pudim, ligadas pelo mesmo grupo.
 // Tudo ou nada: se uma das gravações falhar, as que já foram são desfeitas, para não sobrar venda pela metade.
-async function tudoOuNada(fn) {
+export async function tudoOuNada(fn) {
   const feitos = [];
   try {
     return await fn(feitos);

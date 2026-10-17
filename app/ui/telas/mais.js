@@ -22,6 +22,7 @@ export function TelaMais() {
   return html`<main>
     <${Topo} titulo="Mais" />
     <ul class="lista painel">
+      ${it('#/lista', 'lista', 'Lista de compras', `${(s.tables.lista || []).length} itens; fale o que precisa e veja quanto vai sair`)}
       ${it('#/mais/mercado', 'carrinho', 'Mercado', 'O que mais compram, lista sugerida e previsão do mês')}
       ${it('#/mais/previstos', 'repetir', 'Previstos', 'Contas fixas, parcelas, variáveis e o que você tem a receber')}
       ${it('#/mais/compromissos', 'pilha', 'Compromissos', 'Quanto já está comprometido por mês e quando cada parcela acaba')}

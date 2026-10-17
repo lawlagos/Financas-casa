@@ -18,6 +18,7 @@ import { TelaMercado, FolhaProduto } from './telas/mercado.js';
 import { TelaPudim } from './telas/pudim.js';
 import { TelaPdv } from './telas/pdv.js';
 import { TelaCompras } from './telas/compras.js';
+import { TelaLista } from './telas/lista.js';
 import { FolhaMovimento, FolhaReceita, FolhaInsumo, FolhaVozEstoque, FolhaCustosPudim } from './folhas/pudim.js';
 
 const TELAS = {
@@ -30,6 +31,7 @@ const TELAS = {
   '/pudim/compras': TelaCompras,
   '/mais': TelaMais,
   '/mais/mercado': TelaMercado,
+  '/lista': TelaLista,
   '/mais/previstos': TelaPrevistos,
   '/mais/compromissos': TelaCompromissos,
   '/mais/contas': TelaContas,

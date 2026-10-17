@@ -115,7 +115,7 @@ export function config(chave, padrao = '') {
   return c ? c.valor : padrao;
 }
 
-function quem() {
+export function quem() {
   return state.usuario?.email || (state.modo === 'demo' ? 'demo' : '');
 }
 

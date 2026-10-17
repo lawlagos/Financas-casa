@@ -270,3 +270,8 @@ test('sabor e tamanhos: a receita do sabor rende 1 de 1100, 2 de 550 e 6 de 150,
   const mais = { ...sabor, ingredientes: [{ insumo_id: 'lc', quantidade: 1185 }] };
   assert.equal(custoReceita(prods[0], porId, [], CUSTOS, { [sabor.id]: mais }).ingredientes, 1896);
 });
+
+test('revisão: tamanho com sabor apagado avisa no custo', () => {
+  const c = custoReceita({ id: 'p', sabor_id: 'sumiu', rendimento: 6, ingredientes: [] }, {}, [], null, {});
+  assert.deepEqual(c.faltando, ['sabor apagado']);
+});

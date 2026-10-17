@@ -56,7 +56,9 @@ function numero(p) {
 }
 
 // Pontua cada receita para um trecho. Tamanho dito ("150") precisa bater; palavra da receita que não foi dita pesa contra.
-function candidatos(trecho, receitas, tamanhos) {
+// `tamanhos`: ditos em número (150) — a receita precisa ter esse tamanho. `porPalavra`: ditos como "mini"/"grande" —
+// só filtram receitas que têm tamanho; receita antiga sem tamanho no nome continua valendo.
+function candidatos(trecho, receitas, tamanhos, porPalavra = []) {
   const ditas = new Set(palavras(trecho).filter((p) => !VAZIAS.has(p) && !/^\d+$/.test(p)));
   const out = [];
   for (const r of receitas) {
@@ -64,9 +66,12 @@ function candidatos(trecho, receitas, tamanhos) {
     const tamanhoReceita = ps.filter((p) => /^\d+$/.test(p)).concat(r.porcao ? [String(r.porcao)] : []);
     const nomes = ps.filter((p) => !/^\d+$/.test(p));
     if (tamanhos.length && !tamanhos.some((t) => tamanhoReceita.includes(t))) continue;
+    const temTamanho = tamanhoReceita.length > 0;
+    const bateTamanhoPalavra = porPalavra.length && temTamanho && porPalavra.some((t) => tamanhoReceita.includes(t));
+    if (porPalavra.length && temTamanho && !bateTamanhoPalavra) continue;
     const bate = nomes.filter((p) => ditas.has(p)).length;
     // Só o tamanho dito ("uma fornada de 150"): entram todos daquele tamanho, para escolher.
-    if (!bate && !tamanhos.length) continue;
+    if (!bate && !tamanhos.length && !bateTamanhoPalavra) continue;
     // Sem nenhuma palavra do nome, só o tamanho: todos empatam (o app pergunta qual).
     out.push({ r, nota: bate ? bate - 0.3 * (nomes.length - bate) + (tamanhos.length ? 0.5 : 0) : 0 });
   }
@@ -110,8 +115,8 @@ export function interpretarEstoque(texto, { receitas = [], hoje, estoque = {} })
       tamanhos.push(String(primeiro.n));
       quantidade = null;
     }
-    if (!tamanhos.length) for (const p of ps) if (TAMANHO_POR_PALAVRA[p]) tamanhos.push(TAMANHO_POR_PALAVRA[p]);
-    let lista = candidatos(trecho, receitas, tamanhos);
+    const porPalavra = tamanhos.length ? [] : ps.filter((p) => TAMANHO_POR_PALAVRA[p]).map((p) => TAMANHO_POR_PALAVRA[p]);
+    let lista = candidatos(trecho, receitas, tamanhos, porPalavra);
     // "vendemos 28 vidrinhos e comemos dois": sem nome de pudim, é o mesmo do item anterior.
     const anterior = itens[itens.length - 1];
     const todosVerbos = VERBOS.flatMap(([, vs]) => vs.map(raiz));

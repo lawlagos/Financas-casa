@@ -112,8 +112,10 @@ export function FolhaMovimento({ tipo = 'producao' }) {
 export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
   const s = useStore();
   const d = dadosPudim(s);
-  const modo = ehSabor(receita) || novoSabor ? 'sabor' : receita?.sabor_id || novoTamanhoDe ? 'tamanho' : 'avulsa';
-  const sabor = modo === 'tamanho' ? d.receitasPorId[receita?.sabor_id || novoTamanhoDe] : null;
+  const saborDoTamanho = d.receitasPorId[receita?.sabor_id || novoTamanhoDe] || null;
+  // Sabor apagado na planilha: o tamanho vira receita avulsa para dar para corrigir ou desligar.
+  const modo = ehSabor(receita) || novoSabor ? 'sabor' : saborDoTamanho ? 'tamanho' : 'avulsa';
+  const sabor = modo === 'tamanho' ? saborDoTamanho : null;
   const insumos = (s.tables.insumos || []).filter((x) => x.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
   const [f, setF] = useState(() => ({
     nome: receita?.nome || (sabor ? `${sabor.nome} ` : ''),
@@ -174,13 +176,16 @@ export function FolhaReceita({ receita, novoSabor, sabor_id: novoTamanhoDe }) {
     toast(modo === 'sabor' ? (receita ? 'Sabor salvo' : `Sabor criado${f.criarTamanhos ? ' com os tamanhos 1100, 550 e 150' : ''}`) : receita ? 'Receita salva' : 'Tamanho criado');
   };
   const criarPadrao = async () => {
-    await salvarVarias('receitas', produtosDoSabor(receita, s.tables.insumos, faltamPadrao));
+    // Tamanho que já existiu (desligado) volta como estava, com preço e nome; só os novos nascem do padrão.
+    const porId = d.receitasPorId;
+    await salvarVarias('receitas', produtosDoSabor(receita, s.tables.insumos, faltamPadrao).map((novo) => (porId[novo.id] ? { ...porId[novo.id], ativo: true } : novo)));
     toast(`Tamanhos criados: ${faltamPadrao.map((t) => t.porcao).join(', ')}`);
   };
   const titulo = receita ? receita.nome : modo === 'sabor' ? 'Novo sabor' : modo === 'tamanho' ? `Novo tamanho de ${sabor?.nome || ''}` : 'Nova receita';
   const rotuloLista = modo === 'sabor' ? 'Ingredientes de uma receita (uma fornada)' : modo === 'tamanho' ? 'Embalagens e extras (por receita do sabor)' : 'Ingredientes e embalagens da receita inteira';
 
   return html`<${Folha} titulo=${titulo} rodape=${html`<button class="btn btn-pri" onClick=${() => guardar()}>${modo === 'sabor' ? 'Salvar sabor' : 'Salvar receita'}</button>`}>
+    ${receita?.sabor_id && !saborDoTamanho && html`<div class="duvida" style="margin-top:0"><${Icone} n="alerta" /><span>O sabor deste tamanho foi apagado da planilha. Ele passa a ser uma receita avulsa: confira os ingredientes ou desligue.</span></div>`}
     ${modo === 'tamanho' && sabor && html`<div class="duvida" style="margin-top:0"><${Icone} n="info" /><span>Os ingredientes e o tempo de preparo vêm do sabor <strong>${sabor.nome}</strong>. Aqui ficam o rendimento, as embalagens e o preço.
       <button class="link" style="display:block;margin-top:4px" onClick=${() => abrirFolha('receita', { receita: sabor })}>Abrir o sabor</button></span></div>`}
     <${Campo} rotulo="Nome"><input id="receita-nome" value=${f.nome} onInput=${(e) => set({ nome: e.target.value })} aria-invalid=${tentou && !nova.nome} /><//>

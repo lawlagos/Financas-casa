@@ -134,7 +134,10 @@ export function custoReceita(receita, insumosPorId, itens = [], custos = null, r
     completoUnidade,
     sugerido: Math.round((completo * (1 + markup)) / rendimento),
     markup,
-    faltando: linhas.filter((l) => l.custo === null && l.quantidade > 0).map((l) => l.insumo?.nome || 'ingrediente apagado'),
+    faltando: [
+      ...(receita.sabor_id && !sabor ? ['sabor apagado'] : []),
+      ...linhas.filter((l) => l.custo === null && l.quantidade > 0).map((l) => l.insumo?.nome || 'ingrediente apagado'),
+    ],
     preco,
     // Lucro e margem "livres no bolso", como na planilha: depois de mão de obra e despesas fixas.
     lucroUnidade: preco ? preco - completoUnidade : null,

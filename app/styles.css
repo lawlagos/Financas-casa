@@ -483,3 +483,22 @@ button.cartao-custos { width: 100%; text-align: left; font: inherit; cursor: poi
 .sabor-cab .tit { font: 700 17px var(--display); }
 .sabor-cab .meta { font-size: 12.5px; color: var(--ink-3); }
 .sabor-cab .link, a.link { color: var(--caramel-ink); font-weight: 700; font-size: 14px; }
+
+/* Lista de compras */
+.lista-compras { padding: 0; }
+.item-lista { border-bottom: 1px solid var(--line); padding: 10px 14px; list-style: none; }
+.item-lista:last-child { border-bottom: 0; }
+.item-lista-linha { display: flex; align-items: center; gap: 10px; }
+.item-lista-corpo { flex: 1; min-width: 0; background: none; border: 0; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.item-lista-corpo .tit { font-weight: 700; }
+.item-lista-corpo .meta { font-size: 12.5px; color: var(--ink-3); }
+.item-lista.comprado .item-lista-corpo .tit { text-decoration: line-through; opacity: .6; }
+.item-lista .valor { text-align: right; font-weight: 700; white-space: nowrap; }
+.item-lista .valor small { display: block; font-weight: 500; color: var(--ink-3); font-size: 11.5px; }
+.item-lista-pago { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0 0 38px; }
+.campo-pago { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.campo-pago input { width: 92px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; text-align: right; }
+.item-lista-detalhe { margin: 6px 0 4px 38px; }
+.hist-precos { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
+.hist-precos li { display: grid; grid-template-columns: 1fr auto 56px; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.hist-precos li span:last-child { text-align: right; }

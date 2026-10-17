@@ -87,3 +87,12 @@ test('tamanho falado do jeito de casa: mini/copinho = 150, médio = 550, grande 
   assert.deepEqual(res(l('vendi um tradicional grande')), [['venda', 1, 't1100']]);
   assert.deepEqual(res(l('fiz uma fornada de copinho')), [['producao', null, 't150|n150']]);
 });
+
+test('revisão: "mini", "pequeno", "grande" não escondem receitas antigas sem tamanho no nome', () => {
+  const rs = [R('mt', 'Mini pudim tradicional', 8), R('romeu', 'Pudim Romeu e Julieta'), R('t150', 'Pudim tradicional 150', 6), R('gel', 'Geladinho de pudim', 15)];
+  const res = (t) => interpretarEstoque(t, { receitas: rs, hoje }).itens.map((i) => [i.tipo, i.quantidade, i.receita_id || i.candidatos.join('|')]);
+  assert.deepEqual(res('fiz uma fornada de mini'), [['producao', 8, 'mt']]); // "mini" bate pelo nome da receita antiga
+  assert.deepEqual(res('vendi um romeu e julieta pequeno'), [['venda', 1, 'romeu']]);
+  assert.deepEqual(res('vendi 3 geladinhos'), [['venda', 3, 'gel']]);
+  assert.deepEqual(res('vendi 2 tradicionais mini'), [['venda', 2, 'mt']]);
+});

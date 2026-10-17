@@ -45,7 +45,7 @@ const saldoConta = async (nome) => {
 const reais = (t) => Number(t.replace(/[^\d,-]/g, '').replace(',', '.'));
 
 test('todas as telas abrem sem erro', async () => {
-  for (const r of ['inicio', 'lancamentos', 'futuro', 'negocios', 'mais', 'mais/previstos', 'mais/compromissos', 'mais/contas', 'mais/categorias', 'mais/ajustes']) {
+  for (const r of ['inicio', 'lancamentos', 'futuro', 'negocios', 'mais', 'mais/previstos', 'mais/compromissos', 'mais/contas', 'mais/categorias', 'mais/ajustes', 'mais/mercado', 'lista', 'pudim', 'pudim?aba=receitas', 'pudim?aba=ingredientes', 'pudim/vender', 'pudim/compras']) {
     await page.goto(`${base}/?demo#/${r}`);
     await page.locator('main h1').waitFor();
   }
@@ -475,5 +475,64 @@ test('sabor novo nasce com 1100, 550 e 150 (rende 1, 2 e 6); sabor não aparece 
   await page.goto(`${base}/?demo#/pudim/vender`);
   await page.getByLabel('Buscar pudim').fill('coco');
   assert.deepEqual(await page.locator('.pdv-nome').allInnerTexts(), ['Pudim de coco 1100', 'Pudim de coco 150', 'Pudim de coco 550']);
+  assert.deepEqual(erros, []);
+});
+
+test('lista de compras: falar os itens, estimativa pela última compra, pago mais caro/barato e registrar a compra', async () => {
+  await page.goto(`${base}/?demo#/mais`);
+  await page.getByRole('link', { name: /Lista de compras/ }).click();
+  await page.locator('#lista-frase').fill('2 leites condensados, detergente e papel toalha');
+  await page.getByRole('button', { name: 'Pôr na lista' }).click();
+  await toast().filter({ hasText: '3 itens na lista' }).waitFor();
+  assert.deepEqual(await page.locator('.item-lista .tit').evaluateAll((els) => els.map((e) => e.firstChild.textContent.trim())), ['Leite condensado', 'Detergente', 'Papel toalha']);
+  const estimadoLeite = reais(await page.locator('.item-lista', { hasText: 'Leite condensado' }).locator('.valor').innerText());
+  assert.ok(estimadoLeite > 0);
+  assert.match(await page.locator('.item-lista', { hasText: 'Papel toalha' }).innerText(), /sem preço anterior/);
+
+  await page.getByRole('button', { name: 'Peguei Leite condensado' }).click();
+  const pago = page.getByLabel('Quanto pagou em Leite condensado');
+  await pago.fill(String(estimadoLeite + 1).replace('.', ','));
+  await pago.press('Enter');
+  await page.locator('.item-lista', { hasText: 'Leite condensado' }).getByText(/R\$ 1,00 mais caro/).waitFor();
+  await page.getByText(/Até agora: R\$ 1,00 mais caro/).waitFor();
+  await page.getByRole('button', { name: 'Peguei Detergente' }).click();
+  await page.getByLabel('Quanto pagou em Detergente').fill('1,50');
+  await page.getByLabel('Quanto pagou em Detergente').press('Enter');
+  await page.locator('.item-lista', { hasText: 'Detergente' }).getByText(/mais barato/).waitFor();
+
+  await page.locator('#lista-mercado').fill('Assaí');
+  await page.getByLabel('Pago com').selectOption({ label: 'Nubank' });
+  const total = Math.round((estimadoLeite + 1 + 1.5) * 100) / 100;
+  await page.getByRole('button', { name: /^Registrar compra/ }).click();
+  await toast().filter({ hasText: /Compra de R\$ .* registrada/ }).waitFor();
+  assert.equal(await page.locator('.item-lista').count(), 1, 'só o papel toalha fica na lista');
+  await page.goto(`${base}/?demo#/lancamentos`);
+  await page.locator('.item', { hasText: 'Assaí — casa' }).first().waitFor();
+  await page.locator('.item', { hasText: 'Assaí — pudim' }).first().waitFor();
+  // a próxima lista já usa o preço desta compra
+  await page.goto(`${base}/?demo#/lista`);
+  await page.locator('#lista-frase').fill('detergente');
+  await page.getByRole('button', { name: 'Pôr na lista' }).click();
+  await page.locator('.item-lista', { hasText: 'Detergente' }).getByText('≈ R$ 1,50').waitFor();
+  assert.ok(total > 0);
+  assert.deepEqual(erros, []);
+});
+
+test('revisão: sabor desligado tira os tamanhos dele da venda; religar devolve', async () => {
+  await page.goto(`${base}/?demo#/pudim?aba=receitas`);
+  await page.locator('.sabor-cab', { hasText: 'Pudim ninho com Nutella' }).click();
+  await folha().getByLabel('Sabor em uso').uncheck();
+  await page.getByRole('button', { name: 'Salvar sabor' }).click();
+  await page.goto(`${base}/?demo#/pudim/vender`);
+  await page.getByLabel('Buscar pudim').fill('ninho');
+  assert.equal(await page.locator('.pdv-produto').count(), 0);
+  await page.goto(`${base}/?demo#/pudim?aba=receitas`);
+  await page.getByRole('button', { name: /Mostrar 1 receitas desativadas/ }).click();
+  await page.getByRole('button', { name: /Pudim ninho com Nutella.*reativar/ }).click();
+  await folha().getByLabel('Sabor em uso').check();
+  await page.getByRole('button', { name: 'Salvar sabor' }).click();
+  await page.goto(`${base}/?demo#/pudim/vender`);
+  await page.getByLabel('Buscar pudim').fill('ninho');
+  assert.equal(await page.locator('.pdv-produto').count(), 1);
   assert.deepEqual(erros, []);
 });

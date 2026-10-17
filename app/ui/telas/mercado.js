@@ -104,6 +104,7 @@ export function TelaMercado() {
   return html`<main>
     <${Topo} titulo="Mercado" sub="O que vocês mais compram, o que está acabando e quanto vai custar" voltar="#/mais" />
     <${FaixaDemo} />
+    <a class="btn btn-pri btn-larga" style="margin-bottom:12px" href="#/lista"><${Icone} n="lista" />Lista de compras</a>
     <${Segmento} rotulo="Compras de" opcoes=${[['Casa', 'Casa'], ['Pudim', 'Pudim']]} valor=${grupo} onChange=${setGrupo} />
     <div style="margin-top:12px"><${Previsao} p=${prev} grupo=${grupo} /></div>
 

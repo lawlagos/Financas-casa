@@ -232,3 +232,26 @@ test('pudim na planilha: receita com ingredientes em texto, produção e venda c
   assert.deepEqual(erros, []);
   await ctx.close();
 });
+
+test('lista de compras na planilha: item comprado e preço pago voltam certos depois de recarregar', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const { page, erros } = await novaPagina(ctx);
+  await page.goto(`${base}/#/lista`);
+  await page.getByRole('button', { name: 'Entrar com Google' }).click();
+  await page.locator('#lista-frase').fill('3 bananas e café');
+  await page.getByRole('button', { name: 'Pôr na lista' }).click();
+  await page.locator('.item-lista').nth(1).waitFor();
+  await page.getByRole('button', { name: /^Peguei Banana/ }).click();
+  await page.getByLabel(/^Quanto pagou em Banana/).fill('7,90');
+  await page.getByLabel(/^Quanto pagou em Banana/).press('Enter');
+  await page.waitForFunction(() => document.querySelector('.toast') === null || true);
+  const aba = env.abas['Lista de compras'].linhas;
+  assert.deepEqual(aba[0], SCHEMA.lista);
+  const banana = aba.find((l) => /banana/i.test(l[1]));
+  assert.deepEqual([banana[2], banana[6], banana[7]], [3, 7.9, true]);
+  await page.reload();
+  await page.locator('.item-lista').nth(1).waitFor();
+  assert.equal(await page.getByLabel(/^Quanto pagou em Banana/).inputValue(), '7,90');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+});

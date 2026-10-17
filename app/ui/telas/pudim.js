@@ -16,9 +16,11 @@ const ativo = (x) => x.ativo !== false && x.ativo !== 'FALSE';
 export function dadosPudim(s) {
   const insumosPorId = porId(s.tables.insumos || []);
   // "receitas" são os produtos que se vendem (tamanhos); os sabores só dão os ingredientes.
-  const receitas = (s.tables.receitas || []).filter((r) => ativo(r) && !ehSabor(r)).sort((a, b) => a.nome.localeCompare(b.nome));
-  const sabores = (s.tables.receitas || []).filter((r) => ativo(r) && ehSabor(r)).sort((a, b) => a.nome.localeCompare(b.nome));
   const receitasPorId = porId(s.tables.receitas || []);
+  // Tamanho de um sabor desligado também sai da venda (volta junto quando o sabor é religado).
+  const saborDesligado = (r) => r.sabor_id && receitasPorId[r.sabor_id] && !ativo(receitasPorId[r.sabor_id]);
+  const receitas = (s.tables.receitas || []).filter((r) => ativo(r) && !ehSabor(r) && !saborDesligado(r)).sort((a, b) => a.nome.localeCompare(b.nome));
+  const sabores = (s.tables.receitas || []).filter((r) => ativo(r) && ehSabor(r)).sort((a, b) => a.nome.localeCompare(b.nome));
   const itens = s.tables.itens || [];
   const custosFixos = lerCustos(config('custos_pudim', ''));
   const custos = {};
