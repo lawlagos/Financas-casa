@@ -12,7 +12,8 @@ var ESQUEMA = {
     'parcela_no_inicio', 'confianca', 'renovacao', 'pessoa', 'ativo'
   ],
   baixas: ['id', 'previsto_id', 'ref', 'status', 'lancamento_id', 'nova_data', 'criado_em'],
-  config: ['id', 'valor']
+  config: ['id', 'valor'],
+  itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'origem', 'lancamento_id', 'grupo_id', 'criado_em']
 };
 
 // Nome da aba na planilha para cada tabela.
@@ -23,10 +24,11 @@ var ABAS = {
   previstos: 'Previstos',
   baixas: 'Baixas',
   config: 'Config',
+  itens: 'Itens',
   sessoes: 'Sessões'
 };
 
 var COLUNAS_SESSOES = ['token', 'email', 'aparelho', 'criada_em', 'ultimo_uso'];
 
-var NUMERICAS = { valor: 1, saldo_inicial: 1, a_cada: 1, mes_ancora: 1, dia_inicio: 1, dia_fim: 1, dia_semana: 1, parcelas_total: 1, parcela_no_inicio: 1 };
+var NUMERICAS = { quantidade: 1, preco_unitario: 1, valor: 1, saldo_inicial: 1, a_cada: 1, mes_ancora: 1, dia_inicio: 1, dia_fim: 1, dia_semana: 1, parcelas_total: 1, parcela_no_inicio: 1 };
 var BOOLEANAS = { ativa: 1, ativo: 1, renovacao: 1 };

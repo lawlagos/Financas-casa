@@ -160,6 +160,9 @@ test('print de nota de mercado: separa pudim e casa, trata diferença do total, 
   assert.equal(Math.round((novas[0][3] + novas[1][3]) * 100), 6000);
   assert.ok(novas[0][12] && novas[0][12] === novas[1][12], 'mesmo grupo_id');
   assert.match(novas[0][4], /^Assaí — pudim: Leite condensado, Leite integral/);
+  const itens = env.abas['Itens'].linhas.slice(1);
+  assert.equal(itens.length, 3);
+  assert.deepEqual(itens.map((i) => [i[3], i[8], i[9] === novas[i[8] === 'Pudim' ? 0 : 1][0]]), [['Leite condensado', 'Pudim', true], ['Detergente', 'Casa', true], ['Leite integral', 'Pudim', true]]);
   await ctx.close();
 });
 

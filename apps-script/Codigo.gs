@@ -29,6 +29,8 @@ function tratar_(pedido) {
       return salvarLinha_(d.tabela, d.linha);
     case 'apagar':
       return apagarLinha_(d.tabela, d.id);
+    case 'salvarVarias':
+      return salvarVarias_(d.tabela, d.linhas);
     case 'interpretar':
       return interpretar_(d);
     default:

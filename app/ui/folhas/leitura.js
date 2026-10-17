@@ -2,10 +2,10 @@ import { useEffect, useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Folha, Segmento, Chips, Campo } from '../componentes.js';
-import { useStore, salvar, fecharFolha, abrirFolha, toast, interpretarImagem } from '../../data/store.js';
+import { useStore, salvar, salvarVarias, fecharFolha, abrirFolha, toast, interpretarImagem } from '../../data/store.js';
 import { ORIGENS, uid } from '../../core/schema.js';
 import { brl, parseBRL } from '../../core/money.js';
-import { montarContexto, conferirLeitura, pendenciasLancamento, resumoNota, lancamentosDaNota } from '../../core/leitura.js';
+import { montarContexto, conferirLeitura, pendenciasLancamento, resumoNota, lancamentosDaNota, itensDaNota } from '../../core/leitura.js';
 import { findMatch, matchCandidates } from '../../core/planning.js';
 import { contasAtivas, origemLabel } from '../derivados.js';
 import { prepararImagem } from '../imagem.js';
@@ -144,12 +144,20 @@ export function FolhaLeitura() {
       setSalvando(false);
       return;
     }
-    if (salvos.length === 1) {
+    let avisoItens = '';
+    if (nota) {
+      try {
+        await salvarVarias('itens', itensDaNota(nota, salvos, { data: nota.data, grupo_id: grupo, criado_em: new Date().toISOString() }));
+      } catch {
+        avisoItens = ' Os itens da nota não foram guardados: atualize o servidor no Apps Script.';
+      }
+    }
+    if (salvos.length === 1 && !nota) {
       const m = findMatch(salvos[0], matchCandidates({ ...s.tables, hoje: s.hoje, lanc: salvos[0] }));
       if (m) return abrirFolha('baixa', { lanc: salvos[0], occ: m });
     }
     fecharFolha();
-    toast(salvos.length === 1 ? 'Lançamento salvo' : `${salvos.length} lançamentos salvos`);
+    toast((salvos.length === 1 ? 'Lançamento salvo.' : `${salvos.length} lançamentos salvos.`) + avisoItens, avisoItens ? { tom: 'erro', ms: 9000 } : {});
   };
 
   const resumo = nota ? resumoNota(nota, { diferencaEm: nota.diferencaEm }) : null;

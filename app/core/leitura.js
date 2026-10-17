@@ -57,6 +57,7 @@ export function conferirLeitura(resp, tables, hoje) {
     chave: `i${i}`,
     descricao: String(it.descricao || '').slice(0, 60),
     quantidade: Number(it.quantidade) || 1,
+    unidade: ['un', 'kg', 'g', 'l', 'ml'].includes(String(it.unidade || '').toLowerCase()) ? String(it.unidade).toLowerCase() : 'un',
     valor: num(it.valor_total),
     origem: it.origem === 'Pudim' || it.origem === 'Casa' ? it.origem : '',
     duvidaIa: it.duvida || (Number(it.confianca) < CONFIANCA_MINIMA && it.origem ? 'Confira se é pudim ou casa.' : ''),
@@ -110,4 +111,24 @@ export function lancamentosDaNota(nota, { conta_id, data, diferencaEm }) {
   if (r.soma.Pudim > 0) out.push({ tipo: 'saida', valor: r.soma.Pudim / 100, data, descricao: `${nome} — pudim`, conta_id, categoria_id: 'cat-ingrediente', origem: 'Pudim', detalhe: lista('Pudim') });
   if (r.soma.Casa > 0) out.push({ tipo: 'saida', valor: r.soma.Casa / 100, data, descricao: `${nome} — casa`, conta_id, categoria_id: 'cat-mercado', origem: 'Casa', detalhe: lista('Casa') });
   return out;
+}
+
+// Itens da nota para guardar na aba Itens, ligados ao lançamento da sua origem (pudim ou casa).
+export function itensDaNota(nota, lancamentosSalvos, { data, grupo_id, criado_em }) {
+  const porOrigem = Object.fromEntries(lancamentosSalvos.map((l) => [l.origem, l.id]));
+  return nota.itens
+    .filter((i) => i.origem && i.descricao)
+    .map((i) => ({
+      data,
+      mercado: nota.estabelecimento || '',
+      descricao: i.descricao,
+      quantidade: i.quantidade,
+      unidade: i.unidade,
+      valor: i.valor ?? '',
+      preco_unitario: i.valor ? Math.round((i.valor / (i.quantidade || 1)) * 100) / 100 : '',
+      origem: i.origem,
+      lancamento_id: porOrigem[i.origem] || '',
+      grupo_id,
+      criado_em,
+    }));
 }

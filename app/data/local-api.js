@@ -54,6 +54,12 @@ export class LocalApi {
     return true;
   }
 
+  async salvarVarias(tabela, linhas) {
+    this.tables[tabela] = (this.tables[tabela] || []).concat(linhas);
+    this.write(this.tables);
+    return linhas;
+  }
+
   async interpretar() {
     throw new Error('A leitura de prints usa a planilha. Abra o app sem o ?demo, já conectado.');
   }

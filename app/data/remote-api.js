@@ -63,6 +63,10 @@ export class RemoteApi {
     return this.chamar('apagar', { tabela, id });
   }
 
+  salvarVarias(tabela, linhas) {
+    return this.chamar('salvarVarias', { tabela, linhas });
+  }
+
   interpretar(dados) {
     return this.chamar('interpretar', dados);
   }

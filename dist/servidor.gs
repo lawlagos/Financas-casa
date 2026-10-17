@@ -303,7 +303,8 @@ var ESQUEMA = {
     'parcela_no_inicio', 'confianca', 'renovacao', 'pessoa', 'ativo'
   ],
   baixas: ['id', 'previsto_id', 'ref', 'status', 'lancamento_id', 'nova_data', 'criado_em'],
-  config: ['id', 'valor']
+  config: ['id', 'valor'],
+  itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'origem', 'lancamento_id', 'grupo_id', 'criado_em']
 };
 
 // Nome da aba na planilha para cada tabela.
@@ -314,12 +315,13 @@ var ABAS = {
   previstos: 'Previstos',
   baixas: 'Baixas',
   config: 'Config',
+  itens: 'Itens',
   sessoes: 'Sessões'
 };
 
 var COLUNAS_SESSOES = ['token', 'email', 'aparelho', 'criada_em', 'ultimo_uso'];
 
-var NUMERICAS = { valor: 1, saldo_inicial: 1, a_cada: 1, mes_ancora: 1, dia_inicio: 1, dia_fim: 1, dia_semana: 1, parcelas_total: 1, parcela_no_inicio: 1 };
+var NUMERICAS = { quantidade: 1, preco_unitario: 1, valor: 1, saldo_inicial: 1, a_cada: 1, mes_ancora: 1, dia_inicio: 1, dia_fim: 1, dia_semana: 1, parcelas_total: 1, parcela_no_inicio: 1 };
 var BOOLEANAS = { ativa: 1, ativo: 1, renovacao: 1 };
 
 // ===== Planilha.gs =====
@@ -419,6 +421,22 @@ function apagarLinha_(tabela, id) {
     var r = linhaDoId_(sh, id);
     if (r > 0) sh.deleteRow(r);
     return r > 0;
+  });
+}
+
+// Várias linhas novas de uma vez (ex.: itens de uma nota), num único acesso à planilha.
+function salvarVarias_(tabela, linhas) {
+  if (!ESQUEMA[tabela]) throw erro_('tabela-invalida', 'Tabela desconhecida: ' + tabela);
+  if (!linhas || !linhas.length) return [];
+  var cols = ESQUEMA[tabela];
+  var valores = linhas.map(function (linha) {
+    if (!linha || !linha.id) throw erro_('linha-invalida', 'Toda linha precisa de um id.');
+    return cols.map(function (c) { return paraCelula_(c, linha[c]); });
+  });
+  return comLock_(function () {
+    var sh = aba_(tabela);
+    sh.getRange(sh.getLastRow() + 1, 1, valores.length, cols.length).setValues(valores);
+    return linhas;
   });
 }
 
@@ -538,12 +556,13 @@ function instrucoesLeitura_(ctx) {
     '{"tipo_documento":"comprovante|nota_mercado|extrato|outro","estabelecimento":string|null,"data":"AAAA-MM-DD"|null,"total":number|null,',
     ' "lancamentos":[{"tipo":"entrada|saida|transferencia","valor":number,"data":"AAAA-MM-DD"|null,"descricao":string,',
     '   "conta_id":string|null,"conta_destino_id":string|null,"categoria_id":string|null,"origem":string|null,"confianca":number,"duvida":string|null}],',
-    ' "itens":[{"descricao":string,"quantidade":number,"valor_total":number,"origem":"Pudim"|"Casa"|null,"confianca":number,"duvida":string|null}]}',
+    ' "itens":[{"descricao":string,"quantidade":number,"unidade":"un"|"kg"|"g"|"l"|"ml","valor_total":number,"origem":"Pudim"|"Casa"|null,"confianca":number,"duvida":string|null}]}',
     '',
     'Regras:',
     '- Comprovante de Pix, TED, boleto ou cartão: um item em "lancamentos". Pix enviado = saida; recebido = entrada.',
     '- Transferência entre duas contas da lista acima = "transferencia" com conta_id (origem do dinheiro) e conta_destino_id.',
     '- Nota ou cupom de mercado: preencha "itens" (um por produto, valor_total já com quantidade e descontos) e deixe "lancamentos" vazio.',
+    '  "descricao" do item: escreva por extenso e legível (ex.: "LT COND MOCA 395G" vira "Leite condensado Moça 395g"); "unidade" como impressa (KG, UN...).',
     '  Linhas "Desconto sobre item" ou descontos no fim da nota: desconte do item correspondente; "total" é o VALOR A PAGAR, já com descontos.',
     '  Se a foto tiver mais de uma nota, junte os itens de todas, some os totais em "total" e liste os mercados em "estabelecimento" (ex.: "Swift + Hortifruti").',
     '  Foto torta, amassada ou com dedo na frente: leia o que der; item ilegível vai com valor_total null e "duvida".',
@@ -587,6 +606,8 @@ function tratar_(pedido) {
       return salvarLinha_(d.tabela, d.linha);
     case 'apagar':
       return apagarLinha_(d.tabela, d.id);
+    case 'salvarVarias':
+      return salvarVarias_(d.tabela, d.linhas);
     case 'interpretar':
       return interpretar_(d);
     default:

@@ -156,3 +156,14 @@ test('interpretar: sem sessão, sem chave, limite e modelo inexistente dão mens
     assert.equal(e.post({ acao: 'interpretar', sessao, dados: { imagem: 'x' } }).codigo, codigo);
   }
 });
+
+test('salvarVarias grava várias linhas de uma vez na aba Itens, criada sozinha', () => {
+  const { sessao } = env.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  const linhas = [{ id: 'i1', descricao: 'Leite condensado', quantidade: 6, valor: 38.34, origem: 'Pudim' }, { id: 'i2', descricao: 'Detergente', quantidade: 1, valor: 2.99, origem: 'Casa' }];
+  assert.equal(env.post({ acao: 'salvarVarias', sessao, dados: { tabela: 'itens', linhas } }).ok, true);
+  const t = env.post({ acao: 'carregar', sessao }).dados.itens;
+  assert.equal(t.length, 2);
+  assert.equal(t[0].quantidade, 6);
+  assert.ok(env.abas['Itens']);
+  assert.equal(env.post({ acao: 'salvarVarias', sessao, dados: { tabela: 'itens', linhas: [{ descricao: 'sem id' }] } }).codigo, 'linha-invalida');
+});

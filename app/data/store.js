@@ -136,6 +136,23 @@ export async function salvar(tabela, linha) {
   return nova;
 }
 
+// Grava várias linhas novas de uma vez (sem atualizar existentes).
+export async function salvarVarias(tabela, linhas) {
+  const novas = linhas.map((l) => ({ ...l, id: l.id || uid(tabela.slice(0, 3)) }));
+  state.tables[tabela] = (state.tables[tabela] || []).concat(novas);
+  emit();
+  try {
+    await api.salvarVarias(tabela, novas);
+  } catch (e) {
+    const ids = new Set(novas.map((l) => l.id));
+    state.tables[tabela] = state.tables[tabela].filter((l) => !ids.has(l.id));
+    toast(`Não salvou: ${e.message}`, { tom: 'erro' });
+    emit();
+    throw e;
+  }
+  return novas;
+}
+
 export async function apagar(tabela, id) {
   const lista = state.tables[tabela];
   const linha = lista.find((x) => x.id === id);

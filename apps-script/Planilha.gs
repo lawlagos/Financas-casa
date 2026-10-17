@@ -96,3 +96,19 @@ function apagarLinha_(tabela, id) {
     return r > 0;
   });
 }
+
+// Várias linhas novas de uma vez (ex.: itens de uma nota), num único acesso à planilha.
+function salvarVarias_(tabela, linhas) {
+  if (!ESQUEMA[tabela]) throw erro_('tabela-invalida', 'Tabela desconhecida: ' + tabela);
+  if (!linhas || !linhas.length) return [];
+  var cols = ESQUEMA[tabela];
+  var valores = linhas.map(function (linha) {
+    if (!linha || !linha.id) throw erro_('linha-invalida', 'Toda linha precisa de um id.');
+    return cols.map(function (c) { return paraCelula_(c, linha[c]); });
+  });
+  return comLock_(function () {
+    var sh = aba_(tabela);
+    sh.getRange(sh.getLastRow() + 1, 1, valores.length, cols.length).setValues(valores);
+    return linhas;
+  });
+}

@@ -70,3 +70,16 @@ test('nota de mercado: soma por origem, diferença do total e lançamentos pudim
   const sem = lancamentosDaNota(nota, { conta_id: 'x', data: hoje, diferencaEm: '' });
   assert.equal(Math.round((sem[0].valor + sem[1].valor) * 100), 3834 + 299 + 1058);
 });
+
+test('itens da nota ficam ligados ao lançamento da origem, com preço unitário', async () => {
+  const { itensDaNota } = await import('../../app/core/leitura.js');
+  const nota = conferirLeitura({ tipo_documento: 'nota_mercado', estabelecimento: 'Assaí', itens: [
+    { descricao: 'Leite condensado Moça 395g', quantidade: 6, unidade: 'UN', valor_total: 38.34, origem: 'Pudim', confianca: 1 },
+    { descricao: 'Batata', quantidade: 1.275, unidade: 'KG', valor_total: 12.74, origem: 'Casa', confianca: 1 },
+    { descricao: 'Ilegível', quantidade: 1, valor_total: null, origem: null },
+  ] }, tables, hoje);
+  const itens = itensDaNota(nota, [{ id: 'lp', origem: 'Pudim' }, { id: 'lc', origem: 'Casa' }], { data: '2026-10-16', grupo_id: 'g1', criado_em: 'x' });
+  assert.equal(itens.length, 2);
+  assert.deepEqual([itens[0].lancamento_id, itens[0].preco_unitario, itens[0].unidade, itens[0].mercado], ['lp', 6.39, 'un', 'Assaí']);
+  assert.deepEqual([itens[1].lancamento_id, itens[1].unidade, itens[1].preco_unitario], ['lc', 'kg', 9.99]);
+});
