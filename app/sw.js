@@ -1,5 +1,5 @@
 // Guarda os arquivos do app para abrir rápido e sem internet. Os dados sempre vêm da planilha.
-const VERSAO = 'fc-v1';
+const VERSAO = 'fc-v2';
 const ARQUIVOS = ['./', 'index.html', 'styles.css', 'config.js', 'manifest.webmanifest', 'icone.svg'];
 
 self.addEventListener('install', (e) => {
@@ -10,12 +10,14 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VERSAO).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
-// Rede primeiro para os arquivos do app (pega atualizações), cache se estiver sem internet.
+// Rede primeiro para os arquivos do app, sempre conferindo com o servidor (sem usar o cache do navegador,
+// que no GitHub Pages guarda arquivos por 10 minutos). Sem internet, usa a cópia guardada.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  const buscar = e.request.mode === 'navigate' ? fetch(e.request.url, { cache: 'no-cache' }) : fetch(e.request, { cache: 'no-cache' });
   e.respondWith(
-    fetch(e.request)
+    buscar
       .then((r) => {
         const copia = r.clone();
         caches.open(VERSAO).then((c) => c.put(e.request, copia));
