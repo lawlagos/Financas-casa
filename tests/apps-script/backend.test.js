@@ -121,25 +121,58 @@ test('dist/servidor.gs está atualizado e roda sozinho', async () => {
   assert.equal(typeof ctx.configurar, 'function');
 });
 
-test('interpretar: manda a imagem ao Gemini com a chave no cabeçalho e devolve o JSON', () => {
+const LISTA_MODELOS = { models: [
+  { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent', 'countTokens'] },
+  { name: 'models/gemini-3.8-flash-lite', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/gemini-3.9-flash-preview', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/gemini-3.6-flash-image', supportedGenerationMethods: ['generateContent'] },
+  { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+] };
+
+test('interpretar: descobre o Flash estável mais novo, manda a imagem com a chave no cabeçalho e devolve o JSON', () => {
   const resposta = { tipo_documento: 'comprovante', lancamentos: [{ tipo: 'saida', valor: 87.5, descricao: 'Pix Assaí' }], itens: [] };
+  const props = { ...PROPS, GEMINI_API_KEY: 'chave-secreta' };
   const e = ambiente({
-    props: { ...PROPS, GEMINI_API_KEY: 'chave-secreta' },
+    props,
     tokeninfo: tokenOk('marido@gmail.com'),
-    gemini: () => ({ code: 200, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: '```json\n' + JSON.stringify(resposta) + '\n```' }] } }] }) }),
+    gemini: (url) => (url.includes('/models?')
+      ? { code: 200, body: JSON.stringify(LISTA_MODELOS) }
+      : { code: 200, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: '```json\n' + JSON.stringify(resposta) + '\n```' }] } }] }) }),
   });
   e.ctx.configurar();
   const { sessao } = e.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
   const r = e.post({ acao: 'interpretar', sessao, dados: { imagem: 'QUJD', mime: 'image/jpeg', contexto: { hoje: '2026-10-17', contas: [{ id: 'inter', nome: 'Inter' }] } } });
   assert.equal(r.ok, true, r.erro);
   assert.deepEqual(r.dados, resposta);
-  const [chamada] = e.chamadasGemini;
-  assert.match(chamada.url, /gemini-2\.5-flash:generateContent$/);
+  const chamada = e.chamadasGemini.find((c) => c.url.includes(':generateContent'));
+  assert.match(chamada.url, /models\/gemini-3\.6-flash:generateContent$/);
+  assert.equal(props.GEMINI_MODELO_AUTO, 'gemini-3.6-flash');
   assert.equal(chamada.opcoes.headers['x-goog-api-key'], 'chave-secreta');
   const corpo = JSON.parse(chamada.opcoes.payload);
   assert.equal(corpo.contents[0].parts[1].inline_data.data, 'QUJD');
   assert.match(corpo.contents[0].parts[0].text, /"id":"inter"/);
-  assert.match(corpo.contents[0].parts[0].text, /Hoje é 2026-10-17/);
+  // segunda leitura não consulta a lista de novo
+  e.post({ acao: 'interpretar', sessao, dados: { imagem: 'QUJD' } });
+  assert.equal(e.chamadasGemini.filter((c) => c.url.includes('/models?')).length, 1);
+});
+
+test('interpretar: modelo aposentado (404) faz o servidor escolher outro e tentar de novo', () => {
+  const props = { ...PROPS, GEMINI_API_KEY: 'k', GEMINI_MODELO_AUTO: 'gemini-2.0-flash' };
+  const e = ambiente({
+    props,
+    tokeninfo: tokenOk('marido@gmail.com'),
+    gemini: (url) => {
+      if (url.includes('/models?')) return { code: 200, body: JSON.stringify(LISTA_MODELOS) };
+      if (url.includes('gemini-2.0-flash')) return { code: 404, body: '{}' };
+      return { code: 200, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"lancamentos":[]}' }] } }] }) };
+    },
+  });
+  e.ctx.configurar();
+  const { sessao } = e.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  const r = e.post({ acao: 'interpretar', sessao, dados: { imagem: 'x' } });
+  assert.equal(r.ok, true, r.erro);
+  assert.equal(props.GEMINI_MODELO_AUTO, 'gemini-3.6-flash');
 });
 
 test('interpretar: sem sessão, sem chave, limite e modelo inexistente dão mensagens claras', () => {
@@ -150,7 +183,7 @@ test('interpretar: sem sessão, sem chave, limite e modelo inexistente dão mens
   let { sessao } = e.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
   assert.match(e.post({ acao: 'interpretar', sessao, dados: { imagem: 'x' } }).erro, /GEMINI_API_KEY/);
   for (const [code, codigo] of [[429, 'ia-limite'], [404, 'ia-modelo'], [400, 'ia-chave'], [500, 'ia']]) {
-    e = ambiente({ ...base, props: { ...PROPS, GEMINI_API_KEY: 'k' }, gemini: () => ({ code, body: '{}' }) });
+    e = ambiente({ ...base, props: { ...PROPS, GEMINI_API_KEY: 'k', GEMINI_MODELO: 'gemini-x' }, gemini: (url) => (url.includes('/models?') ? { code: 200, body: '{"models":[]}' } : { code, body: '{}' }) });
     e.ctx.configurar();
     ({ sessao } = e.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados);
     assert.equal(e.post({ acao: 'interpretar', sessao, dados: { imagem: 'x' } }).codigo, codigo);

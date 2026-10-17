@@ -504,14 +504,53 @@ function validarSessao_(token) {
 // ===== Leitura.gs =====
 // Leitura de prints e fotos com o Gemini. A chave fica só aqui, nas propriedades do script:
 //   GEMINI_API_KEY  = chave criada em aistudio.google.com/apikey
-//   GEMINI_MODELO   = (opcional) nome do modelo; padrão abaixo
+//   GEMINI_MODELO   = (opcional) força um modelo; sem ela, o servidor escolhe sozinho o Flash mais novo disponível
 
-var MODELO_PADRAO = 'gemini-2.5-flash';
+var MODELO_PADRAO = 'gemini-flash-latest';
+var API_GEMINI = 'https://generativelanguage.googleapis.com/v1beta/';
+
+// Escolhe o modelo: o fixado na propriedade, o já descoberto, ou descobre agora na lista de modelos da chave.
+function modeloGemini_(chave, redescobrir) {
+  var props = PropertiesService.getScriptProperties();
+  if (!redescobrir) {
+    var escolhido = props.getProperty('GEMINI_MODELO') || props.getProperty('GEMINI_MODELO_AUTO');
+    if (escolhido) return escolhido;
+  }
+  var resp = UrlFetchApp.fetch(API_GEMINI + 'models?pageSize=1000', { headers: { 'x-goog-api-key': chave }, muteHttpExceptions: true });
+  var codigo = resp.getResponseCode();
+  if (codigo === 400 || codigo === 403) throw erro_('ia-chave', 'O Gemini recusou a chave. Confira a propriedade GEMINI_API_KEY no Apps Script.');
+  if (codigo !== 200) return MODELO_PADRAO;
+  var nome = melhorModelo_(JSON.parse(resp.getContentText()).models || []);
+  if (!nome) return MODELO_PADRAO;
+  props.setProperty('GEMINI_MODELO_AUTO', nome);
+  return nome;
+}
+
+// Flash estável de versão mais alta que aceita generateContent; "lite" só se não houver outro.
+function melhorModelo_(modelos) {
+  var candidatos = modelos
+    .filter(function (m) { return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0; })
+    .map(function (m) { return String(m.name || '').replace(/^models\//, ''); })
+    .filter(function (n) { return /flash/.test(n) && !/(preview|exp|image|tts|live|audio|thinking|embedding|8b)/.test(n); });
+  function versao(n) { var v = n.match(/gemini-(\d+(?:\.\d+)?)/); return v ? Number(v[1]) : 0; }
+  function nota(n) { return versao(n) * 10 - (/lite/.test(n) ? 1000 : 0) - (/latest/.test(n) ? 1 : 0); }
+  candidatos.sort(function (a, b) { return nota(b) - nota(a); });
+  return candidatos[0] || null;
+}
+
+function chamarGemini_(modelo, chave, corpo) {
+  return UrlFetchApp.fetch(API_GEMINI + 'models/' + modelo + ':generateContent', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-goog-api-key': chave },
+    payload: JSON.stringify(corpo),
+    muteHttpExceptions: true
+  });
+}
 
 function interpretar_(dados) {
   if (!dados || !dados.imagem) throw erro_('leitura', 'Nenhuma imagem recebida.');
   var chave = propriedade_('GEMINI_API_KEY');
-  var modelo = PropertiesService.getScriptProperties().getProperty('GEMINI_MODELO') || MODELO_PADRAO;
   var corpo = {
     contents: [{
       role: 'user',
@@ -522,16 +561,16 @@ function interpretar_(dados) {
     }],
     generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
   };
-  var resp = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + modelo + ':generateContent', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { 'x-goog-api-key': chave },
-    payload: JSON.stringify(corpo),
-    muteHttpExceptions: true
-  });
+  var modelo = modeloGemini_(chave);
+  var resp = chamarGemini_(modelo, chave, corpo);
+  if (resp.getResponseCode() === 404) {
+    // Modelo aposentado: descobre outro na lista e tenta de novo uma vez.
+    modelo = modeloGemini_(chave, true);
+    resp = chamarGemini_(modelo, chave, corpo);
+  }
   var codigo = resp.getResponseCode();
   if (codigo === 429) throw erro_('ia-limite', 'O limite gratuito do Gemini acabou por agora. Tente de novo em alguns minutos ou lance pelo formulário.');
-  if (codigo === 404) throw erro_('ia-modelo', 'O modelo ' + modelo + ' não existe mais. Troque a propriedade GEMINI_MODELO no Apps Script.');
+  if (codigo === 404) throw erro_('ia-modelo', 'Não achei um modelo do Gemini disponível para a sua chave (tentei ' + modelo + '). Apague a propriedade GEMINI_MODELO, se existir, e tente de novo.');
   if (codigo === 400 || codigo === 403) throw erro_('ia-chave', 'O Gemini recusou a chave. Confira a propriedade GEMINI_API_KEY no Apps Script.');
   if (codigo !== 200) throw erro_('ia', 'O Gemini não respondeu (erro ' + codigo + '). Tente de novo.');
   var json = JSON.parse(resp.getContentText());
@@ -586,7 +625,7 @@ function instrucoesLeitura_(ctx) {
 // Ponto de entrada do Web App. O app manda POST com {acao, sessao, dados}.
 
 // Mude a cada atualização do servidor: abrir o endereço /exec no navegador mostra este número.
-var VERSAO_SERVIDOR = '2026-10-17.3';
+var VERSAO_SERVIDOR = '2026-10-17.4';
 
 function doPost(e) {
   var resposta;
@@ -605,7 +644,7 @@ function doGet() {
     app: 'Finanças da Casa',
     versao: VERSAO_SERVIDOR,
     leitura_de_prints: props.getProperty('GEMINI_API_KEY') ? 'chave do Gemini configurada' : 'FALTA a propriedade GEMINI_API_KEY',
-    modelo: props.getProperty('GEMINI_MODELO') || MODELO_PADRAO
+    modelo: props.getProperty('GEMINI_MODELO') || props.getProperty('GEMINI_MODELO_AUTO') || 'escolhido sozinho no primeiro print'
   };
   return ContentService.createTextOutput(JSON.stringify(info, null, 2)).setMimeType(ContentService.MimeType.JSON);
 }

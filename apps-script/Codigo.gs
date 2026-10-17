@@ -1,7 +1,7 @@
 // Ponto de entrada do Web App. O app manda POST com {acao, sessao, dados}.
 
 // Mude a cada atualização do servidor: abrir o endereço /exec no navegador mostra este número.
-var VERSAO_SERVIDOR = '2026-10-17.3';
+var VERSAO_SERVIDOR = '2026-10-17.4';
 
 function doPost(e) {
   var resposta;
@@ -20,7 +20,7 @@ function doGet() {
     app: 'Finanças da Casa',
     versao: VERSAO_SERVIDOR,
     leitura_de_prints: props.getProperty('GEMINI_API_KEY') ? 'chave do Gemini configurada' : 'FALTA a propriedade GEMINI_API_KEY',
-    modelo: props.getProperty('GEMINI_MODELO') || MODELO_PADRAO
+    modelo: props.getProperty('GEMINI_MODELO') || props.getProperty('GEMINI_MODELO_AUTO') || 'escolhido sozinho no primeiro print'
   };
   return ContentService.createTextOutput(JSON.stringify(info, null, 2)).setMimeType(ContentService.MimeType.JSON);
 }

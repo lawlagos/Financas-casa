@@ -62,7 +62,7 @@ export function ambiente({ props = {}, tokeninfo, gemini } = {}) {
   const ctx = {
     SpreadsheetApp: { getActiveSpreadsheet: () => ss },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] || null }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
     UrlFetchApp: {
       fetch: (url, opcoes) => {
         if (url.includes('generativelanguage.googleapis.com')) {
