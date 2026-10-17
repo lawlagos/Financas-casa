@@ -11,6 +11,7 @@ import { openOccurrences } from '../../core/recurrence.js';
 import { addDays } from '../../core/dates.js';
 import { saldosHoje, agendaTexto, valorPrevistoTexto, porId, origemLabel } from '../derivados.js';
 import { projectedValue } from '../../core/recurrence.js';
+import { prepararImportacao } from '../../core/importacao.js';
 
 export function TelaMais() {
   const s = useStore();
@@ -168,6 +169,51 @@ export function TelaCategorias() {
   </main>`;
 }
 
+// Carrega saldos e previstos de um arquivo de importação (gerado pelo Claude a partir da planilha antiga).
+function Importar() {
+  const s = useStore();
+  const [texto, setTexto] = useState('');
+  const [erros, setErros] = useState([]);
+  const [progresso, setProgresso] = useState(null);
+  const lerArquivo = (e) => {
+    const f = e.target.files?.[0];
+    if (f) f.text().then(setTexto);
+  };
+  const importar = async () => {
+    const r = prepararImportacao(texto, s.tables.contas);
+    setErros(r.erros);
+    if (r.erros.length) return;
+    const total = r.contas.length + r.previstos.length;
+    let feitos = 0;
+    try {
+      for (const [tabela, lista] of [['contas', r.contas], ['previstos', r.previstos]]) {
+        for (const linha of lista) {
+          setProgresso(`Importando ${++feitos} de ${total}…`);
+          await salvar(tabela, linha);
+        }
+      }
+    } catch {
+      setProgresso(`Parou no item ${feitos} de ${total}. Toque em Importar de novo: o que já entrou não é duplicado.`);
+      return;
+    }
+    setProgresso(null);
+    setTexto('');
+    toast(`Importado: ${r.contas.length} saldos e ${r.previstos.length} previstos`);
+  };
+  return html`<${Secao} titulo="Importar dados">
+    <div class="painel painel-pad">
+      <p style="margin:0 0 4px;color:var(--ink-2)">Escolha o arquivo de importação ou cole o texto dele. Importar de novo o mesmo arquivo atualiza, sem duplicar.</p>
+      <${Campo} rotulo="Arquivo"><input id="importar-arquivo" type="file" accept=".json,application/json,text/plain" onChange=${lerArquivo} /><//>
+      <${Campo} rotulo="Ou cole o texto">
+        <textarea id="importar-texto" rows="4" style="width:100%;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--surface);font-size:13px" value=${texto} onInput=${(e) => setTexto(e.target.value)}></textarea>
+      <//>
+      ${erros.length > 0 && html`<div class="duvida" role="alert"><${Icone} n="alerta" /><span>${erros.slice(0, 5).join(' ')}${erros.length > 5 ? ` E mais ${erros.length - 5}.` : ''}</span></div>`}
+      ${progresso && html`<p class="muted" role="status" style="margin:10px 0 0">${progresso}</p>`}
+      <button class="btn btn-pri btn-larga" style="margin-top:14px" disabled=${!texto.trim() || (progresso && progresso.startsWith('Importando'))} onClick=${importar}>Importar</button>
+    </div>
+  <//>`;
+}
+
 function lerTema() {
   try {
     return localStorage.getItem('fc-tema') || 'auto';
@@ -220,6 +266,7 @@ export function TelaAjustes() {
       <//>
       <button class="btn btn-pri btn-larga" style="margin-top:16px" onClick=${guardar}>Salvar ajustes</button>
     </div>
+    <${Importar} />
     <${Secao} titulo="Tema">
       <div class="segmento" role="group" aria-label="Tema">
         ${[['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Escuro']].map(([v, t]) => html`<button aria-pressed=${String(tema === v)} onClick=${() => trocarTema(v)}>${t}</button>`)}

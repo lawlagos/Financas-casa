@@ -26,7 +26,7 @@ beforeEach(async () => {
   erros = [];
   page.on('pageerror', (e) => erros.push(e.message));
   page.on('console', (m) => m.type() === 'error' && !m.text().includes('net::ERR_FAILED') && erros.push(m.text()));
-  await page.goto(`${base}/#/inicio`);
+  await page.goto(`${base}/?demo#/inicio`);
   await page.getByText('Saldo hoje, todas as contas').waitFor();
 });
 
@@ -38,7 +38,7 @@ const novo = async () => {
   await folha().waitFor();
 };
 const saldoConta = async (nome) => {
-  await page.goto(`${base}/#/inicio`);
+  await page.goto(`${base}/?demo#/inicio`);
   const item = page.locator('a.item', { hasText: nome }).first();
   return (await item.locator('.valor').innerText()).trim();
 };
@@ -46,7 +46,7 @@ const reais = (t) => Number(t.replace(/[^\d,-]/g, '').replace(',', '.'));
 
 test('todas as telas abrem sem erro', async () => {
   for (const r of ['inicio', 'lancamentos', 'futuro', 'negocios', 'mais', 'mais/previstos', 'mais/compromissos', 'mais/contas', 'mais/categorias', 'mais/ajustes']) {
-    await page.goto(`${base}/#/${r}`);
+    await page.goto(`${base}/?demo#/${r}`);
     await page.locator('main h1').waitFor();
   }
   await page.getByRole('link', { name: 'Início' }).click();
@@ -55,7 +55,7 @@ test('todas as telas abrem sem erro', async () => {
 });
 
 test('lançar saída pelo formulário: origem vem da categoria e aparece no lucro do pudim', async () => {
-  await page.goto(`${base}/#/negocios`);
+  await page.goto(`${base}/?demo#/negocios`);
   const antes = reais(await page.locator('.mini', { hasText: 'Pudim' }).locator('.num').innerText());
   await novo();
   await page.getByRole('button', { name: 'Formulário' }).click();
@@ -135,7 +135,7 @@ test('adiar e pular uma ocorrência', async () => {
   await folha().getByRole('button', { name: 'Reagendar' }).click();
   await toast().filter({ hasText: 'reagendado para 25/' }).waitFor();
   assert.equal(await page.locator('.item', { hasText: 'Atrasado desde' }).count(), 0);
-  await page.goto(`${base}/#/mais/compromissos`);
+  await page.goto(`${base}/?demo#/mais/compromissos`);
   await page.locator('.item', { hasText: 'YouTube' }).first().click();
   await page.getByRole('button', { name: 'Não vai pagar desta vez' }).click();
   await toast().filter({ hasText: 'saiu da previsão' }).waitFor();
@@ -156,7 +156,7 @@ test('pagar dízimo pendente da semana fechada', async () => {
 });
 
 test('novo previsto parcelado aparece em Compromissos e no Futuro', async () => {
-  await page.goto(`${base}/#/mais/previstos`);
+  await page.goto(`${base}/?demo#/mais/previstos`);
   await page.getByRole('button', { name: 'Novo', exact: true }).click();
   await folha().getByRole('button', { name: 'Parcelado' }).click();
   await folha().getByLabel('Descrição').fill('Geladeira');
@@ -168,13 +168,13 @@ test('novo previsto parcelado aparece em Compromissos e no Futuro', async () => 
   await folha().getByRole('button', { name: 'Criar previsto' }).click();
   await toast().filter({ hasText: 'Previsto criado' }).waitFor();
   await page.getByText('Geladeira · 3/5').waitFor();
-  await page.goto(`${base}/#/mais/compromissos`);
+  await page.goto(`${base}/?demo#/mais/compromissos`);
   const it = page.locator('.item', { hasText: 'Geladeira' }).first();
   assert.match(await it.innerText(), /R\$ 1\.200,00/);
 });
 
 test('editar, apagar e desfazer um lançamento', async () => {
-  await page.goto(`${base}/#/lancamentos`);
+  await page.goto(`${base}/?demo#/lancamentos`);
   await page.locator('.item', { hasText: 'Farmácia' }).click();
   await folha().getByLabel('Descrição').fill('Farmácia da esquina');
   await folha().getByRole('button', { name: 'Salvar alterações' }).click();
@@ -188,7 +188,7 @@ test('editar, apagar e desfazer um lançamento', async () => {
 });
 
 test('arrastar para a esquerda apaga', async () => {
-  await page.goto(`${base}/#/lancamentos`);
+  await page.goto(`${base}/?demo#/lancamentos`);
   const item = page.locator('.arrastavel', { hasText: 'Uber' });
   await item.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   const box = await item.boundingBox();
@@ -202,7 +202,7 @@ test('arrastar para a esquerda apaga', async () => {
 });
 
 test('filtros e busca de lançamentos', async () => {
-  await page.goto(`${base}/#/lancamentos`);
+  await page.goto(`${base}/?demo#/lancamentos`);
   await page.locator('.chips').first().getByRole('button', { name: 'Pudim' }).click();
   const metas = await page.locator('.item .meta').allInnerTexts();
   assert.ok(metas.length > 0 && metas.every((m) => m.includes('Pudim')));
@@ -214,11 +214,11 @@ test('filtros e busca de lançamentos', async () => {
 });
 
 test('ajustes mudam o Futuro e os dados ficam salvos depois de recarregar', async () => {
-  await page.goto(`${base}/#/mais/ajustes`);
+  await page.goto(`${base}/?demo#/mais/ajustes`);
   await page.getByLabel('Gasto diário estimado').fill('100');
   await page.getByRole('button', { name: 'Salvar ajustes' }).click();
   await toast().filter({ hasText: 'Ajustes salvos' }).waitFor();
-  await page.goto(`${base}/#/futuro`);
+  await page.goto(`${base}/?demo#/futuro`);
   await page.getByText('Diário de R$ 100,00 a partir de amanhã').waitFor();
   await page.reload();
   await page.getByText('Diário de R$ 100,00 a partir de amanhã').waitFor();
@@ -226,4 +226,24 @@ test('ajustes mudam o Futuro e os dados ficam salvos depois de recarregar', asyn
   await page.getByRole('button', { name: 'Pessoal' }).click();
   await page.locator('.tabela-futuro tbody tr').first().waitFor();
   assert.deepEqual(erros, []);
+});
+
+test('importar arquivo: saldos e previstos entram e reimportar não duplica', async () => {
+  const imp = {
+    versao: 1, data_saldo: await hoje(), contas: { inter: 49, hotmart: 1462.55 },
+    previstos: [{ id: 'imp-01', descricao: 'Saída dia 5 · 283,00', tipo: 'saida', natureza: 'parcelado', valor: 283, conta_id: 'inter', inicio: '2026-11-01', dia_inicio: 5, parcelas_total: 7, parcela_no_inicio: 1, recorrencia: 'meses', a_cada: 1, confianca: 'certo', ativo: true }],
+  };
+  await page.goto(`${base}/?demo#/mais/ajustes`);
+  await page.locator('#importar-texto').fill('{ quebrado');
+  await page.getByRole('button', { name: 'Importar', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'não é uma importação válida' }).waitFor();
+  for (let i = 0; i < 2; i++) {
+    await page.locator('#importar-texto').fill(JSON.stringify(imp));
+    await page.getByRole('button', { name: 'Importar', exact: true }).click();
+    await toast().filter({ hasText: 'Importado: 2 saldos e 1 previstos' }).waitFor();
+  }
+  await page.goto(`${base}/?demo#/mais/previstos`);
+  assert.equal(await page.locator('.item', { hasText: '283,00' }).count(), 1);
+  await page.goto(`${base}/?demo#/mais/contas`);
+  assert.match(await page.locator('.item', { hasText: 'Hotmart' }).innerText(), /1\.462,55/);
 });
