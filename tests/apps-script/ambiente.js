@@ -13,6 +13,9 @@ class Aba {
   getLastRow() {
     return this.linhas.length;
   }
+  getLastColumn() {
+    return Math.max(0, ...this.linhas.map((l) => l.length));
+  }
   getMaxRows() {
     return 1000;
   }

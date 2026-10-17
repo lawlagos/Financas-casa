@@ -167,3 +167,14 @@ test('salvarVarias grava várias linhas de uma vez na aba Itens, criada sozinha'
   assert.ok(env.abas['Itens']);
   assert.equal(env.post({ acao: 'salvarVarias', sessao, dados: { tabela: 'itens', linhas: [{ descricao: 'sem id' }] } }).codigo, 'linha-invalida');
 });
+
+test('aba de versão anterior ganha as colunas novas no fim do cabeçalho', () => {
+  const aba = env.abas['Contas'];
+  // simula aba antiga sem a última coluna
+  for (const l of aba.linhas) l.length = SCHEMA.contas.length - 1;
+  const { sessao } = env.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  const r = env.post({ acao: 'carregar', sessao });
+  assert.equal(r.ok, true);
+  assert.deepEqual(aba.linhas[0], SCHEMA.contas);
+  assert.equal(r.dados.contas.length, 9);
+});

@@ -13,7 +13,7 @@ export const SCHEMA = {
   ],
   baixas: ['id', 'previsto_id', 'ref', 'status', 'lancamento_id', 'nova_data', 'criado_em'],
   config: ['id', 'valor'],
-  itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'categoria_id', 'origem', 'lancamento_id', 'grupo_id', 'criado_em'],
+  itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'origem', 'lancamento_id', 'grupo_id', 'criado_em', 'categoria_id'],
 };
 
 export const TABELAS = Object.keys(SCHEMA);

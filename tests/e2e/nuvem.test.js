@@ -173,7 +173,7 @@ test('print de nota de mercado: categoria por item, categoria nova na hora, dife
   assert.ok(cats.some((c) => c[1] === 'Limpeza' && c[2] === 'saida' && c[3] === 'Casa'));
   const itens = env.abas['Itens'].linhas.slice(1);
   assert.equal(itens.length, 3);
-  assert.ok(itens.every((i) => i[10] && novas.some((l) => l[0] === i[10] && l[7] === i[8])), 'cada item ligado ao lançamento da sua categoria');
+  assert.ok(itens.every((i) => i[9] && novas.some((l) => l[0] === i[9] && l[7] === i[12])), 'cada item ligado ao lançamento da sua categoria');
   await ctx.close();
 });
 

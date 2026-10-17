@@ -304,7 +304,7 @@ var ESQUEMA = {
   ],
   baixas: ['id', 'previsto_id', 'ref', 'status', 'lancamento_id', 'nova_data', 'criado_em'],
   config: ['id', 'valor'],
-  itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'categoria_id', 'origem', 'lancamento_id', 'grupo_id', 'criado_em']
+  itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'origem', 'lancamento_id', 'grupo_id', 'criado_em', 'categoria_id']
 };
 
 // Nome da aba na planilha para cada tabela.
@@ -341,6 +341,13 @@ function aba_(tabela) {
       if (!NUMERICAS[colunas[i]] && !BOOLEANAS[colunas[i]] && tabela !== 'config') {
         sh.getRange(1, i + 1, sh.getMaxRows(), 1).setNumberFormat('@');
       }
+    }
+  }
+  // Colunas novas entram sempre no fim: se a aba é de uma versão anterior, completa o cabeçalho.
+  if (sh.getLastColumn() < colunas.length) {
+    sh.getRange(1, 1, 1, colunas.length).setValues([colunas]);
+    for (var j = sh.getLastColumn(); j < colunas.length; j++) {
+      if (!NUMERICAS[colunas[j]] && !BOOLEANAS[colunas[j]]) sh.getRange(1, j + 1, sh.getMaxRows(), 1).setNumberFormat('@');
     }
   }
   return sh;
