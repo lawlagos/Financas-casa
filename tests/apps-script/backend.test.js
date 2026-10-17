@@ -108,3 +108,15 @@ test('e-mail removido da lista perde o acesso mesmo com sessão', () => {
     PROPS.EMAILS_AUTORIZADOS = 'marido@gmail.com, Esposa@gmail.com';
   }
 });
+
+test('dist/servidor.gs está atualizado e roda sozinho', async () => {
+  const { conteudoServidor } = await import('../../scripts/gerar-servidor.mjs');
+  const dist = readFileSync(new URL('../../dist/servidor.gs', import.meta.url), 'utf8');
+  assert.equal(dist, conteudoServidor(), 'rode: node scripts/gerar-servidor.mjs');
+  const vm = await import('node:vm');
+  const ctx = { Utilities: { formatDate: () => '2026-10-17' } };
+  vm.createContext(ctx);
+  vm.runInContext(dist, ctx);
+  assert.equal(typeof ctx.doPost, 'function');
+  assert.equal(typeof ctx.configurar, 'function');
+});

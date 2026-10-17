@@ -10,13 +10,8 @@ Enquanto isso não estiver pronto, o app funciona em **modo demonstração**, co
 
 1. Abra **sheets.new** e dê o nome **Finanças da Casa** à planilha.
 2. Menu **Extensões > Apps Script**.
-3. No editor, apague o conteúdo de `Código.gs` e crie estes arquivos (botão **+ > Script**), colando o conteúdo de cada um da pasta `apps-script/` do repositório:
-   - `Codigo.gs`
-   - `Acesso.gs`
-   - `Planilha.gs`
-   - `Esquema.gs`
-   - `Inicial.gs`
-4. Em **Configurações do projeto** (engrenagem), marque **Mostrar arquivo de manifesto "appsscript.json"**. Volte ao editor, abra `appsscript.json` e cole o conteúdo de `apps-script/appsscript.json`.
+3. No editor, apague todo o conteúdo de `Código.gs`. Abra https://raw.githubusercontent.com/lawlagos/Financas-casa/main/dist/servidor.gs, copie tudo (Ctrl+A, Ctrl+C) e cole no `Código.gs`. Salve (Ctrl+S).
+4. (Não precisa mexer no `appsscript.json`: o Google descobre as permissões sozinho.)
 5. Selecione a função **configurar** no topo do editor e clique **Executar**. O Google vai pedir autorização: escolha sua conta, **Avançado > Acessar Finanças da Casa (não seguro) > Permitir**. Isso aparece porque o script é seu e não passou por revisão do Google; ele só acessa esta planilha e o endereço de verificação de login do Google.
 6. Volte para a planilha: as abas Contas, Categorias, Lançamentos, Previstos, Baixas, Config e Sessões foram criadas, com as 9 contas e as categorias.
 
