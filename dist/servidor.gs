@@ -585,6 +585,9 @@ function instrucoesLeitura_(ctx) {
 // ===== Codigo.gs =====
 // Ponto de entrada do Web App. O app manda POST com {acao, sessao, dados}.
 
+// Mude a cada atualização do servidor: abrir o endereço /exec no navegador mostra este número.
+var VERSAO_SERVIDOR = '2026-10-17.3';
+
 function doPost(e) {
   var resposta;
   try {
@@ -597,7 +600,14 @@ function doPost(e) {
 }
 
 function doGet() {
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, dados: 'Finanças da Casa no ar' })).setMimeType(ContentService.MimeType.JSON);
+  var props = PropertiesService.getScriptProperties();
+  var info = {
+    app: 'Finanças da Casa',
+    versao: VERSAO_SERVIDOR,
+    leitura_de_prints: props.getProperty('GEMINI_API_KEY') ? 'chave do Gemini configurada' : 'FALTA a propriedade GEMINI_API_KEY',
+    modelo: props.getProperty('GEMINI_MODELO') || MODELO_PADRAO
+  };
+  return ContentService.createTextOutput(JSON.stringify(info, null, 2)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function tratar_(pedido) {

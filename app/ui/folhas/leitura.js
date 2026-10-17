@@ -10,6 +10,7 @@ import { SeletorCategoria, NovaCategoria } from '../categorias.js';
 import { findMatch, matchCandidates } from '../../core/planning.js';
 import { contasAtivas, origemLabel } from '../derivados.js';
 import { prepararImagem } from '../imagem.js';
+import { CONFIG } from '../../config.js';
 import { SelectConta } from './lancamento.js';
 
 const valorTexto = (v) => (v ? Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
@@ -130,6 +131,11 @@ export function FolhaLeitura() {
       }
       setEtapa('revisar');
     } catch (e) {
+      if (e.codigo === 'acao-invalida') {
+        setErro(`O servidor da planilha ainda está na versão antiga. Abra ${CONFIG.apiUrl} no navegador: se não aparecer "versao", a implantação que o app usa não foi atualizada (veja o passo a passo no chat).`);
+        setEtapa('erro');
+        return;
+      }
       setErro(e.message || 'Não deu para ler o print.');
       setEtapa('erro');
     }

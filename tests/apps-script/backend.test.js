@@ -178,3 +178,9 @@ test('aba de versão anterior ganha as colunas novas no fim do cabeçalho', () =
   assert.deepEqual(aba.linhas[0], SCHEMA.contas);
   assert.equal(r.dados.contas.length, 9);
 });
+
+test('doGet mostra a versão do servidor e se a chave do Gemini está configurada', () => {
+  const info = JSON.parse(env.ctx.doGet().texto);
+  assert.match(info.versao, /^\d{4}-\d{2}-\d{2}/);
+  assert.match(info.leitura_de_prints, /FALTA/);
+});
