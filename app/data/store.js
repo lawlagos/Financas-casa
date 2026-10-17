@@ -93,6 +93,11 @@ export async function reiniciarDemo() {
   await recarregar();
 }
 
+// Manda a imagem para a IA (via servidor) e devolve a leitura bruta.
+export function interpretarImagem(dados) {
+  return api.interpretar(dados);
+}
+
 export function config(chave, padrao = '') {
   const c = state.tables.config.find((x) => x.id === chave);
   return c ? c.valor : padrao;

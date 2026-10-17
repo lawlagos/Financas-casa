@@ -13,6 +13,7 @@ import { TelaMais, TelaPrevistos, TelaCompromissos, TelaContas, TelaCategorias, 
 import { FolhaLancamento, FolhaBaixa } from './folhas/lancamento.js';
 import { FolhaPrevisto, FolhaOcorrencia } from './folhas/previsto.js';
 import { FolhaConta, FolhaCategoria, FolhaDizimo } from './folhas/outras.js';
+import { FolhaLeitura } from './folhas/leitura.js';
 
 const TELAS = {
   '/inicio': TelaInicio,
@@ -35,6 +36,7 @@ const FOLHAS = {
   conta: FolhaConta,
   categoria: FolhaCategoria,
   dizimo: FolhaDizimo,
+  leitura: FolhaLeitura,
 };
 
 function lerRota() {

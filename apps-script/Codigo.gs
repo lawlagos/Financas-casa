@@ -29,6 +29,8 @@ function tratar_(pedido) {
       return salvarLinha_(d.tabela, d.linha);
     case 'apagar':
       return apagarLinha_(d.tabela, d.id);
+    case 'interpretar':
+      return interpretar_(d);
     default:
       throw erro_('acao-invalida', 'Ação desconhecida: ' + pedido.acao);
   }

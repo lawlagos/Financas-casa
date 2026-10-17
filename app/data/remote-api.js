@@ -62,6 +62,10 @@ export class RemoteApi {
   apagar(tabela, id) {
     return this.chamar('apagar', { tabela, id });
   }
+
+  interpretar(dados) {
+    return this.chamar('interpretar', dados);
+  }
 }
 
 export class ErroApi extends Error {

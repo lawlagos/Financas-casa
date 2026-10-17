@@ -120,3 +120,39 @@ test('dist/servidor.gs está atualizado e roda sozinho', async () => {
   assert.equal(typeof ctx.doPost, 'function');
   assert.equal(typeof ctx.configurar, 'function');
 });
+
+test('interpretar: manda a imagem ao Gemini com a chave no cabeçalho e devolve o JSON', () => {
+  const resposta = { tipo_documento: 'comprovante', lancamentos: [{ tipo: 'saida', valor: 87.5, descricao: 'Pix Assaí' }], itens: [] };
+  const e = ambiente({
+    props: { ...PROPS, GEMINI_API_KEY: 'chave-secreta' },
+    tokeninfo: tokenOk('marido@gmail.com'),
+    gemini: () => ({ code: 200, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: '```json\n' + JSON.stringify(resposta) + '\n```' }] } }] }) }),
+  });
+  e.ctx.configurar();
+  const { sessao } = e.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  const r = e.post({ acao: 'interpretar', sessao, dados: { imagem: 'QUJD', mime: 'image/jpeg', contexto: { hoje: '2026-10-17', contas: [{ id: 'inter', nome: 'Inter' }] } } });
+  assert.equal(r.ok, true, r.erro);
+  assert.deepEqual(r.dados, resposta);
+  const [chamada] = e.chamadasGemini;
+  assert.match(chamada.url, /gemini-2\.5-flash:generateContent$/);
+  assert.equal(chamada.opcoes.headers['x-goog-api-key'], 'chave-secreta');
+  const corpo = JSON.parse(chamada.opcoes.payload);
+  assert.equal(corpo.contents[0].parts[1].inline_data.data, 'QUJD');
+  assert.match(corpo.contents[0].parts[0].text, /"id":"inter"/);
+  assert.match(corpo.contents[0].parts[0].text, /Hoje é 2026-10-17/);
+});
+
+test('interpretar: sem sessão, sem chave, limite e modelo inexistente dão mensagens claras', () => {
+  const base = { props: { ...PROPS }, tokeninfo: tokenOk('marido@gmail.com') };
+  let e = ambiente(base);
+  e.ctx.configurar();
+  assert.equal(e.post({ acao: 'interpretar', dados: { imagem: 'x' } }).codigo, 'sessao-invalida');
+  let { sessao } = e.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  assert.match(e.post({ acao: 'interpretar', sessao, dados: { imagem: 'x' } }).erro, /GEMINI_API_KEY/);
+  for (const [code, codigo] of [[429, 'ia-limite'], [404, 'ia-modelo'], [400, 'ia-chave'], [500, 'ia']]) {
+    e = ambiente({ ...base, props: { ...PROPS, GEMINI_API_KEY: 'k' }, gemini: () => ({ code, body: '{}' }) });
+    e.ctx.configurar();
+    ({ sessao } = e.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados);
+    assert.equal(e.post({ acao: 'interpretar', sessao, dados: { imagem: 'x' } }).codigo, codigo);
+  }
+});

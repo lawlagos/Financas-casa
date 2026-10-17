@@ -15,11 +15,15 @@ let base;
 let browser;
 let env;
 let falharSalvar = false;
+let respostaGemini = null;
 
 before(async () => {
   ({ server, base } = await servirApp({ 'config.js': `export const CONFIG = { apiUrl: '${API}', googleClientId: 'cliente-123' };` }));
   env = ambiente({
-    props: { GOOGLE_CLIENT_ID: 'cliente-123', EMAILS_AUTORIZADOS: 'marido@gmail.com,esposa@gmail.com' },
+    props: { GOOGLE_CLIENT_ID: 'cliente-123', EMAILS_AUTORIZADOS: 'marido@gmail.com,esposa@gmail.com', GEMINI_API_KEY: 'k' },
+    gemini: () => (typeof respostaGemini === 'number'
+      ? { code: respostaGemini, body: '{}' }
+      : { code: 200, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(respostaGemini) }] } }] }) }),
     tokeninfo: () => ({ code: 200, body: JSON.stringify({ aud: 'cliente-123', email: 'esposa@gmail.com', email_verified: 'true' }) }),
   });
   env.ctx.configurar();
@@ -92,5 +96,77 @@ test('erro da planilha ao salvar desfaz na tela e avisa', async () => {
   } finally {
     falharSalvar = false;
   }
+  await ctx.close();
+});
+
+const IMAGEM = new URL('../../app/icone-192.png', import.meta.url).pathname;
+
+async function entrarELer(resposta) {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const { page, erros } = await novaPagina(ctx);
+  await page.goto(`${base}/#/inicio`);
+  await page.getByRole('button', { name: 'Entrar com Google' }).click();
+  await page.getByText('Saldo hoje, todas as contas').waitFor();
+  respostaGemini = resposta;
+  await page.getByRole('button', { name: 'Novo lançamento' }).click();
+  await page.getByRole('button', { name: 'Foto ou print' }).click();
+  await page.locator('#leitura-arquivo').setInputFiles(IMAGEM);
+  return { ctx, page, erros };
+}
+
+test('print de comprovante: pergunta a conta, salva com canal foto', async () => {
+  const antes = env.abas['Lançamentos'].linhas.length;
+  const { ctx, page, erros } = await entrarELer({
+    tipo_documento: 'comprovante', data: '2026-10-16',
+    lancamentos: [{ tipo: 'saida', valor: 87.5, descricao: 'Pix Assaí', conta_id: null, categoria_id: 'cat-ingrediente', origem: null, confianca: 0.9, duvida: 'Não achei o banco no print.' }],
+  });
+  await page.getByText('Não achei o banco no print.').waitFor();
+  await page.getByText('❓ Falta: conta.').waitFor();
+  const botao = page.getByRole('button', { name: 'Salvar lançamento' });
+  assert.equal(await botao.isDisabled(), true);
+  await page.locator('.folha').getByLabel('Conta', { exact: true }).selectOption({ label: 'Nubank PJ (dela)' });
+  assert.equal(await page.locator('.folha .chip[aria-pressed="true"]').innerText(), 'Pudim');
+  await botao.click();
+  await page.locator('.toast', { hasText: 'Lançamento salvo' }).waitFor();
+  const linhas = env.abas['Lançamentos'].linhas;
+  assert.equal(linhas.length, antes + 1);
+  const l = linhas[linhas.length - 1];
+  assert.deepEqual([l[1], l[3], l[5], l[8], l[9]], ['2026-10-16', 87.5, 'nubank-pj', 'Pudim', 'foto']);
+  assert.deepEqual(erros, []);
+  await ctx.close();
+});
+
+test('print de nota de mercado: separa pudim e casa, trata diferença do total, grava 2 lançamentos ligados', async () => {
+  const antes = env.abas['Lançamentos'].linhas.length;
+  const { ctx, page } = await entrarELer({
+    tipo_documento: 'nota_mercado', estabelecimento: 'Assaí', data: '2026-10-16', total: 60,
+    itens: [
+      { descricao: 'Leite condensado', quantidade: 6, valor_total: 38.34, origem: 'Pudim', confianca: 0.95 },
+      { descricao: 'Detergente', quantidade: 1, valor_total: 2.99, origem: 'Casa', confianca: 0.95 },
+      { descricao: 'Leite integral', quantidade: 2, valor_total: 10.58, origem: null, duvida: 'Pudim ou casa?' },
+    ],
+  });
+  await page.getByText('Itens (3)').waitFor();
+  assert.equal(await page.getByRole('button', { name: /Salvar 2 lançamentos|Salvar lançamento/ }).isDisabled(), true);
+  await page.locator('.folha').getByLabel('Pago com').selectOption({ label: 'Nubank PJ (dela)' });
+  await page.getByRole('group', { name: 'Origem de Leite integral' }).getByRole('button', { name: 'Pudim' }).click();
+  await page.getByText('Onde lançar a diferença').waitFor();
+  await page.getByRole('button', { name: 'Salvar 2 lançamentos' }).click();
+  await page.locator('.toast', { hasText: '2 lançamentos salvos' }).waitFor();
+  const novas = env.abas['Lançamentos'].linhas.slice(antes);
+  assert.equal(novas.length, 2);
+  assert.equal(novas[0][8], 'Pudim');
+  assert.equal(novas[0][3], 48.92);
+  assert.equal(Math.round((novas[0][3] + novas[1][3]) * 100), 6000);
+  assert.ok(novas[0][12] && novas[0][12] === novas[1][12], 'mesmo grupo_id');
+  assert.match(novas[0][4], /^Assaí — pudim: Leite condensado, Leite integral/);
+  await ctx.close();
+});
+
+test('limite do Gemini: mostra o motivo e oferece o formulário', async () => {
+  const { ctx, page } = await entrarELer(429);
+  await page.getByRole('alert').filter({ hasText: 'limite gratuito do Gemini' }).waitFor();
+  await page.getByRole('button', { name: 'Lançar pelo formulário' }).click();
+  await page.getByRole('dialog', { name: 'Novo lançamento' }).waitFor();
   await ctx.close();
 });

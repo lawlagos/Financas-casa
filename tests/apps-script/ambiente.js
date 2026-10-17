@@ -47,7 +47,8 @@ class Aba {
   }
 }
 
-export function ambiente({ props = {}, tokeninfo } = {}) {
+export function ambiente({ props = {}, tokeninfo, gemini } = {}) {
+  const chamadasGemini = [];
   const abas = {};
   const ss = {
     getSheetByName: (n) => abas[n] || null,
@@ -60,7 +61,12 @@ export function ambiente({ props = {}, tokeninfo } = {}) {
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] || null }) },
     UrlFetchApp: {
-      fetch: (url) => {
+      fetch: (url, opcoes) => {
+        if (url.includes('generativelanguage.googleapis.com')) {
+          chamadasGemini.push({ url, opcoes });
+          const g = gemini ? gemini(url, opcoes) : { code: 500, body: '{}' };
+          return { getResponseCode: () => g.code, getContentText: () => g.body };
+        }
         const r = tokeninfo ? tokeninfo(url) : { code: 400, body: '{}' };
         return { getResponseCode: () => r.code, getContentText: () => r.body };
       },
@@ -85,6 +91,6 @@ export function ambiente({ props = {}, tokeninfo } = {}) {
   vm.createContext(ctx);
   for (const f of readdirSync(DIR).filter((x) => x.endsWith('.gs'))) vm.runInContext(readFileSync(new URL(f, DIR), 'utf8'), ctx, { filename: f });
   const post = (corpo) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(corpo) } }).texto);
-  return { ctx, abas, post };
+  return { ctx, abas, post, chamadasGemini };
 }
 

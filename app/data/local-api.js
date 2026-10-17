@@ -54,6 +54,10 @@ export class LocalApi {
     return true;
   }
 
+  async interpretar() {
+    throw new Error('A leitura de prints usa a planilha. Abra o app sem o ?demo, já conectado.');
+  }
+
   async reiniciar() {
     try {
       localStorage.removeItem(KEY);

@@ -159,7 +159,7 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
   return html`<${Folha} titulo=${editando ? 'Editar lançamento' : 'Novo lançamento'} rodape=${rodape}>
     ${!editando && !inicial && html`<div class="modos" role="group" aria-label="Como lançar">
       <button class="modo" aria-pressed=${String(modo === 'falar')} onClick=${() => setModo('falar')}><${Icone} n="mic" />Falar ou escrever</button>
-      <button class="modo" disabled title="Chega na etapa 2"><${Icone} n="camera" />Foto ou print<small>na etapa 2</small></button>
+      <button class="modo" onClick=${() => abrirFolha('leitura')}><${Icone} n="camera" />Foto ou print</button>
       <button class="modo" aria-pressed=${String(modo === 'digitar')} onClick=${() => setModo('digitar')}><${Icone} n="teclado" />Formulário</button>
     </div>`}
 

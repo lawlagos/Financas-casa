@@ -155,6 +155,7 @@ a { color: inherit; }
 .item .meta { color: var(--ink-3); font-size: 13px; line-height: 1.35; }
 .item .corpo { flex: 1; min-width: 0; }
 .item .corpo .tit, .item .corpo .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .corpo.quebra .tit, .item .corpo.quebra .meta { white-space: normal; }
 .item .valor { font-weight: 700; white-space: nowrap; text-align: right; }
 .item .valor small { display: block; font-weight: 500; color: var(--ink-3); font-size: 12px; }
 .pos { color: var(--pos); }
