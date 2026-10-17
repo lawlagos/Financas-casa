@@ -82,3 +82,11 @@ test('previsão: sem mês fechado, projeta pelo ritmo do mês; antes de 7 dias, 
   const q = previsaoMes({ lancamentos: [L('2026-10-14', 280)], itens: [], hoje });
   assert.equal(q.valor, null);
 });
+
+test('revisão: mais barato compara por kg quando todos têm tamanho', () => {
+  const [arroz] = produtos([
+    I('2026-09-01', 'Arroz 5kg', 31.9, { produto: 'Arroz', tamanho: 5, tamanho_unidade: 'kg', mercado: 'Assaí' }),
+    I('2026-09-20', 'Arroz 1kg', 6.9, { produto: 'Arroz', tamanho: 1, tamanho_unidade: 'kg', mercado: 'Atacadão' }),
+  ], { hoje });
+  assert.equal(arroz.maisBarato.mercado, 'Assaí');
+});

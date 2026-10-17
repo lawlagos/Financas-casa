@@ -11,8 +11,11 @@ import { contasAtivas } from '../derivados.js';
 import { SelectConta } from './lancamento.js';
 import { dadosPudim } from '../telas/pudim.js';
 
+// "1,5" e "1.5" são um e meio; "1.500" (com vírgula ou três casas depois do ponto) é mil e quinhentos.
 const numero = (t) => {
-  const n = Number(String(t ?? '').trim().replace(/\./g, '').replace(',', '.'));
+  const x = String(t ?? '').trim();
+  const limpo = x.includes(',') ? x.replace(/\./g, '').replace(',', '.') : /^\d{1,3}(\.\d{3})+$/.test(x) ? x.replace(/\./g, '') : x;
+  const n = Number(limpo);
   return Number.isFinite(n) ? n : 0;
 };
 const virgula = (n) => (n === '' || n === null || n === undefined ? '' : String(n).replace('.', ','));
@@ -30,7 +33,8 @@ export function FolhaMovimento({ tipo = 'producao' }) {
   const ultimoMov = [...d.movimentos].reverse().find((m) => m.tipo === tipo && d.receitasPorId[m.receita_id]);
   const ultimaVenda = [...s.tables.lancamentos].reverse().find((l) => l.categoria_id === 'cat-venda-pudim');
   const contas = contasAtivas(s);
-  const inicial = ultimoMov?.receita_id || d.receitas[0]?.id || '';
+  // Só receitas em uso: a última usada pode ter sido desativada.
+  const inicial = (ultimoMov && d.receitas.find((r) => r.id === ultimoMov.receita_id)?.id) || d.receitas[0]?.id || '';
   const qtdPadrao = (id) => (tipo === 'producao' ? String(d.receitasPorId[id]?.rendimento || 1) : '1');
   const [f, setF] = useState({
     receita_id: inicial,
@@ -205,13 +209,13 @@ export function FolhaInsumo({ insumo }) {
     marca: insumo?.marca && insumo.marca !== '-' ? insumo.marca : '',
     qtd_embalagem: virgula(insumo?.qtd_embalagem || ''),
     unidade: insumo?.unidade || 'g',
-    preco_embalagem: virgula(insumo?.preco_embalagem || ''),
+    preco_embalagem: virgula(insumo?.preco_embalagem ?? ''),
     produto: insumo?.produto || insumo?.nome || '',
     ativo: insumo?.ativo !== false,
   }));
   const [tentou, setTentou] = useState(false);
   const set = (p) => setF((x) => ({ ...x, ...p }));
-  const preco = parseBRL(f.preco_embalagem) || '';
+  const preco = String(f.preco_embalagem).trim() === '' ? '' : parseBRL(f.preco_embalagem) || 0;
   const montado = { ...(insumo || {}), ...f, nome: f.nome.trim(), produto: f.produto.trim(), qtd_embalagem: numero(f.qtd_embalagem) || '', preco_embalagem: preco };
   const c = custoInsumo(montado, itens);
   const chave = chaveProduto(montado.produto || montado.nome);

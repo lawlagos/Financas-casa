@@ -302,9 +302,9 @@ test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar
   await page.locator('.item', { hasText: 'Venda: 3 Mini pudim tradicional 150' }).first().waitFor();
 
   await page.goto(`${base}/?demo#/pudim`);
-  await page.getByRole('alert').filter({ hasText: 'venceu' }).getByRole('button', { name: 'Dar baixa' }).click();
-  await toast().filter({ hasText: 'Baixa de 1 pudim vencido' }).waitFor();
-  assert.equal(await page.getByRole('alert').filter({ hasText: 'venceu' }).count(), 0);
+  await page.getByRole('alert').filter({ hasText: /venc/ }).getByRole('button', { name: 'Dar baixa' }).click();
+  await toast().filter({ hasText: /Baixa de \d+ pudi(m|ns) vencidos?/ }).waitFor();
+  assert.equal(await page.getByRole('alert').filter({ hasText: /venc/ }).count(), 0);
 
   // apagar a venda tira a entrada do caixa junto
   const venda = page.locator('.arrastavel', { hasText: 'Vendeu 3 Mini pudim' }).first();

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { custoInsumo, custoReceita, processarEstoque, estoqueAtual, semanaPudim, ingredientesDe } from '../../app/core/pudim.js';
+import { custoInsumo, custoReceita, processarEstoque, estoqueAtual, semanaPudim, ingredientesDe, precoNoCanal, totaisCarrinho } from '../../app/core/pudim.js';
 
 const hoje = '2026-10-17'; // sábado
 const lc = { id: 'ins-lc', nome: 'Leite condensado', tipo: 'ingrediente', qtd_embalagem: 395, unidade: 'g', preco_embalagem: 6.39, data_preco: '2025-12-01', produto: 'Leite condensado' };
@@ -58,12 +58,12 @@ test('estoque: produção vira lote, venda e perda saem do mais antigo, vencido 
   ];
   const { lotes, saidas } = processarEstoque(movs);
   assert.equal(saidas['3'].custo, 600 * 3);
-  assert.equal(saidas['4'].custo, 300 * 2 + 400); // 2 do lote velho + 1 do novo
+  assert.equal(saidas['4'].custo, 3 * 400); // o lote velho venceu dia 15: a venda do dia 17 sai do novo
   const e = estoqueAtual(lotes, { 'rec-trad': receita }, hoje);
-  assert.equal(e.quantidade, 7);
-  assert.equal(e.potencial, 7 * 1200);
-  assert.equal(e.lucroPotencial, 7 * 1200 - 7 * 400);
-  assert.equal(e.vencidos, 0);
+  assert.equal(e.quantidade, 5);
+  assert.equal(e.potencial, 5 * 1200);
+  assert.equal(e.lucroPotencial, 5 * 1200 - 5 * 400);
+  assert.equal(e.vencidos, 2);
   // sem a segunda venda, sobram 2 do lote vencido em 15/10
   const sem = estoqueAtual(processarEstoque(movs.slice(0, 3)).lotes, { 'rec-trad': receita }, hoje);
   assert.equal(sem.vencidos, 2);
@@ -102,4 +102,73 @@ test('semana do pudim (sáb a sex): produziu, vendeu, perdeu, ganho real e compr
   assert.equal(s.custoPerdido, 2 * 350);
   assert.equal(s.ganho, 10800 - 2950 - 700);
   assert.equal(s.comprasCaixa, 8000);
+});
+
+test('preço por canal: iFood cadastrado, ou calculado para manter o líquido da venda direta', () => {
+  assert.deepEqual(precoNoCanal({ preco_venda: 12 }, 'direta'), { preco: 1200, calculado: false });
+  assert.deepEqual(precoNoCanal({ preco_venda: 12, preco_ifood: 16.5 }, 'ifood'), { preco: 1650, calculado: false });
+  // 12 / (1 - 0,262) = 16,26 → 16,30
+  assert.deepEqual(precoNoCanal({ preco_venda: 12 }, 'ifood', 26.2), { preco: 1630, calculado: true });
+  assert.deepEqual(precoNoCanal({}, 'ifood'), { preco: 0, calculado: false });
+});
+
+test('carrinho: bruto, taxa de 26,2% no iFood, líquido e lucro', () => {
+  const linhas = [{ quantidade: 3, preco: 1650, custo: 400 }, { quantidade: 1, preco: 9000, custo: 3000 }];
+  const t = totaisCarrinho(linhas, 'ifood', 26.2);
+  assert.equal(t.bruto, 4950 + 9000);
+  assert.equal(t.taxa, 3 * 432 + 2358);
+  assert.equal(t.liquido, t.bruto - t.taxa);
+  assert.equal(t.lucro, t.liquido - 4200);
+  assert.equal(t.quantidade, 4);
+  assert.equal(totaisCarrinho(linhas, 'direta').taxa, 0);
+});
+
+test('semana separa venda direta e iFood e desconta a taxa do ganho', () => {
+  const movs = [
+    M('1', '2026-10-10', 'producao', 4, { custo_unitario: 3, validade: '2026-10-15' }),
+    M('2', '2026-10-11', 'venda', 1, { preco_unitario: 12, canal: 'direta' }),
+    M('3', '2026-10-11', 'venda', 2, { preco_unitario: 16.5, taxa_unitaria: 4.32, canal: 'ifood' }),
+  ];
+  const { saidas } = processarEstoque(movs);
+  const lancs = [{ tipo: 'saida', origem: 'Pudim', categoria_id: 'cat-taxa-ifood', valor: 8.64, data: '2026-10-11' }];
+  const s = semanaPudim({ movimentos: movs, saidas, lancamentos: lancs, data: '2026-10-12' });
+  assert.equal(s.vendas, 1200 + 3300);
+  assert.equal(s.taxas, 864);
+  assert.deepEqual(s.porCanal.ifood, { quantidade: 2, vendas: 3300, taxas: 864 });
+  assert.equal(s.ganho, 4500 - 864 - 900);
+  assert.equal(s.comprasCaixa, 0);
+});
+
+test('revisão: venda pula o lote vencido, baixa de vencido tira o vencido e produção do dia conta antes da venda', () => {
+  // lote velho venceu em 06/10; venda em 10/10 sai do lote bom e o vencido continua aparecendo
+  const a = processarEstoque([
+    M('1', '2026-10-01', 'producao', 4, { custo_unitario: 3, validade: '2026-10-06' }),
+    M('2', '2026-10-09', 'producao', 6, { custo_unitario: 4, validade: '2026-10-14' }),
+    M('3', '2026-10-10', 'venda', 4, { preco_unitario: 12 }),
+  ]);
+  assert.equal(a.saidas['3'].custo, 4 * 400);
+  const ea = estoqueAtual(a.lotes, { 'rec-trad': receita }, '2026-10-11');
+  assert.deepEqual([ea.quantidade, ea.vencidos], [2, 4]);
+  // lote mais novo vence antes: a baixa de vencido tira dele, não do bom
+  const b = processarEstoque([
+    M('1', '2026-10-01', 'producao', 5, { custo_unitario: 3, validade: '2026-10-20' }),
+    M('2', '2026-10-02', 'producao', 3, { custo_unitario: 3, validade: '2026-10-05' }),
+    M('3', '2026-10-10', 'perda', 3, { obs: 'vencido' }),
+  ]);
+  const eb = estoqueAtual(b.lotes, { 'rec-trad': receita }, '2026-10-10');
+  assert.deepEqual([eb.quantidade, eb.vencidos], [5, 0]);
+  // venda lançada antes da produção do mesmo dia
+  const c = processarEstoque([
+    { ...M('1', '2026-10-10', 'venda', 4, { preco_unitario: 12 }), criado_em: '2026-10-10T09:00' },
+    { ...M('2', '2026-10-10', 'producao', 8, { custo_unitario: 3, validade: '2026-10-15' }), criado_em: '2026-10-10T18:00' },
+  ]);
+  assert.deepEqual(c.saidas['1'], { custo: 1200, semProducao: 0 });
+  assert.equal(c.lotes[0].restante, 4);
+});
+
+test('revisão: nota de item vendido por peso e embalagem por unidade sem conteúdo', () => {
+  const acucar = { nome: 'Açúcar', qtd_embalagem: 5, unidade: 'kg', preco_embalagem: 20, data_preco: '2026-01-01' };
+  const nota = [{ data: '2026-10-01', produto: 'Açúcar', valor: 10, quantidade: 2, unidade: 'kg' }];
+  assert.equal(custoInsumo(acucar, nota).porBase, 1000 / 2 / 1000);
+  assert.equal(custoInsumo({ nome: 'Tampa', unidade: 'un', qtd_embalagem: '', preco_embalagem: 1.26 }).porBase, 126);
 });

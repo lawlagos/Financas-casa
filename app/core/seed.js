@@ -157,7 +157,7 @@ function demoPudim(hoje) {
     estoque.push({ id: `demo-e${estoque.length + 1}`, data, receita_id, tipo, quantidade, custo_unitario: '', preco_unitario: '', validade: '', lancamento_id: '', obs: '', criado_em: `${data}T1${estoque.length % 10}:00:00Z`, ...extra });
   };
   const P = (dias, id, qtd, custo) => M(dias, id, 'producao', qtd, { custo_unitario: custo, validade: addDays(hoje, -dias + 5) });
-  P(12, 'demo-rec-mini', 16, 2.75); P(12, 'demo-rec-trad', 3, 22.4);
+  P(12, 'demo-rec-mini', 16, 2.75); P(12, 'demo-rec-trad', 3, 22.4); P(9, 'demo-rec-ninho', 1, 27.9);
   M(10, 'demo-rec-mini', 'venda', 10, { preco_unitario: 12 }); M(9, 'demo-rec-trad', 'venda', 2, { preco_unitario: 65 });
   M(6, 'demo-rec-mini', 'perda', 4, { obs: 'vencido' });
   P(5, 'demo-rec-mini', 16, 2.81); P(4, 'demo-rec-ninho', 2, 27.9); P(3, 'demo-rec-trad', 2, 22.4);

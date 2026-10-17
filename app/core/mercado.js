@@ -79,7 +79,10 @@ function resumoProduto(chave, lista, hoje) {
   // Mercado mais barato: menor preço da última compra em cada mercado.
   const ultimoPorMercado = {};
   for (const i of comPreco) if (i.mercado) ultimoPorMercado[i.mercado] = { preco: Math.round(precoUn(i)), data: i.data, medida: porMedida(i) };
-  const mercados = Object.entries(ultimoPorMercado).map(([mercado, x]) => ({ mercado, ...x })).sort((a, b) => a.preco - b.preco);
+  // Com o tamanho de todas as embalagens conhecido, compara por kg/l (5 kg de arroz contra 1 kg); senão, por unidade.
+  const ultimos = Object.entries(ultimoPorMercado).map(([mercado, x]) => ({ mercado, ...x }));
+  const comparaPorMedida = ultimos.length > 1 && ultimos.every((x) => x.medida && x.medida.unidade === ultimos[0].medida?.unidade);
+  const mercados = ultimos.sort((a, b) => (comparaPorMedida ? a.medida.valor - b.medida.valor : a.preco - b.preco));
 
   // Ritmo: média dos intervalos entre dias de compra (precisa de pelo menos 2 compras).
   let intervalo = null;
