@@ -145,7 +145,8 @@ function AbaEstoque({ s, d }) {
     ${d.locais.length > 1 && html`<${Segmento} rotulo="Local" opcoes=${[['', 'Todos'], ...d.locais.map((l) => [l.id, l.nome])]} valor=${local} onChange=${setLocal} />`}
     <div class="painel painel-pad hero-pudim hero-compacto" style=${d.locais.length > 1 ? 'margin-top:10px' : ''}>
       <div><div class="rot-mercado">Pronto para vender${local ? ` em ${nomeLocal(local)}` : ''}</div>
-        <div class="num-mercado">${plural(e.quantidade, 'pudim', 'pudins')}</div></div>
+        <div class="num-mercado">${plural(e.quantidade, 'pudim', 'pudins')}</div>
+        <div class="muted" style="font-size:12.5px">custaram ${brl(e.custo)} em ingredientes</div></div>
       <div style="text-align:right"><div class="rot-mercado">Se vender tudo</div><strong style="font-size:17px">${brl(e.potencial)}</strong>
         <div class=${e.lucroPotencial < 0 ? 'neg' : 'pos'} style="font-size:13px;font-weight:700">lucro ${brlSigned(e.lucroPotencial)}</div></div>
     </div>
@@ -221,7 +222,7 @@ function AbaEstoque({ s, d }) {
       <ul class="lista painel">
         ${recentes.map((m) => html`<li><${Arrastavel} onApagar=${() => apagarMov(m)}><button class="item item-btn" onClick=${() => abrirFolha('editar-movimento', { id: m.id })}>
           <div class="corpo"><div class="tit">${ROTULO_MOV[m.tipo] || m.tipo} ${m.quantidade} ${d.receitasPorId[m.receita_id]?.nome || 'receita apagada'}</div>
-            <div class="meta">${fmtDay(m.data)}${d.locais.length > 1 ? `, ${ondeMov(m)}` : ''}${m.tipo === 'producao' && m.validade ? `, vence ${fmtDay(m.validade)}` : ''}${m.canal === 'ifood' ? ', iFood' : ''}${m.obs ? `, ${m.obs}` : ''}${m.lancamento_id ? ', lançado no caixa' : ''}</div></div>
+            <div class="meta">${fmtDay(m.data)}${m.tipo === 'producao' && Number(m.quantidade) > 1 ? `, ${String(m.quantidade).replace('.', ',')} × ${brl(Math.round(Number(m.custo_unitario || 0) * 100))}` : ''}${d.locais.length > 1 ? `, ${ondeMov(m)}` : ''}${m.tipo === 'producao' && m.validade ? `, vence ${fmtDay(m.validade)}` : ''}${m.canal === 'ifood' ? ', iFood' : ''}${m.obs ? `, ${m.obs}` : ''}${m.lancamento_id ? ', lançado no caixa' : ''}</div></div>
           <div class=${`valor ${m.tipo === 'venda' ? 'pos' : m.tipo === 'perda' ? 'neg' : ''}`}>${m.tipo === 'venda' ? brl(Math.round(Number(m.quantidade) * Math.round(Number(m.preco_unitario || 0) * 100))) : m.tipo === 'producao' ? brl(Math.round(Number(m.quantidade) * Math.round(Number(m.custo_unitario || 0) * 100))) : m.tipo === 'transferencia' ? brl(d.saidas[m.id]?.transferido || 0) : brl(d.saidas[m.id]?.custo || 0)}
             <small>${m.tipo === 'venda' ? 'venda' : 'custo'}</small></div>
         </button><//></li>`)}

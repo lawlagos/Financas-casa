@@ -233,10 +233,15 @@ export function FolhaEstoqueProduto({ receita_id, local: localTela = '' }) {
   const locais = locaisDoProduto(r, d.locais);
   const porLocal = locais.map((l) => {
     const porValidade = {};
-    for (const lt of d.lotes) if (lt.receita_id === r.id && lt.local === l.id) porValidade[lt.validade] = (porValidade[lt.validade] || 0) + lt.restante;
+    let investido = 0;
+    for (const lt of d.lotes) {
+      if (lt.receita_id !== r.id || lt.local !== l.id) continue;
+      porValidade[lt.validade] = (porValidade[lt.validade] || 0) + lt.restante;
+      if (lt.validade >= s.hoje) investido += lt.restante * lt.custo;
+    }
     const linhas = Object.entries(porValidade).sort(([a], [b]) => (a < b ? -1 : 1)).map(([validade, quantidade]) => ({ validade, quantidade, vencido: validade < s.hoje }));
     const minimo = Math.ceil((Number(r.estoque_minimo) || 0) * (Number(r.rendimento) || 1) * (Number(l.fator) || 0));
-    return { local: l, linhas, prontos: linhas.filter((x) => !x.vencido).reduce((t, x) => t + x.quantidade, 0), minimo };
+    return { local: l, linhas, prontos: linhas.filter((x) => !x.vencido).reduce((t, x) => t + x.quantidade, 0), minimo, investido };
   });
   const opLocal = d.locaisPorId[localTela] && locais.some((l) => l.id === localTela) ? localTela : locais[0]?.id || d.locais[0].id;
   const quando = (v) => (v < s.hoje ? `venceu ${fmtDay(v)}` : v === s.hoje ? 'vence hoje' : v === amanha ? 'vence amanhã' : `vence ${fmtDay(v)}`);
@@ -254,6 +259,7 @@ export function FolhaEstoqueProduto({ receita_id, local: localTela = '' }) {
         ? html`<ul class="lista painel">${x.linhas.map((l) => html`<li class="item"><div class="corpo"><div class="tit">${l.quantidade} ${l.quantidade === 1 ? 'unidade' : 'unidades'}</div></div>
             <div class=${`valor ${l.vencido ? 'neg' : l.validade <= amanha ? 'atencao' : ''}`} style="font-size:14px">${quando(l.validade)}</div></li>`)}</ul>`
         : html`<p class="muted" style="margin:2px 0 0;font-size:13.5px">Nenhum.</p>`}
+      ${x.prontos > 0 && html`<p class="muted" style="margin:6px 2px 0;font-size:13px">Custaram ${brl(x.investido)} em ingredientes e embalagem (${brl(Math.round(x.investido / x.prontos))} cada). Se perder um, perde isso.</p>`}
     </div>`)}
     <div class="acoes acoes-pudim" style="margin-top:16px">
       <button class="btn btn-pri" onClick=${() => ir('movimento', { tipo: 'producao', receita_id: r.id, quantidade: Number(r.rendimento) || 1, local: opLocal })}>Produzi</button>
@@ -281,6 +287,7 @@ export function FolhaEditarMovimento({ id }) {
   const [f, setF] = useState(() => ({
     local: localInicial, local_destino: m?.local_destino || d.locais.find((l) => l.id !== localInicial)?.id || '',
     data: m?.data || s.hoje, quantidade: virgula(m?.quantidade ?? ''), validade: m?.validade || '', obs: m?.obs || 'vencido', loteTodo: true,
+    receita_id: m?.receita_id || '',
   }));
   const [salvando, setSalvando] = useState(false);
   if (!m) return html`<${Folha} titulo="Movimento"><p class="muted">Esse movimento não existe mais.</p><//>`;
@@ -296,6 +303,7 @@ export function FolhaEditarMovimento({ id }) {
   // Prévia do que acontece com os saldos ao trocar o local.
   const qAntes = Number(m.quantidade) || 0;
   const qNovo = venda ? qAntes : qtd;
+  const pudinsDoLocal = d.receitas.filter((x) => locaisDoProduto(x, d.locais).some((l) => l.id === f.local));
   const prevLocal = !mudouLocal || m.tipo === 'transferencia'
     ? ''
     : venda && carrinho.length > 1
@@ -310,7 +318,16 @@ export function FolhaEditarMovimento({ id }) {
   const guardar = async () => {
     if (!ok) return;
     const mud = venda ? { local: f.local } : { local: f.local, data: f.data, quantidade: qtd };
-    if (m.tipo === 'producao') mud.validade = f.validade || m.validade;
+    // Pudim trocado ("era copo, não 500 g"): a produção passa a custar o de cada do pudim certo.
+    if (!venda && f.receita_id && f.receita_id !== m.receita_id) {
+      mud.receita_id = f.receita_id;
+      if (m.tipo === 'producao') {
+        mud.custo_unitario = reais(d.custos[f.receita_id]?.porUnidade || 0);
+        mud.custo_fixo_unitario = reais(d.custos[f.receita_id]?.fixoUnidade || 0);
+        if (!f.validade || f.validade === m.validade) mud.validade = addDays(f.data, Number(d.receitasPorId[f.receita_id]?.validade_dias) || VALIDADE_PADRAO);
+      }
+    }
+    if (m.tipo === 'producao' && !mud.validade) mud.validade = f.validade || m.validade;
     if (m.tipo === 'perda') mud.obs = f.obs;
     if (m.tipo === 'transferencia') mud.local_destino = f.local_destino;
     setSalvando(true);
@@ -337,7 +354,14 @@ export function FolhaEditarMovimento({ id }) {
     ${prevLocal && html`<div class="duvida" style="margin-top:10px"><${Icone} n="info" /><span>${prevLocal}${faltaNovo ? ` ${nome(f.local)} ${venda ? 'não tem tudo isso' : `só tem ${temNovo}`} pronto; o resto fica devendo até a próxima produção ou envio.` : ''}</span></div>`}
     ${venda
       ? html`<p class="muted" style="font-size:13px;margin:10px 2px 0">${carrinho.length > 1 ? `A troca de local vale para a venda inteira (${carrinho.length} itens). ` : ''}Quantidade e dia estão ligados ao valor${m.lancamento_id ? ' lançado no caixa' : ' da venda'}: para mudar, apague a venda e lance de novo.</p>`
-      : html`<div class="linha2">
+      : html`<${Campo} rotulo="Qual pudim">
+        <select aria-label="Qual pudim" value=${f.receita_id} onChange=${(e) => set({ receita_id: e.target.value })}>
+          ${!pudinsDoLocal.some((x) => x.id === f.receita_id) && html`<option value=${f.receita_id}>${d.receitasPorId[f.receita_id]?.nome || 'receita apagada'}</option>`}
+          ${pudinsDoLocal.map((x) => html`<option value=${x.id}>${x.nome}</option>`)}
+        </select>
+      <//>
+      ${m.tipo === 'producao' && f.receita_id !== m.receita_id && d.custos[f.receita_id] && html`<div class="duvida" style="margin-top:8px"><${Icone} n="info" /><span>Passa a custar ${brl(d.custos[f.receita_id].porUnidade)} cada (era ${brl(toCents(m.custo_unitario || 0))}).</span></div>`}
+      <div class="linha2">
         <${Campo} rotulo="Quantos"><input aria-label="Quantos" inputmode="decimal" value=${f.quantidade} onInput=${(e) => set({ quantidade: e.target.value })} aria-invalid=${!(qtd > 0)} /><//>
         <${Campo} rotulo="Dia"><input type="date" value=${f.data} onInput=${(e) => set({ data: e.target.value })} /><//>
       </div>`}

@@ -673,3 +673,25 @@ test('dois locais: lote com vários sabores, envio para Ibiúna, perda lançada 
   await page.getByRole('button', { name: 'Adicionar Pudim tradicional 150' }).locator('.pdv-estoque', { hasText: '6 prontos' }).waitFor();
   assert.deepEqual(erros, []);
 });
+
+test('produção lançada no pudim errado: trocar o pudim refaz o custo de cada e o gasto de ingredientes', async () => {
+  await page.goto(`${base}/?demo#/pudim`);
+  await page.getByRole('button', { name: 'Produzi', exact: true }).click();
+  await folha().getByLabel('Qual pudim').selectOption({ label: 'Pudim tradicional 1100' });
+  await page.locator('#mov-quantidade').fill('4');
+  await page.getByRole('button', { name: 'Pôr no estoque' }).click();
+  await toast().filter({ hasText: '4 Pudim tradicional 1100 no estoque' }).waitFor();
+  const mov = page.locator('.item-btn', { hasText: 'Produziu 4 Pudim tradicional 1100' }).first();
+  const antes = await mov.locator('.valor').innerText();
+  await mov.click();
+  await folha().getByLabel('Qual pudim').selectOption({ label: 'Pudim tradicional 150' });
+  await folha().getByText(/Passa a custar R\$ [\d,]+ cada/).waitFor();
+  await page.getByRole('button', { name: 'Salvar' }).click();
+  await toast().filter({ hasText: 'Movimento corrigido' }).waitFor();
+  const depois = page.locator('.item-btn', { hasText: 'Produziu 4 Pudim tradicional 150' }).first();
+  await depois.waitFor();
+  assert.match(await depois.innerText(), /4 × R\$ [\d,]+/);
+  assert.ok(reais(await depois.locator('.valor').innerText()) < reais(antes));
+  assert.equal(await page.locator('.item-btn', { hasText: 'Produziu 4 Pudim tradicional 1100' }).count(), 0);
+  assert.deepEqual(erros, []);
+});

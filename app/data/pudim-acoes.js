@@ -152,7 +152,7 @@ export const itensDoLote = (m) => (m.tipo === 'producao' && m.lote_id ? state.ta
 
 // Corrige um movimento. Os saldos são refeitos a partir dos movimentos, então trocar o local de uma saída
 // devolve ao local antigo e tira do novo, sem lançar nada a mais.
-// mudancas: { local, local_destino, data, quantidade, validade, obs, loteTodo (validade/local/dia valem para o lote inteiro) }.
+// mudancas: { receita_id (com custo_unitario e custo_fixo_unitario na produção), local, local_destino, data, quantidade, validade, obs, loteTodo (validade/local/dia valem para o lote inteiro) }.
 // Venda: só o local muda (vale para o carrinho inteiro); quantidade e dia estão ligados ao valor no caixa.
 export async function editarMovimento(m, mudancas) {
   const { loteTodo, ...mud } = mudancas;
@@ -174,10 +174,10 @@ export async function editarMovimento(m, mudancas) {
       for (const k of ['local', 'validade', 'data']) if (k in mud) comuns[k] = mud[k];
       const linhas = grupo.map((x) => (x.id === m.id ? atual : { ...x, ...comuns }));
       await gravar(linhas);
-      // Produção com outra quantidade ou outro dia: refaz a saída de ingredientes dela.
+      // Produção com outra quantidade, outro dia ou outro pudim: refaz a saída de ingredientes dela.
       for (const x of linhas.filter((l) => l.tipo === 'producao')) {
         const antes = grupo.find((g) => g.id === x.id);
-        if (Number(antes.quantidade) === Number(x.quantidade) && antes.data === x.data) continue;
+        if (Number(antes.quantidade) === Number(x.quantidade) && antes.data === x.data && antes.receita_id === x.receita_id) continue;
         for (const e of (state.tables.estoque_insumos || []).filter((e) => e.ref === x.id && e.origem === 'producao')) {
           await apagar('estoque_insumos', e.id);
           apagados.push(e);
