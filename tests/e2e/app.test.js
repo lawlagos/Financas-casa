@@ -282,31 +282,30 @@ test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar
   const pudins = async () => Number((await page.locator('.hero-pudim .num-mercado').innerText()).match(/\d+/)[0]);
   const antes = await pudins();
 
-  await page.getByRole('button', { name: 'Produzi' }).click();
+  await page.getByRole('button', { name: 'Produzi', exact: true }).click();
   await folha().getByLabel('Qual pudim').selectOption({ label: 'Mini pudim tradicional 150' });
   assert.equal(await page.locator('#mov-quantidade').inputValue(), '8');
   await page.getByRole('button', { name: 'Pôr no estoque' }).click();
   await toast().filter({ hasText: '8 Mini pudim tradicional 150 no estoque' }).waitFor();
   assert.equal(await pudins(), antes + 8);
 
-  await page.getByRole('button', { name: 'Vendi' }).click();
-  await folha().getByLabel('Qual pudim').selectOption({ label: 'Mini pudim tradicional 150' });
-  await page.locator('#mov-quantidade').fill('3');
-  assert.equal(await page.locator('#mov-preco').inputValue(), '12');
-  await folha().getByText('R$ 36,00').waitFor();
-  await page.getByRole('button', { name: 'Registrar venda' }).click();
-  await toast().filter({ hasText: 'Venda registrada e lançada no caixa' }).waitFor();
-  assert.equal(await pudins(), antes + 5);
+  // venda direta pelo PDV: 3 toques no mini pudim
   const nubankPj = await saldoConta('Nubank PJ');
-  await page.goto(`${base}/?demo#/lancamentos`);
-  await page.locator('.item', { hasText: 'Venda: 3 Mini pudim tradicional 150' }).first().waitFor();
-
+  await page.goto(`${base}/?demo#/pudim/vender`);
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Adicionar Mini pudim tradicional 150' }).click();
+  await page.locator('#carrinho').getByText('R$ 36,00').first().waitFor();
+  await page.getByRole('button', { name: 'Finalizar venda · R$ 36,00' }).click();
+  await toast().filter({ hasText: 'Venda de R$ 36,00 registrada e lançada no caixa' }).waitFor();
+  assert.equal(reais(await saldoConta('Nubank PJ')), Math.round((reais(nubankPj) + 36) * 100) / 100);
+  await page.goto(`${base}/?demo#/pudim`);
+  assert.equal(await pudins(), antes + 5);
   await page.goto(`${base}/?demo#/pudim`);
   await page.getByRole('alert').filter({ hasText: /venc/ }).getByRole('button', { name: 'Dar baixa' }).click();
   await toast().filter({ hasText: /Baixa de \d+ pudi(m|ns) vencidos?/ }).waitFor();
   assert.equal(await page.getByRole('alert').filter({ hasText: /venc/ }).count(), 0);
 
   // apagar a venda tira a entrada do caixa junto
+  await page.goto(`${base}/?demo#/pudim`);
   const venda = page.locator('.arrastavel', { hasText: 'Vendeu 3 Mini pudim' }).first();
   await venda.scrollIntoViewIfNeeded();
   const caixa = await venda.boundingBox();
@@ -314,13 +313,68 @@ test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar
   await page.mouse.down();
   await page.mouse.move(caixa.x + 40, caixa.y + caixa.height / 2, { steps: 8 });
   await page.mouse.up();
-  await toast().filter({ hasText: 'Venda apagada, e a entrada no caixa também' }).waitFor();
-  assert.equal(reais(await saldoConta('Nubank PJ')), Math.round((reais(nubankPj) - 36) * 100) / 100);
+  await toast().filter({ hasText: 'Venda apagada, e o lançamento no caixa também' }).waitFor();
+  assert.equal(reais(await saldoConta('Nubank PJ')), reais(nubankPj));
 
   await page.goto(`${base}/?demo#/pudim?aba=receitas`);
   await page.locator('.item-btn', { hasText: 'Mini pudim tradicional 150' }).click();
   await page.getByRole('button', { name: 'Manter o preço e tirar o aviso' }).click();
   await toast().filter({ hasText: 'Receita salva' }).waitFor();
   assert.equal(await page.locator('.item-btn', { hasText: 'Mini pudim tradicional 150' }).locator('.etiqueta').count(), 0);
+  assert.deepEqual(erros, []);
+});
+
+test('pdv no iFood: preço calculado, taxa de 26,2% como gasto, conta iFood criada; apagar tira os dois lançamentos', async () => {
+  await page.goto(`${base}/?demo#/pudim/vender`);
+  await page.getByRole('group', { name: 'Canal' }).getByRole('button', { name: 'iFood' }).click();
+  await page.getByRole('button', { name: 'Adicionar Pudim tradicional 1100' }).click();
+  await page.getByRole('button', { name: 'Mais Pudim tradicional 1100' }).click();
+  // 65 / (1 - 0,262) = 88,08 → 88,10 cada; taxa 23,08 cada
+  await page.locator('#carrinho').getByText('− R$ 46,16').waitFor();
+  await page.locator('#carrinho').getByText('R$ 130,04').waitFor();
+  await page.getByRole('button', { name: 'Finalizar venda · R$ 176,20' }).click();
+  await toast().filter({ hasText: 'líquido R$ 130,04 na conta iFood' }).waitFor();
+  assert.match(await saldoConta('iFood'), /130,04/);
+  await page.goto(`${base}/?demo#/lancamentos`);
+  await page.locator('.item', { hasText: 'Taxa iFood (26,2%)' }).first().waitFor();
+  await page.goto(`${base}/?demo#/pudim`);
+  await page.getByText('Taxa do iFood').waitFor();
+  const venda = page.locator('.arrastavel', { hasText: 'Vendeu 2 Pudim tradicional 1100' }).first();
+  await venda.scrollIntoViewIfNeeded();
+  const caixa = await venda.boundingBox();
+  await page.mouse.move(caixa.x + caixa.width - 20, caixa.y + caixa.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(caixa.x + 40, caixa.y + caixa.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await toast().filter({ hasText: 'Venda apagada' }).waitFor();
+  assert.match(await saldoConta('iFood'), /0,00/);
+  await page.goto(`${base}/?demo#/lancamentos`);
+  assert.equal(await page.locator('.item', { hasText: 'Taxa iFood' }).count(), 0);
+  assert.deepEqual(erros, []);
+});
+
+test('estoque por voz: produz, vende e perde numa frase; o que faltou é respondido na lista', async () => {
+  await page.goto(`${base}/?demo#/pudim`);
+  const pudins = async () => Number((await page.locator('.hero-pudim .num-mercado').innerText()).match(/\d+/)[0]);
+  const antes = await pudins();
+  await page.getByRole('button', { name: /Falar o que produziu/ }).click();
+  await page.locator('#voz-estoque').fill('fiz uma fornada de mini pudim 150, vendi 1 pudim tradicional 1100 e perdi um ninho que caiu');
+  await page.keyboard.press('Enter');
+  await page.getByLabel('Pudim do item 1').waitFor();
+  assert.equal(await page.getByLabel('Quantidade do item 1').inputValue(), '8');
+  await folha().getByRole('group', { name: 'Motivo' }).getByRole('button', { name: 'Quebrou ou estragou', pressed: true }).waitFor();
+  await page.getByRole('button', { name: 'Confirmar' }).click();
+  await toast().filter({ hasText: /2 movimentos no estoque e venda de R\$ 65,00 lançada no caixa/ }).waitFor();
+  assert.equal(await pudins(), antes + 8 - 1 - 1);
+
+  // sem dizer o que houve: o app pergunta
+  await page.getByRole('button', { name: /Falar o que produziu/ }).click();
+  await page.locator('#voz-estoque').fill('2 de ninho');
+  await page.getByRole('button', { name: 'Entender' }).click();
+  await page.getByText('Responda os ❓ para confirmar.').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Confirmar' }).isDisabled(), true);
+  await page.getByLabel('O que houve no item 1').selectOption({ label: 'Produziu' });
+  await page.getByRole('button', { name: 'Confirmar' }).click();
+  await toast().filter({ hasText: '1 movimento no estoque' }).waitFor();
   assert.deepEqual(erros, []);
 });

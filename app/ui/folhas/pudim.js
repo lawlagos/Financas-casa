@@ -5,7 +5,10 @@ import { Folha, Segmento, Chips, Campo } from '../componentes.js';
 import { useStore, salvar, fecharFolha, toast } from '../../data/store.js';
 import { brl, parseBRL, toCents } from '../../core/money.js';
 import { addDays, fmtDay } from '../../core/dates.js';
-import { custoReceita, custoInsumo, ingredientesDe, VALIDADE_PADRAO } from '../../core/pudim.js';
+import { custoReceita, custoInsumo, ingredientesDe, VALIDADE_PADRAO, precoNoCanal, totaisCarrinho, CANAIS } from '../../core/pudim.js';
+import { interpretarEstoque } from '../../core/vozestoque.js';
+import { registrarVenda, registrarMovimentos, taxaIfood } from '../../data/pudim-acoes.js';
+import { CampoFala } from '../voz.js';
 import { chaveProduto, produtoDoItem, produtos } from '../../core/mercado.js';
 import { contasAtivas } from '../derivados.js';
 import { SelectConta } from './lancamento.js';
@@ -21,18 +24,16 @@ const numero = (t) => {
 const virgula = (n) => (n === '' || n === null || n === undefined ? '' : String(n).replace('.', ','));
 const reais = (cents) => Math.round(cents) / 100;
 
-const TITULO = { producao: 'Produzi', venda: 'Vendi', perda: 'Perdi' };
+const TITULO = { producao: 'Produzi', perda: 'Perdi' };
 const MOTIVOS = [['vencido', 'Venceu'], ['quebrou', 'Quebrou ou estragou'], ['consumo', 'Consumo ou brinde']];
 const UNIDADES = [['g', 'g'], ['kg', 'kg'], ['ml', 'ml'], ['l', 'litro'], ['un', 'unidade']];
 const BASE_TXT = { g: 'g', kg: 'g', ml: 'ml', l: 'ml', un: 'un' };
 
-// Produzi, Vendi ou Perdi: um movimento de estoque. A venda pode lançar a entrada no caixa junto.
+// Produzi ou Perdi: um movimento de estoque. Venda é pela tela Vender (PDV) ou pela voz.
 export function FolhaMovimento({ tipo = 'producao' }) {
   const s = useStore();
   const d = dadosPudim(s);
   const ultimoMov = [...d.movimentos].reverse().find((m) => m.tipo === tipo && d.receitasPorId[m.receita_id]);
-  const ultimaVenda = [...s.tables.lancamentos].reverse().find((l) => l.categoria_id === 'cat-venda-pudim');
-  const contas = contasAtivas(s);
   // Só receitas em uso: a última usada pode ter sido desativada.
   const inicial = (ultimoMov && d.receitas.find((r) => r.id === ultimoMov.receita_id)?.id) || d.receitas[0]?.id || '';
   const qtdPadrao = (id) => (tipo === 'producao' ? String(d.receitasPorId[id]?.rendimento || 1) : '1');
@@ -41,9 +42,6 @@ export function FolhaMovimento({ tipo = 'producao' }) {
     quantidade: qtdPadrao(inicial),
     data: s.hoje,
     validade: '',
-    preco: virgula(d.receitasPorId[inicial]?.preco_venda || ''),
-    conta_id: ultimaVenda?.conta_id || (contas.find((c) => c.id === 'nubank-pj') ? 'nubank-pj' : ''),
-    lancar: true,
     motivo: 'vencido',
   });
   const [tentou, setTentou] = useState(false);
@@ -51,39 +49,29 @@ export function FolhaMovimento({ tipo = 'producao' }) {
   const r = d.receitasPorId[f.receita_id];
   const c = d.custos[f.receita_id];
   const qtd = numero(f.quantidade);
-  const preco = parseBRL(f.preco) || 0;
   const validade = f.validade || addDays(f.data, Number(r?.validade_dias) || VALIDADE_PADRAO);
   const naGeladeira = d.estoque.lista.find((x) => x.receita_id === f.receita_id);
-  const trocaReceita = (id) => set({ receita_id: id, quantidade: qtdPadrao(id), preco: virgula(d.receitasPorId[id]?.preco_venda || ''), validade: '' });
-  const ok = r && qtd > 0 && (tipo !== 'venda' || (preco > 0 && (!f.lancar || f.conta_id)));
+  const trocaReceita = (id) => set({ receita_id: id, quantidade: qtdPadrao(id), validade: '' });
+  const ok = r && qtd > 0;
 
   const guardar = async () => {
     setTentou(true);
     if (!ok) return;
-    const agora = new Date().toISOString();
-    let lancamento_id = '';
-    if (tipo === 'venda' && f.lancar) {
-      const l = await salvar('lancamentos', {
-        tipo: 'entrada', valor: reais(Math.round(qtd * toCents(preco))), data: f.data, descricao: `Venda: ${virgula(qtd)} ${r.nome}`,
-        conta_id: f.conta_id, conta_destino_id: '', categoria_id: 'cat-venda-pudim', origem: 'Pudim', canal: 'estoque', previsto_id: '',
-      });
-      lancamento_id = l.id;
-    }
     await salvar('estoque', {
       data: f.data, receita_id: f.receita_id, tipo, quantidade: qtd,
       custo_unitario: tipo === 'producao' ? reais(c.porUnidade) : '',
-      preco_unitario: tipo === 'venda' ? preco : '',
+      preco_unitario: '',
       validade: tipo === 'producao' ? validade : '',
-      lancamento_id, obs: tipo === 'perda' ? f.motivo : '', criado_em: agora,
+      lancamento_id: '', obs: tipo === 'perda' ? f.motivo : '', criado_em: new Date().toISOString(), canal: '', taxa_unitaria: '',
     });
     fecharFolha();
-    toast(tipo === 'producao' ? `${virgula(qtd)} ${r.nome} no estoque` : tipo === 'venda' ? `Venda registrada${lancamento_id ? ' e lançada no caixa' : ''}` : 'Perda registrada');
+    toast(tipo === 'producao' ? `${virgula(qtd)} ${r.nome} no estoque` : 'Perda registrada');
   };
 
   if (!d.receitas.length) {
     return html`<${Folha} titulo=${TITULO[tipo]}><p class="muted">Cadastre ou importe as receitas primeiro, em Pudim > Receitas.</p><//>`;
   }
-  return html`<${Folha} titulo=${TITULO[tipo]} rodape=${html`<button class="btn btn-pri" disabled=${tentou && !ok} onClick=${guardar}>${tipo === 'producao' ? 'Pôr no estoque' : tipo === 'venda' ? 'Registrar venda' : 'Registrar perda'}</button>`}>
+  return html`<${Folha} titulo=${TITULO[tipo]} rodape=${html`<button class="btn btn-pri" disabled=${tentou && !ok} onClick=${guardar}>${tipo === 'producao' ? 'Pôr no estoque' : 'Registrar perda'}</button>`}>
     <${Campo} rotulo="Qual pudim">
       <select aria-label="Qual pudim" value=${f.receita_id} onChange=${(e) => trocaReceita(e.target.value)}>
         ${d.receitas.map((x) => html`<option value=${x.id}>${x.nome}</option>`)}
@@ -106,16 +94,6 @@ export function FolhaMovimento({ tipo = 'producao' }) {
         ${c.faltando.length > 0 && html`<div class="duvida" style="margin-top:10px"><${Icone} n="alerta" /><span>Sem preço: ${c.faltando.join(', ')}. O custo está menor do que o real.</span></div>`}
       </div>`}
 
-    ${tipo === 'venda' && html`
-      <${Campo} rotulo="Preço de cada"><input id="mov-preco" inputmode="decimal" placeholder="0,00" value=${f.preco} onInput=${(e) => set({ preco: e.target.value })} aria-invalid=${tentou && !(preco > 0)} /><//>
-      <div class="painel painel-pad" style="margin-top:14px">
-        <div style="display:flex;justify-content:space-between"><span>Total da venda</span><strong>${brl(Math.round(qtd * toCents(preco)))}</strong></div>
-        <div style="display:flex;justify-content:space-between;margin-top:6px"><span>Lucro (preço menos custo)</span><strong>${brl(Math.round(qtd * (toCents(preco) - c.porUnidade)))}</strong></div>
-      </div>
-      <label class="interruptor"><span>Lançar a entrada no caixa</span><input type="checkbox" checked=${f.lancar} onChange=${(e) => set({ lancar: e.target.checked })} /></label>
-      <div class="ajuda muted" style="font-size:12.5px;margin-top:4px">Desligue se já lançou esse dinheiro pelo print do Pix.</div>
-      ${f.lancar && html`<${SelectConta} rotulo="Entrou em" valor=${f.conta_id} onChange=${(v) => set({ conta_id: v })} contas=${contas} />`}`}
-
     ${tipo === 'perda' && html`
       <div class="campo"><span>O que houve</span><${Chips} rotulo="Motivo" valor=${f.motivo} onChange=${(v) => set({ motivo: v || 'vencido' })} opcoes=${MOTIVOS} /></div>
       <p class="muted" style="font-size:13px;margin:10px 0 0">Sai do estoque pelos mais antigos. Custo perdido: cerca de ${brl(Math.round(c.porUnidade * qtd))}.</p>`}
@@ -132,6 +110,7 @@ export function FolhaReceita({ receita }) {
     rendimento: virgula(receita?.rendimento || 1),
     validade_dias: virgula(receita?.validade_dias || VALIDADE_PADRAO),
     preco_venda: virgula(receita?.preco_venda || ''),
+    preco_ifood: virgula(receita?.preco_ifood || ''),
     ingredientes: ingredientesDe(receita).map((x) => ({ insumo_id: x.insumo_id, quantidade: virgula(x.quantidade) })),
     ativo: receita?.ativo !== false,
   }));
@@ -144,11 +123,15 @@ export function FolhaReceita({ receita }) {
     rendimento: numero(f.rendimento) || 1,
     validade_dias: numero(f.validade_dias) || VALIDADE_PADRAO,
     preco_venda: parseBRL(f.preco_venda) || '',
+    preco_ifood: parseBRL(f.preco_ifood) || '',
     ingredientes: JSON.stringify(f.ingredientes.filter((x) => x.insumo_id && numero(x.quantidade) > 0).map((x) => ({ insumo_id: x.insumo_id, quantidade: numero(x.quantidade) }))),
     ativo: f.ativo,
   });
   const nova = montar();
   const c = custoReceita(nova, d.insumosPorId, d.itens);
+  const taxaPct = taxaIfood();
+  const ifood = precoNoCanal(nova, 'ifood', taxaPct);
+  const liquidoIfood = ifood.preco - Math.round((ifood.preco * taxaPct) / 100);
   const guardar = async (zerarAlerta = false) => {
     setTentou(true);
     if (!nova.nome) return;
@@ -167,6 +150,11 @@ export function FolhaReceita({ receita }) {
     </div>
     <${Campo} rotulo="Preço de venda de cada" ajuda=${receita?.preco_sugerido ? `A planilha sugeria ${brl(toCents(receita.preco_sugerido))} (com salário e despesas fixas).` : ''}>
       <input id="receita-preco" inputmode="decimal" placeholder="0,00" value=${f.preco_venda} onInput=${(e) => set({ preco_venda: e.target.value })} />
+    <//>
+    <${Campo} rotulo="Preço no iFood" ajuda=${ifood.preco ? (ifood.calculado
+      ? `Vazio: o app usa ${brl(ifood.preco)}, que depois da taxa de ${String(taxaPct).replace('.', ',')}% deixa o mesmo da venda direta.`
+      : `Depois da taxa de ${String(taxaPct).replace('.', ',')}%, ficam ${brl(liquidoIfood)} (lucro ${brl(liquidoIfood - c.porUnidade)}).`) : ''}>
+      <input id="receita-preco-ifood" inputmode="decimal" placeholder=${ifood.calculado ? (ifood.preco / 100).toFixed(2).replace('.', ',') : '0,00'} value=${f.preco_ifood} onInput=${(e) => set({ preco_ifood: e.target.value })} />
     <//>
 
     <div class="painel painel-pad" style="margin-top:14px">
@@ -254,5 +242,82 @@ export function FolhaInsumo({ insumo }) {
         <div class="meta">${fmtDay(it.data)}${it.mercado ? `, ${it.mercado}` : ''}${it.marca ? `, ${it.marca}` : ''}${Number(it.quantidade) > 1 ? `, ${virgula(it.quantidade)} un` : ''}</div></div>
         <div class="valor">${brl(toCents(it.valor))}</div></li>`)}</ul>`}
     ${insumo && html`<label class="interruptor"><span>Em uso</span><input type="checkbox" checked=${f.ativo} onChange=${(e) => set({ ativo: e.target.checked })} /></label>`}
+  <//>`;
+}
+
+const TIPOS_FALA = [['producao', 'Produziu'], ['venda', 'Vendeu'], ['perda', 'Perdeu']];
+
+// Estoque por voz: fala (ou digita) a frase, confere o rascunho e grava produção, venda e perda de uma vez.
+export function FolhaVozEstoque() {
+  const s = useStore();
+  const d = dadosPudim(s);
+  const contas = contasAtivas(s);
+  const ultimaDireta = [...s.tables.lancamentos].reverse().find((l) => l.categoria_id === 'cat-venda-pudim' && l.conta_id !== 'ifood');
+  const naGeladeira = Object.fromEntries(d.estoque.lista.map((x) => [x.receita_id, x.quantidade]));
+  const [frase, setFrase] = useState('');
+  const [r, setR] = useState(null);
+  const [conta_id, setConta] = useState(ultimaDireta?.conta_id || (contas.find((c) => c.id === 'nubank-pj') ? 'nubank-pj' : ''));
+  const [lancar, setLancar] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const taxaPct = taxaIfood();
+
+  const entender = (texto) => {
+    const x = interpretarEstoque(texto, { receitas: d.receitas, hoje: s.hoje, estoque: naGeladeira });
+    setR({ ...x, itens: x.itens.map((i) => ({ ...i, tipo: i.tipo || '', quantidade: i.quantidade ? virgula(i.quantidade) : '' })) });
+  };
+  const setItem = (k, p) => setR((x) => ({ ...x, itens: x.itens.map((i, j) => (j === k ? { ...i, ...p } : i)) }));
+  const itens = (r?.itens || []).map((i) => ({ ...i, receita: d.receitasPorId[i.receita_id], qtd: numero(i.quantidade) }));
+  const vendas = itens.filter((i) => i.tipo === 'venda');
+  const linhasVenda = vendas.filter((i) => i.receita).map((i) => ({ receita: i.receita, quantidade: i.qtd, preco: precoNoCanal(i.receita, r.canal, taxaPct).preco, custo: d.custos[i.receita.id]?.porUnidade || 0 }));
+  const t = totaisCarrinho(linhasVenda, r?.canal, taxaPct);
+  const pendente = itens.filter((i) => !i.receita || !(i.qtd > 0) || !i.tipo).length + linhasVenda.filter((l) => !l.preco).length;
+  const ok = r && itens.length && !pendente && (!vendas.length || !lancar || r.canal === 'ifood' || conta_id);
+
+  const guardar = async () => {
+    if (!ok) return;
+    setSalvando(true);
+    try {
+      const outros = itens.filter((i) => i.tipo !== 'venda').map((i) => ({ tipo: i.tipo, receita: i.receita, quantidade: i.qtd, custo: d.custos[i.receita.id]?.porUnidade || 0 }));
+      const n = await registrarMovimentos(outros, { data: r.data, motivo: r.motivo });
+      const v = linhasVenda.length ? await registrarVenda({ linhas: linhasVenda, canal: r.canal, data: r.data, conta_id, lancar }) : null;
+      fecharFolha();
+      toast([n ? `${n} movimento${n > 1 ? 's' : ''} no estoque` : '', v ? `venda de ${brl(v.bruto)}${v.lancado ? ' lançada no caixa' : ''}` : ''].filter(Boolean).join(' e ').replace(/^./, (c) => c.toUpperCase()));
+    } catch {
+      setSalvando(false);
+    }
+  };
+
+  return html`<${Folha} titulo="Estoque por voz" rodape=${r && html`<button class="btn btn-pri" disabled=${!ok || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : 'Confirmar'}</button>`}>
+    <${CampoFala} id="voz-estoque" rotulo="O que aconteceu" frase=${frase} setFrase=${setFrase} onPronto=${entender}
+      placeholder="Ex.: fiz uma fornada de mini 150 e vendi 3 tradicionais 1100 no iFood" />
+    <div class="acoes" style="margin-top:8px;justify-content:flex-end"><button class="btn btn-sec btn-mini" disabled=${!frase.trim()} onClick=${() => entender(frase)}>Entender</button></div>
+    ${r && !itens.length && html`<div class="duvida" style="margin-top:10px"><${Icone} n="alerta" /><span>Não reconheci nenhum pudim. Fale o nome como está nas receitas, com o tamanho (ex.: "tradicional 1100").</span></div>`}
+    ${r && itens.length > 0 && html`
+      <${Campo} rotulo="Dia"><input type="date" value=${r.data} onInput=${(e) => setR({ ...r, data: e.target.value })} /><//>
+      <ul class="lista painel" style="margin-top:12px">
+        ${itens.map((i, k) => html`<li class="item voz-item">
+          <select aria-label=${`O que houve no item ${k + 1}`} value=${i.tipo} onChange=${(e) => setItem(k, { tipo: e.target.value })}>
+            ${!i.tipo && html`<option value="">❓</option>`}${TIPOS_FALA.map(([v, t2]) => html`<option value=${v}>${t2}</option>`)}
+          </select>
+          <input aria-label=${`Quantidade do item ${k + 1}`} inputmode="decimal" value=${i.quantidade} onInput=${(e) => setItem(k, { quantidade: e.target.value })} aria-invalid=${!(i.qtd > 0)} />
+          <select class="voz-receita" aria-label=${`Pudim do item ${k + 1}`} value=${i.receita_id} onChange=${(e) => setItem(k, { receita_id: e.target.value })} aria-invalid=${!i.receita}>
+            ${!i.receita_id && html`<option value="">❓ Qual pudim? (${i.trecho})</option>`}
+            ${i.candidatos.length > 0 && html`<optgroup label="Mais prováveis">${i.candidatos.map((id) => html`<option value=${id}>${d.receitasPorId[id]?.nome}</option>`)}</optgroup>`}
+            <optgroup label="Todos">${d.receitas.map((x) => html`<option value=${x.id}>${x.nome}</option>`)}</optgroup>
+          </select>
+          <button class="icone-btn" aria-label=${`Tirar item ${k + 1}`} onClick=${() => setR({ ...r, itens: r.itens.filter((_, j) => j !== k) })}><${Icone} n="fechar" /></button>
+        </li>`)}
+      </ul>
+      ${itens.some((i) => i.tipo === 'perda') && html`<div class="campo"><span>Por que perdeu</span><${Chips} rotulo="Motivo" valor=${r.motivo} onChange=${(v) => setR({ ...r, motivo: v || 'vencido' })} opcoes=${MOTIVOS} /></div>`}
+      ${vendas.length > 0 && html`
+        <div class="campo"><span>Venda</span><${Segmento} rotulo="Canal" valor=${r.canal} onChange=${(v) => setR({ ...r, canal: v })} opcoes=${[['direta', CANAIS.direta], ['ifood', CANAIS.ifood]]} /></div>
+        <div class="painel painel-pad" style="margin-top:10px">
+          <div style="display:flex;justify-content:space-between"><span>Total da venda</span><strong>${brl(t.bruto)}</strong></div>
+          ${r.canal === 'ifood' && html`<div style="display:flex;justify-content:space-between;margin-top:6px"><span>Taxa iFood</span><span class="neg">− ${brl(t.taxa)}</span></div>`}
+          ${linhasVenda.some((l) => !l.preco) && html`<div class="duvida" style="margin-top:8px"><${Icone} n="alerta" /><span>Pudim sem preço de venda: cadastre na receita ou use a tela Vender.</span></div>`}
+        </div>
+        <label class="interruptor"><span>Lançar a venda no caixa</span><input type="checkbox" checked=${lancar} onChange=${(e) => setLancar(e.target.checked)} /></label>
+        ${lancar && r.canal === 'direta' && html`<${SelectConta} rotulo="Entrou em" valor=${conta_id} onChange=${setConta} contas=${contas} />`}`}
+      ${pendente > 0 && html`<p class="muted" style="font-size:13px;margin:10px 0 0">Responda os ❓ para confirmar.</p>`}`}
   <//>`;
 }

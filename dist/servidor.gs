@@ -307,8 +307,8 @@ var ESQUEMA = {
   itens: ['id', 'data', 'mercado', 'descricao', 'quantidade', 'unidade', 'valor', 'preco_unitario', 'origem', 'lancamento_id', 'grupo_id', 'criado_em', 'categoria_id',
     'produto', 'marca', 'tamanho', 'tamanho_unidade'],
   insumos: ['id', 'nome', 'tipo', 'marca', 'qtd_embalagem', 'unidade', 'preco_embalagem', 'data_preco', 'produto', 'ativo'],
-  receitas: ['id', 'nome', 'rendimento', 'validade_dias', 'preco_venda', 'preco_sugerido', 'custo_ref', 'ingredientes', 'ativo'],
-  estoque: ['id', 'data', 'receita_id', 'tipo', 'quantidade', 'custo_unitario', 'preco_unitario', 'validade', 'lancamento_id', 'obs', 'criado_em']
+  receitas: ['id', 'nome', 'rendimento', 'validade_dias', 'preco_venda', 'preco_sugerido', 'custo_ref', 'ingredientes', 'ativo', 'preco_ifood'],
+  estoque: ['id', 'data', 'receita_id', 'tipo', 'quantidade', 'custo_unitario', 'preco_unitario', 'validade', 'lancamento_id', 'obs', 'criado_em', 'canal', 'taxa_unitaria']
 };
 
 // Nome da aba na planilha para cada tabela.
@@ -328,7 +328,7 @@ var ABAS = {
 
 var COLUNAS_SESSOES = ['token', 'email', 'aparelho', 'criada_em', 'ultimo_uso'];
 
-var NUMERICAS = { quantidade: 1, tamanho: 1, qtd_embalagem: 1, preco_embalagem: 1, rendimento: 1, validade_dias: 1, preco_venda: 1, preco_sugerido: 1, custo_ref: 1, custo_unitario: 1, preco_unitario: 1, valor: 1, saldo_inicial: 1, a_cada: 1, mes_ancora: 1, dia_inicio: 1, dia_fim: 1, dia_semana: 1, parcelas_total: 1, parcela_no_inicio: 1 };
+var NUMERICAS = { quantidade: 1, tamanho: 1, qtd_embalagem: 1, preco_embalagem: 1, rendimento: 1, validade_dias: 1, preco_venda: 1, preco_sugerido: 1, custo_ref: 1, custo_unitario: 1, preco_ifood: 1, taxa_unitaria: 1, preco_unitario: 1, valor: 1, saldo_inicial: 1, a_cada: 1, mes_ancora: 1, dia_inicio: 1, dia_fim: 1, dia_semana: 1, parcelas_total: 1, parcela_no_inicio: 1 };
 var BOOLEANAS = { ativa: 1, ativo: 1, renovacao: 1 };
 
 // ===== Planilha.gs =====
@@ -637,7 +637,7 @@ function instrucoesLeitura_(ctx) {
 // Ponto de entrada do Web App. O app manda POST com {acao, sessao, dados}.
 
 // Mude a cada atualização do servidor: abrir o endereço /exec no navegador mostra este número.
-var VERSAO_SERVIDOR = '2026-10-17.6';
+var VERSAO_SERVIDOR = '2026-10-17.7';
 
 function doPost(e) {
   var resposta;

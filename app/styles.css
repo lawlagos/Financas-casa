@@ -416,3 +416,36 @@ a { color: inherit; }
 .ing-un { width: 22px; font-size: 12px; }
 .ing-custo { width: 62px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
 .ing-linha .icone-btn { width: 30px; height: 30px; flex: none; }
+
+/* Estoque por voz */
+.voz-item { gap: 6px; padding: 8px 10px; flex-wrap: wrap; }
+.voz-item select, .voz-item input { padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; }
+.voz-item select[aria-invalid="true"], .voz-item input[aria-invalid="true"] { border-color: var(--caramel); background: var(--caramel-soft); }
+.voz-item input { width: 54px; text-align: right; }
+.voz-item .voz-receita { flex: 1 1 100%; order: 3; min-width: 0; }
+.voz-item .icone-btn { margin-left: auto; width: 30px; height: 30px; }
+
+/* Mini PDV */
+.pdv-busca { width: 100%; }
+.pdv-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.pdv-produto { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; padding: 12px; min-height: 92px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; color: var(--ink); font: inherit; cursor: pointer; box-shadow: var(--shadow); }
+.pdv-produto:active { transform: scale(.98); }
+.pdv-produto.no-carrinho { border-color: var(--caramel); box-shadow: 0 0 0 2px var(--caramel-soft); }
+.pdv-nome { font-weight: 700; font-size: 14px; line-height: 1.25; padding-right: 26px; }
+.pdv-preco { font: 700 16px var(--display); margin-top: auto; }
+.pdv-estoque { font-size: 12px; color: var(--ink-3); }
+.pdv-qtd { position: absolute; top: 8px; right: 8px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; background: var(--caramel); color: #fff; font-weight: 800; font-size: 13px; display: grid; place-items: center; }
+.pdv-carrinho { margin-top: 16px; scroll-margin-top: 16px; }
+.pdv-barra { position: sticky; bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 3; margin-top: 12px; width: 100%; justify-content: space-between; box-shadow: var(--shadow); }
+a.btn { text-decoration: none; }
+.pdv-linhas { list-style: none; margin: 0; padding: 0; }
+.pdv-linhas li { display: grid; grid-template-columns: 1fr auto 70px; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.pdv-linha-nome { font-weight: 650; font-size: 14px; min-width: 0; }
+.pdv-contador { display: flex; align-items: center; gap: 4px; }
+.pdv-contador .icone-btn { width: 30px; height: 30px; font-size: 18px; font-weight: 700; }
+.pdv-contador input { width: 36px; text-align: center; padding: 6px 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
+.pdv-preco-linha { width: 70px; text-align: right; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; }
+.pdv-totais { margin-top: 10px; }
+.pdv-totais > div { display: flex; justify-content: space-between; margin-top: 4px; }
+.pdv-totais strong { font: 700 18px var(--display); }

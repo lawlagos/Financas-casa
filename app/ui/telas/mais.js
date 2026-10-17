@@ -12,6 +12,7 @@ import { addDays } from '../../core/dates.js';
 import { saldosHoje, agendaTexto, valorPrevistoTexto, porId, origemLabel } from '../derivados.js';
 import { projectedValue } from '../../core/recurrence.js';
 import { prepararImportacao } from '../../core/importacao.js';
+import { TAXA_IFOOD_PADRAO } from '../../core/pudim.js';
 
 export function TelaMais() {
   const s = useStore();
@@ -250,10 +251,13 @@ export function TelaAjustes() {
   const s = useStore();
   const [diario, setDiario] = useState(String(config('gasto_diario', 0)).replace('.', ','));
   const [reserva, setReserva] = useState(String(config('reserva_minima', 0)).replace('.', ','));
+  const [taxa, setTaxa] = useState(String(config('taxa_ifood', TAXA_IFOOD_PADRAO)).replace('.', ','));
   const [tema, setTema] = useState(lerTema());
   const guardar = async () => {
     await salvar('config', { id: 'gasto_diario', valor: parseBRL(diario) });
     await salvar('config', { id: 'reserva_minima', valor: parseBRL(reserva) });
+    const t = parseBRL(taxa);
+    if (t >= 0 && t < 100) await salvar('config', { id: 'taxa_ifood', valor: t });
     toast('Ajustes salvos');
   };
   const trocarTema = (t) => {
@@ -273,6 +277,9 @@ export function TelaAjustes() {
       <//>
       <${Campo} rotulo="Reserva mínima" ajuda="Quanto você quer manter sempre na conta. O Futuro mostra quanto falta para não descer disso.">
         <input inputmode="decimal" value=${reserva} onInput=${(e) => setReserva(e.target.value)} />
+      <//>
+      <${Campo} rotulo="Taxa do iFood (%)" ajuda="Quanto o iFood tira de cada venda de pudim. Vale para as próximas vendas.">
+        <input id="ajuste-taxa-ifood" inputmode="decimal" value=${taxa} onInput=${(e) => setTaxa(e.target.value)} />
       <//>
       <button class="btn btn-pri btn-larga" style="margin-top:16px" onClick=${guardar}>Salvar ajustes</button>
     </div>

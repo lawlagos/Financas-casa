@@ -2,7 +2,8 @@ import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Topo, Secao, Segmento, Vazio, Arrastavel } from '../componentes.js';
-import { useStore, abrirFolha, salvarVarias, apagar, toast } from '../../data/store.js';
+import { useStore, abrirFolha, salvarVarias, toast } from '../../data/store.js';
+import { apagarMovimento } from '../../data/pudim-acoes.js';
 import { brl, brlSigned } from '../../core/money.js';
 import { fmtDay, addDays, businessWeekStart } from '../../core/dates.js';
 import { custoReceita, processarEstoque, estoqueAtual, semanaPudim, custoInsumo } from '../../core/pudim.js';
@@ -50,9 +51,8 @@ function AbaEstoque({ s, d }) {
   };
   const recentes = [...d.movimentos].sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : String(b.criado_em) < String(a.criado_em) ? -1 : 1)).slice(0, 30);
   const apagarMov = async (m) => {
-    await apagar('estoque', m.id);
-    if (m.lancamento_id) await apagar('lancamentos', m.lancamento_id);
-    toast(m.lancamento_id ? 'Venda apagada, e a entrada no caixa também' : 'Movimento apagado');
+    const r = await apagarMovimento(m);
+    toast(r.lancamentos ? `Venda apagada${r.itens > 1 ? ` (${r.itens} itens)` : ''}, e o lançamento no caixa também` : 'Movimento apagado');
   };
 
   return html`
@@ -75,9 +75,10 @@ function AbaEstoque({ s, d }) {
 
     <div class="acoes acoes-pudim">
       <button class="btn btn-pri" onClick=${() => abrirFolha('movimento', { tipo: 'producao' })}>Produzi</button>
-      <button class="btn btn-sec" onClick=${() => abrirFolha('movimento', { tipo: 'venda' })}>Vendi</button>
+      <a class="btn btn-sec" href="#/pudim/vender">Vender</a>
       <button class="btn btn-sec" onClick=${() => abrirFolha('movimento', { tipo: 'perda' })}>Perdi</button>
     </div>
+    <button class="btn btn-sec btn-larga" style="margin-top:8px" onClick=${() => abrirFolha('voz-estoque', {})}><${Icone} n="mic" />Falar o que produziu, vendeu ou perdeu</button>
 
     <${Secao} titulo=${atual ? 'Esta semana' : `Semana de ${fmtDay(sem.inicio)}`}>
       <div class="painel painel-pad">
@@ -87,6 +88,8 @@ function AbaEstoque({ s, d }) {
           <button class="icone-btn" aria-label="Próxima semana" disabled=${atual} onClick=${() => setData(addDays(sem.inicio, 7))}><${Icone} n="seta" /></button>
         </div>
         <${Linha} rot=${`Vendeu ${plural(sem.vendidos, 'pudim', 'pudins')}`} valor=${brl(sem.vendas)} forte />
+        ${sem.porCanal.ifood && html`<div class="muted" style="font-size:13px;margin-top:2px">${sem.porCanal.direta ? `${plural(sem.porCanal.direta.quantidade, 'direto', 'diretos')} (${brl(sem.porCanal.direta.vendas)}), ` : ''}${sem.porCanal.ifood.quantidade} no iFood (${brl(sem.porCanal.ifood.vendas)})</div>
+          <${Linha} rot="Taxa do iFood" valor=${`− ${brl(sem.taxas)}`} />`}
         <${Linha} rot="Custo do que vendeu" valor=${`− ${brl(sem.custoVendido)}`} />
         <${Linha} rot=${`Perdeu ${plural(sem.perdidos, 'pudim', 'pudins')}`} valor=${`− ${brl(sem.custoPerdido)}`} classe=${sem.custoPerdido ? 'neg' : ''} />
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
@@ -112,7 +115,7 @@ function AbaEstoque({ s, d }) {
       <ul class="lista painel">
         ${recentes.map((m) => html`<li><${Arrastavel} onApagar=${() => apagarMov(m)}><div class="item">
           <div class="corpo"><div class="tit">${ROTULO_MOV[m.tipo] || m.tipo} ${m.quantidade} ${d.receitasPorId[m.receita_id]?.nome || 'receita apagada'}</div>
-            <div class="meta">${fmtDay(m.data)}${m.tipo === 'producao' && m.validade ? `, vence ${fmtDay(m.validade)}` : ''}${m.obs ? `, ${m.obs}` : ''}${m.lancamento_id ? ', lançado no caixa' : ''}</div></div>
+            <div class="meta">${fmtDay(m.data)}${m.tipo === 'producao' && m.validade ? `, vence ${fmtDay(m.validade)}` : ''}${m.canal === 'ifood' ? ', iFood' : ''}${m.obs ? `, ${m.obs}` : ''}${m.lancamento_id ? ', lançado no caixa' : ''}</div></div>
           <div class=${`valor ${m.tipo === 'venda' ? 'pos' : m.tipo === 'perda' ? 'neg' : ''}`}>${m.tipo === 'venda' ? brl(Math.round(Number(m.quantidade) * Math.round(Number(m.preco_unitario || 0) * 100))) : m.tipo === 'producao' ? brl(Math.round(Number(m.quantidade) * Math.round(Number(m.custo_unitario || 0) * 100))) : brl(d.saidas[m.id]?.custo || 0)}
             <small>${m.tipo === 'venda' ? 'venda' : 'custo'}</small></div>
         </div><//></li>`)}

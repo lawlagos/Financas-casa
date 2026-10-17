@@ -16,7 +16,8 @@ import { FolhaConta, FolhaCategoria, FolhaDizimo } from './folhas/outras.js';
 import { FolhaLeitura } from './folhas/leitura.js';
 import { TelaMercado, FolhaProduto } from './telas/mercado.js';
 import { TelaPudim } from './telas/pudim.js';
-import { FolhaMovimento, FolhaReceita, FolhaInsumo } from './folhas/pudim.js';
+import { TelaPdv } from './telas/pdv.js';
+import { FolhaMovimento, FolhaReceita, FolhaInsumo, FolhaVozEstoque } from './folhas/pudim.js';
 
 const TELAS = {
   '/inicio': TelaInicio,
@@ -24,6 +25,7 @@ const TELAS = {
   '/futuro': TelaFuturo,
   '/negocios': TelaNegocios,
   '/pudim': TelaPudim,
+  '/pudim/vender': TelaPdv,
   '/mais': TelaMais,
   '/mais/mercado': TelaMercado,
   '/mais/previstos': TelaPrevistos,
@@ -46,6 +48,7 @@ const FOLHAS = {
   movimento: FolhaMovimento,
   receita: FolhaReceita,
   insumo: FolhaInsumo,
+  'voz-estoque': FolhaVozEstoque,
 };
 
 function lerRota() {
@@ -68,7 +71,7 @@ function useRota() {
 }
 
 function Nav({ caminho }) {
-  const atual = (p) => (caminho === p || (p === '/mais' && caminho.startsWith('/mais')) || (p === '/negocios' && caminho === '/pudim') ? 'page' : null);
+  const atual = (p) => (caminho === p || (p === '/mais' && caminho.startsWith('/mais')) || (p === '/negocios' && caminho.startsWith('/pudim')) ? 'page' : null);
   const link = (p, icone, rot) => html`<li><a href=${`#${p}`} aria-current=${atual(p)}><${Icone} n=${icone} />${rot}</a></li>`;
   return html`<nav class="nav" aria-label="Navegação principal"><ul>
     ${link('/inicio', 'inicio', 'Início')}
