@@ -16,6 +16,7 @@ import { SelectConta } from '../folhas/lancamento.js';
 import { CampoFala } from '../voz.js';
 import { FaixaDemo } from './inicio.js';
 import { dadosPudim, fmtQtd } from './pudim.js';
+import { entradasDeItens } from '../../core/estoqueinsumos.js';
 import { custoInsumo } from '../../core/pudim.js';
 import { embalagemBase } from '../../core/estoqueinsumos.js';
 
@@ -161,6 +162,7 @@ export function TelaLista({ params = {} }) {
   const [conta_id, setConta] = useState(ultimaCompra?.conta_id || '');
   const [data, setData] = useState(s.hoje);
   const [salvando, setSalvando] = useState(false);
+  const [totalTxt, setTotalTxt] = useState('');
 
   const cat = catalogo({ itens: s.tables.itens || [], insumos: s.tables.insumos || [] });
   const linhas = lista.map((x) => ({ x, estimado: x.preco_estimado ? toCents(x.preco_estimado) : null, comprado: !!x.comprado, pago: x.preco_pago ? toCents(x.preco_pago) : 0 }));
@@ -187,12 +189,25 @@ export function TelaLista({ params = {} }) {
     await adicionarItens(sugeridos.map((p) => ({ nome: p.nome, quantidade: p.qtdPorCompra > 1 ? Math.round(p.qtdPorCompra) : 1, unidade: 'un', origem: p.origem })));
     toast(`${sugeridos.length} itens que estão acabando entraram na lista`);
   };
+  const contasPorId = Object.fromEntries(s.tables.contas.map((c) => [c.id, c]));
+  const consolidadas = s.tables.lancamentos.filter((l) => (l.canal === 'lista' || l.canal === 'compras') && l.origem === qual && l.tipo === 'saida')
+    .sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0)).slice(0, 6);
+  const somaItens = prontos.reduce((t, x) => t + toCents(x.preco_pago), 0);
+  const totalNota = totalTxt.trim() ? toCents(parseBRL(totalTxt) || 0) : 0;
+  const totalCompra = totalNota > 0 ? totalNota : somaItens;
+  // O que entra no estoque de ingredientes (só na lista do pudim): pelo nome do ingrediente cadastrado.
+  const previa = qual === 'Pudim'
+    ? entradasDeItens(prontos.map((x) => ({ id: x.id, produto: x.nome, descricao: x.nome, quantidade: Number(x.quantidade) || 1, unidade: x.unidade || 'un' })), s.tables.insumos || [], { data })
+    : [];
+  const insumosPorId = Object.fromEntries((s.tables.insumos || []).map((i) => [i.id, i]));
+  const foraDoEstoque = qual === 'Pudim' ? prontos.filter((x) => !previa.some((e) => e.ref === x.id)) : [];
   const finalizar = async () => {
-    if (!prontos.length || !conta_id) return;
+    if (!prontos.length || !conta_id || !data) return;
     setSalvando(true);
     try {
-      const f = await finalizarCompra({ itens: lista, mercado: mercado.trim(), data, conta_id });
-      toast(`Compra de ${brl(f.total)} registrada. Os preços entram no histórico.`);
+      const f = await finalizarCompra({ itens: lista, mercado: mercado.trim(), data, conta_id, total: totalNota });
+      setTotalTxt('');
+      toast(`Mercado de ${fmtDay(data)} consolidado: ${brl(f.total)}${f.noEstoque ? `, ${f.noEstoque} ${f.noEstoque === 1 ? 'ingrediente entrou' : 'ingredientes entraram'} no estoque` : ''}.`);
     } catch {
       // o aviso de erro já apareceu
     } finally {
@@ -230,18 +245,32 @@ export function TelaLista({ params = {} }) {
     <//>
     ${comprados.length > 0 && html`<${Secao} titulo="No carrinho">
       ${bloco(comprados)}
-      <div class="painel painel-pad" style="margin-top:12px">
-        <div class="rot-mercado">Terminou a compra?</div>
-        <${Campo} rotulo="Mercado"><input id="lista-mercado" placeholder="Ex.: Assaí" value=${mercado} onInput=${(e) => setMercado(e.target.value)} /><//>
+      <div class="painel painel-pad consolidar" style="margin-top:12px" aria-label="Consolidar mercado">
+        <div class="rot-mercado">Consolidar mercado</div>
+        <p class="muted" style="font-size:12.5px;margin:2px 0 6px">Só ao consolidar a compra vira gasto${qual === 'Pudim' ? ', entra no estoque de ingredientes' : ''} e sai da lista. Cada mercado fica separado pelo dia.</p>
         <div class="linha2">
-          <${Campo} rotulo="Dia"><input type="date" value=${data} onInput=${(e) => setData(e.target.value)} /><//>
+          <${Campo} rotulo="Dia da compra"><input type="date" aria-label="Dia da compra" value=${data} onInput=${(e) => setData(e.target.value)} /><//>
+          <${Campo} rotulo="Valor total pago" ajuda=${totalNota && totalNota !== somaItens ? `Itens somam ${brl(somaItens)}` : 'Soma dos itens; corrija pelo valor da nota'}>
+            <input aria-label="Valor total pago" inputmode="decimal" placeholder=${valorTxt(somaItens)} value=${totalTxt} onInput=${(e) => setTotalTxt(e.target.value)} /><//>
+        </div>
+        <div class="linha2">
+          <${Campo} rotulo="Mercado"><input id="lista-mercado" placeholder="Ex.: Assaí" value=${mercado} onInput=${(e) => setMercado(e.target.value)} /><//>
           <${SelectConta} rotulo="Pago com" valor=${conta_id} onChange=${setConta} contas=${contas} />
         </div>
+        ${previa.length > 0 && html`<div class="rot-mercado" style="margin-top:10px">Entra no estoque de ingredientes</div>
+          <ul class="previa-estoque">${previa.map((e) => html`<li><span>${insumosPorId[e.insumo_id]?.nome}</span><b>+ ${fmtQtd(e.quantidade, insumosPorId[e.insumo_id])}</b></li>`)}</ul>`}
+        ${foraDoEstoque.length > 0 && html`<p class="muted" style="font-size:12.5px;margin:6px 0 0">Não entra no estoque (não é ingrediente cadastrado): ${foraDoEstoque.map((x) => x.nome).join(', ')}.</p>`}
         ${prontos.length < comprados.length && html`<p class="muted" style="font-size:12.5px;margin:8px 0 0">${comprados.length - prontos.length} ${comprados.length - prontos.length === 1 ? 'item está' : 'itens estão'} sem o preço pago e ${comprados.length - prontos.length === 1 ? 'fica' : 'ficam'} na lista.</p>`}
-        <button class="btn btn-pri btn-larga" style="margin-top:12px" disabled=${salvando || !prontos.length || !conta_id} onClick=${finalizar}>
-          ${salvando ? 'Salvando…' : `Registrar compra ${qual === 'Pudim' ? 'do pudim' : 'da casa'} · ${brl(prontos.reduce((t, x) => t + toCents(x.preco_pago), 0))}`}</button>
-        <p class="muted" style="font-size:12.5px;margin:8px 0 0">${qual === 'Pudim' ? 'Vira gasto do Pudim (Ingrediente), soma no estoque de ingredientes' : 'Vira gasto da casa (Mercado)'} e os preços entram no histórico para a próxima lista.</p>
+        <button class="btn btn-pri btn-larga" style="margin-top:12px" disabled=${salvando || !prontos.length || !conta_id || !data} onClick=${finalizar}>
+          ${salvando ? 'Salvando…' : `Consolidar mercado · ${brl(totalCompra)}`}</button>
+        ${!conta_id && html`<p class="muted" style="font-size:12.5px;margin:6px 0 0">Escolha com que conta pagou.</p>`}
       </div>
+    <//>`}
+    ${consolidadas.length > 0 && html`<${Secao} titulo="Mercados consolidados">
+      <ul class="lista painel">${consolidadas.map((l) => html`<li class="item"><div class="corpo">
+        <div class="tit">${fmtDay(l.data)} · ${String(l.descricao || '').replace(/ — (casa|pudim)$/, '') || 'Mercado'}</div>
+        <div class="meta">${(s.tables.itens || []).filter((i) => i.lancamento_id === l.id).length} itens · ${contasPorId[l.conta_id]?.nome || ''}</div></div>
+        <div class="valor">${brl(toCents(l.valor))}</div></li>`)}</ul>
     <//>`}
   </main>`;
 }

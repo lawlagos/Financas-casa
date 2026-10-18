@@ -27,8 +27,10 @@ export function atualizarItem(item, mudancas) {
 
 const CATEGORIA = { Casa: 'cat-mercado', Pudim: 'cat-ingrediente' };
 
-// Finaliza: um gasto por origem com o que foi pago, os itens com o preço de cada um e tira da lista o que foi comprado.
-export function finalizarCompra({ itens, mercado, data, conta_id }) {
+// Consolida o mercado: um gasto por origem com o que foi pago, os itens com o preço de cada um, a entrada no estoque
+// de ingredientes (pudim) e tira da lista o que foi comprado. `total` (centavos, opcional): o valor da nota, quando
+// a compra é de uma origem só; os itens continuam com o preço de cada um.
+export function finalizarCompra({ itens, mercado, data, conta_id, total: totalNota }) {
   return tudoOuNada(async (feitos) => {
     const comprados = itens.filter((x) => x.comprado && Number(x.preco_pago) > 0);
     const grupo_id = uid('lis');
@@ -36,7 +38,8 @@ export function finalizarCompra({ itens, mercado, data, conta_id }) {
     for (const x of comprados) (porOrigem[x.origem === 'Pudim' ? 'Pudim' : 'Casa'] ||= []).push(x);
     const lancPorOrigem = {};
     for (const [origem, xs] of Object.entries(porOrigem)) {
-      const total = xs.reduce((s, x) => s + Math.round(Number(x.preco_pago) * 100), 0);
+      const soma = xs.reduce((s, x) => s + Math.round(Number(x.preco_pago) * 100), 0);
+      const total = totalNota > 0 && Object.keys(porOrigem).length === 1 ? totalNota : soma;
       const l = await salvar('lancamentos', {
         tipo: 'saida', valor: reais(total), data, descricao: `${mercado || 'Mercado'} — ${origem === 'Pudim' ? 'pudim' : 'casa'}`.slice(0, 120),
         conta_id, conta_destino_id: '', categoria_id: CATEGORIA[origem], origem, canal: 'lista', grupo_id, previsto_id: '',
@@ -55,9 +58,10 @@ export function finalizarCompra({ itens, mercado, data, conta_id }) {
       };
     }));
     for (const x of salvos) feitos.push({ tabela: 'itens', id: x.id });
-    await entradasDaCompra(salvos.filter((x) => x.origem === 'Pudim'), { data, feitos });
+    const entradas = await entradasDaCompra(salvos.filter((x) => x.origem === 'Pudim'), { data, feitos });
     for (const x of comprados) await apagar('lista', x.id);
-    return { total: comprados.reduce((s, x) => s + Math.round(Number(x.preco_pago) * 100), 0), itens: comprados.length };
+    const soma = comprados.reduce((s, x) => s + Math.round(Number(x.preco_pago) * 100), 0);
+    return { total: totalNota > 0 && Object.keys(porOrigem).length === 1 ? totalNota : soma, itens: comprados.length, noEstoque: entradas.length };
   });
 }
 

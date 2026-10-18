@@ -518,9 +518,16 @@ test('lista de compras: falar os itens, estimativa pela última compra, pago mai
   await page.locator('#lista-mercado').fill('Assaí');
   await page.getByLabel('Pago com').selectOption({ label: 'Nubank' });
   const total = Math.round((estimadoLeite + 1 + 1.5) * 100) / 100;
-  await page.getByRole('button', { name: /^Registrar compra/ }).click();
-  await toast().filter({ hasText: /Compra de R\$ .* registrada/ }).waitFor();
+  // consolidar: o valor da nota (com sacolinha) vale para o gasto; o dia separa este mercado dos próximos
+  const consolidar = page.getByLabel('Consolidar mercado');
+  await consolidar.getByLabel('Valor total pago').fill(String(total + 0.3).replace('.', ','));
+  await consolidar.getByText(/Itens somam R\$/).waitFor();
+  await consolidar.getByRole('button', { name: /^Consolidar mercado · R\$/ }).click();
+  await toast().filter({ hasText: /Mercado de \d\d\/\d\d consolidado: R\$/ }).waitFor();
   assert.equal(await page.locator('.item-lista').count(), 1, 'só o papel toalha fica na lista');
+  const historico = page.locator('.item', { hasText: 'Assaí' }).first();
+  assert.match(await historico.innerText(), /2 itens/);
+  assert.equal(reais(await historico.locator('.valor').innerText()), Math.round((total + 0.3) * 100) / 100);
   await page.goto(`${base}/?demo#/lancamentos`);
   await page.locator('.item', { hasText: 'Assaí — casa' }).first().waitFor();
   // lista do pudim é separada: o que se fala nela fica nela, e não aparece na da casa
@@ -779,5 +786,29 @@ test('lista do pudim: faixa no topo com o que falta para o estoque mínimo; pôr
   await faixa.getByRole('button', { name: 'Pôr Leite condensado na lista' }).click();
   await card.getByText('na lista').waitFor();
   assert.equal(await page.getByLabel('Quantidade de Leite condensado').innerText(), '4');
+  assert.deepEqual(erros, []);
+});
+
+test('consolidar mercado do pudim: mostra e põe no estoque de ingredientes o que foi comprado', async () => {
+  const emCasa = async (nome) => (await page.locator('.item-btn', { hasText: nome }).locator('.meta').first().innerText()).match(/Em casa: ([^·]+)/)[1].trim();
+  await page.goto(`${base}/pudim/?demo#/pudim?aba=ingredientes`);
+  const antes = await emCasa('Leite condensado');
+  await page.goto(`${base}/pudim/?demo#/lista`);
+  await page.locator('#lista-frase').fill('2 leites condensados e guardanapo');
+  await page.getByRole('button', { name: 'Pôr na lista' }).click();
+  await toast().filter({ hasText: '2 itens na lista do pudim' }).waitFor();
+  for (const [n, v] of [['Leite condensado', '13,00'], ['Guardanapo', '4,00']]) {
+    await page.getByRole('button', { name: `Peguei ${n}` }).click();
+    await page.getByLabel(`Quanto pagou em ${n}`).fill(v);
+    await page.getByLabel(`Quanto pagou em ${n}`).press('Enter');
+  }
+  const consolidar = page.getByLabel('Consolidar mercado');
+  await consolidar.locator('.previa-estoque li', { hasText: 'Leite condensado' }).getByText('+ 790 g').waitFor();
+  await consolidar.getByText(/Não entra no estoque .*Guardanapo/).waitFor();
+  await page.getByLabel('Pago com').selectOption({ label: 'Nubank PJ (dela)' });
+  await consolidar.getByRole('button', { name: 'Consolidar mercado · R$ 17,00' }).click();
+  await toast().filter({ hasText: /consolidado: R\$ 17,00, 1 ingrediente entrou no estoque/ }).waitFor();
+  await page.goto(`${base}/pudim/?demo#/pudim?aba=ingredientes`);
+  assert.notEqual(await emCasa('Leite condensado'), antes);
   assert.deepEqual(erros, []);
 });
