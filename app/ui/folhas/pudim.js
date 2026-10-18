@@ -396,7 +396,8 @@ export function FolhaReceita({ receita, novoSabor, novoPreparo, sabor_id: novoTa
     ingredientes: ingredientesDe(receita).map((x) => ({ insumo_id: x.insumo_id, quantidade: virgula(x.quantidade) })),
     ativo: receita?.ativo !== false,
     criarTamanhos: true,
-    estoque_minimo: virgula(receita?.estoque_minimo ?? ''),
+    // Mínimo digitado em unidades (12 copos); guardado em fornadas, que é o que o estoque de ingredientes usa.
+    estoque_minimo: receita?.estoque_minimo ? virgula(Math.round(Number(receita.estoque_minimo) * (Number(receita.rendimento) || 1) * 100) / 100) : '',
   }));
   const [tentou, setTentou] = useState(false);
   const set = (p) => setF((x) => ({ ...x, ...p }));
@@ -408,7 +409,7 @@ export function FolhaReceita({ receita, novoSabor, novoPreparo, sabor_id: novoTa
     sabor_id: modo === 'tamanho' ? sabor?.id || '' : '',
     porcao: modo === 'tamanho' ? f.porcao.trim() : '',
     rendimento: modo === 'sabor' ? 1 : numero(f.rendimento) || 1,
-    estoque_minimo: modo === 'sabor' || modo === 'preparo' ? '' : numero(f.estoque_minimo) || '',
+    estoque_minimo: modo === 'sabor' || modo === 'preparo' || !numero(f.estoque_minimo) ? '' : Math.round((numero(f.estoque_minimo) / (numero(f.rendimento) || 1)) * 10000) / 10000,
     validade_dias: numero(f.validade_dias) || VALIDADE_PADRAO,
     tempo_preparo: modo === 'tamanho' ? '' : numero(f.tempo_preparo) || '',
     markup: String(f.markup).trim() === '' ? '' : numero(f.markup) / 100,
@@ -468,7 +469,7 @@ export function FolhaReceita({ receita, novoSabor, novoPreparo, sabor_id: novoTa
       <${Campo} rotulo="Validade (dias)"><input inputmode="numeric" value=${f.validade_dias} onInput=${(e) => set({ validade_dias: e.target.value })} /><//>
       <${Campo} rotulo="Markup (%)"><input id="receita-markup" inputmode="decimal" placeholder=${modo === 'tamanho' ? `do sabor: ${Math.round(c.markup * 1000) / 10}` : ''} value=${f.markup} onInput=${(e) => set({ markup: e.target.value })} /><//>
     </div>`}
-    ${(modo === 'tamanho' || modo === 'avulsa') && html`<${Campo} rotulo="Estoque mínimo (fornadas)" ajuda=${`Avisa quando houver menos de ${Math.round((numero(f.estoque_minimo) || 0) * (numero(f.rendimento) || 1))} prontos e calcula os ingredientes para manter em casa.`}>
+    ${(modo === 'tamanho' || modo === 'avulsa') && html`<${Campo} rotulo="Estoque mínimo (unidades)" ajuda=${`Avisa quando houver menos de ${numero(f.estoque_minimo) || 0} prontos em São Roque (Ibiúna: metade) e calcula os ingredientes para manter em casa.`}>
       <input id="receita-minimo" inputmode="decimal" placeholder="0" value=${f.estoque_minimo} onInput=${(e) => set({ estoque_minimo: e.target.value })} /><//>`}
     ${modo !== 'sabor' && modo !== 'preparo' && html`
     <${Campo} rotulo="Preço de venda de cada" ajuda=${receita?.preco_sugerido ? `A planilha sugeria ${brl(toCents(receita.preco_sugerido))} (com salário e despesas fixas).` : ''}>

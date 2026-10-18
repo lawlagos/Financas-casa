@@ -541,7 +541,13 @@ test('estoque de ingredientes: produção desconta pela receita, apagar devolve,
   const emCasa = async (nome) => (await page.locator('.item-btn', { hasText: nome }).locator('.meta').first().innerText()).match(/Em casa: ([^·]+)/)[1].trim();
   await page.goto(`${base}/?demo#/pudim`);
   // abaixo do mínimo: 2 fornadas de 6 do tradicional 150
-  await page.getByRole('alert', { name: 'Estoque mínimo' }).getByRole('button', { name: 'Fazer 2 fornadas' }).click();
+  const aviso = page.getByRole('alert', { name: 'Estoque mínimo' });
+  // falta em número, e o custo estimado para repor
+  const linha = aviso.locator('li', { hasText: 'Pudim tradicional 150' }).filter({ hasText: 'São Roque' });
+  await linha.getByText('faltam 8').waitFor();
+  await linha.getByText(/1 fornada rende 6 e custa ≈ R\$ [\d,]+/).waitFor();
+  await aviso.getByText(/Para repor o mínimo: faltam \d+ pudins/).waitFor();
+  await linha.getByRole('button', { name: 'Produzir' }).click();
   assert.equal(await page.locator('#mov-quantidade').inputValue(), '12');
   await page.getByRole('button', { name: 'Pôr no estoque' }).click();
   await toast().filter({ hasText: '12 Pudim tradicional 150 no estoque' }).waitFor();

@@ -82,7 +82,8 @@ export function ambiente({ props = {}, tokeninfo, gemini } = {}) {
     },
     Utilities: {
       getUuid: () => `00000000-0000-0000-0000-${String(++uuid).padStart(12, '0')}`,
-      formatDate: (d) => d.toISOString().slice(0, 10),
+      // Como o Apps Script: a data no fuso pedido (o servidor usa o de São Paulo), não em UTC.
+      formatDate: (d, tz = 'UTC') => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d),
     },
     ContentService: {
       MimeType: { JSON: 'json' },

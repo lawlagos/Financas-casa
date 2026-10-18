@@ -546,3 +546,6 @@ button.cartao-custos { width: 100%; text-align: left; font: inherit; cursor: poi
 .ce-vazios { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 13px; }
 .ce-vazios .chip { font-size: 13px; padding: 6px 10px; }
 .item .meta.quebra { white-space: normal; overflow: visible; text-overflow: clip; }
+.custo-repor > div:not(.muted) { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.custo-repor strong { font: 700 19px var(--display); white-space: nowrap; }
+.custo-repor .muted { font-size: 12.5px; margin-top: 2px; }

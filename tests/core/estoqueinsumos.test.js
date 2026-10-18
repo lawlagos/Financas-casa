@@ -74,3 +74,19 @@ test('compra vira entrada na unidade do ingrediente', () => {
   const e = entradasDeItens([{ id: 'i1', data: '2026-10-17', produto: 'Leite', quantidade: 2 }, { id: 'i2', produto: 'Detergente', quantidade: 1 }], Object.values(insumos), { data: '2026-10-17' });
   assert.deepEqual(e.map((x) => [x.insumo_id, x.quantidade, x.ref]), [['leite', 2000, 'i1']]);
 });
+
+test('custo para repor o mínimo (fornadas inteiras, menos o que dá para enviar) e para comprar o que falta', async () => {
+  const { reposicao, custoDasFaltas } = await import('../../app/core/estoqueinsumos.js');
+  const produtos = [receitas.gel, receitas.t150];
+  // tradicional: São Roque tem 5 de 12, Ibiúna 0 de 6 → faltam 13 → 3 fornadas de 6; geladinho sem falta
+  const abaixo = pudinsAbaixo(produtos, { 'sao-roque': { t150: 5, gel: 15 }, ibiuna: {} });
+  const custos = { t150: { porUnidade: 500 }, gel: { porUnidade: 200 } };
+  const r = reposicao(abaixo, custos);
+  assert.deepEqual(r.itens.map((x) => [x.receita.id, x.falta, x.fornadas, x.rende, x.custoFornada, x.custo]), [['t150', 13, 3, 6, 3000, 9000]]);
+  assert.deepEqual([r.falta, r.fornadas, r.custo], [13, 3, 9000]);
+  // com sobra em São Roque, Ibiúna recebe por envio: nada a produzir
+  assert.equal(reposicao(pudinsAbaixo(produtos, { 'sao-roque': { t150: 16, gel: 15 }, ibiuna: { t150: 2 } }), custos).custo, 0);
+  // compra: 2 latas faltando a R$ 6,32; um ingrediente sem preço fica de fora e é avisado
+  const f = [{ insumo: insumos.lc, embalagens: 2 }, { insumo: { id: 'x', nome: 'Sem preço', unidade: 'un', qtd_embalagem: 1 }, embalagens: 1 }];
+  assert.deepEqual(custoDasFaltas(f, []), { total: 1264, semPreco: ['Sem preço'] });
+});

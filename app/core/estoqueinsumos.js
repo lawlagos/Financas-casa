@@ -1,7 +1,7 @@
 // Estoque de ingredientes e embalagens do pudim, e estoque mínimo.
 // Movimentos (aba "Estoque de ingredientes"): entrada (compra), saida (produção), contagem (o que tem em casa agora).
 // Quantidades sempre na unidade base do ingrediente: g, ml ou un.
-import { ingredientesDe, idPreparo, LOCAIS_PADRAO, ehGeladinho } from './pudim.js';
+import { ingredientesDe, idPreparo, LOCAIS_PADRAO, ehGeladinho, custoInsumo } from './pudim.js';
 import { chaveProduto, produtoDoItem } from './mercado.js';
 
 const BASE = { g: 'g', kg: 'g', ml: 'ml', l: 'ml', un: 'un' };
@@ -120,4 +120,46 @@ export function entradasDeItens(itens, insumos, { data, ref = '', origem = 'comp
     out.push({ data: it.data || data, insumo_id: insumo.id, tipo: 'entrada', quantidade: Math.round(quantidadeComprada(it, insumo) * 1000) / 1000, origem, ref: it.id || ref, obs: '' });
   }
   return out;
+}
+
+// Quanto custa repor os pudins abaixo do mínimo, pelas receitas. Soma o que falta de cada pudim em todos os locais
+// (menos o que dá para mandar de um local para o outro) e arredonda para fornadas inteiras, que é como se produz.
+// `custos`: custoReceita por id (porUnidade em centavos). Devolve, por pudim: falta, fornadas, quanto rende e custa uma fornada.
+export function reposicao(abaixo, custos) {
+  const por = {};
+  for (const x of abaixo) {
+    const falta = x.falta - (x.enviarDe?.quantidade || 0);
+    if (falta <= 0) continue;
+    const r = x.receita;
+    const g = (por[r.id] ||= { receita: r, falta: 0 });
+    g.falta += falta;
+  }
+  const itens = Object.values(por).map((g) => {
+    const rende = Number(g.receita.rendimento) || 1;
+    const fornadas = Math.ceil(g.falta / rende);
+    const custoFornada = Math.round((custos[g.receita.id]?.porUnidade || 0) * rende);
+    return { ...g, rende, fornadas, custoFornada, custo: fornadas * custoFornada };
+  });
+  return {
+    itens,
+    falta: itens.reduce((t, x) => t + x.falta, 0),
+    fornadas: itens.reduce((t, x) => t + x.fornadas, 0),
+    custo: itens.reduce((t, x) => t + x.custo, 0),
+  };
+}
+
+// Quanto custa comprar as embalagens que faltam para o estoque mínimo de ingredientes (pelo último preço pago).
+// `semPreco`: ingredientes que entram na lista mas não têm preço.
+export function custoDasFaltas(faltasLista, itens = []) {
+  let total = 0;
+  const semPreco = [];
+  for (const f of faltasLista) {
+    const c = custoInsumo(f.insumo, itens);
+    if (c.porBase === null) {
+      semPreco.push(f.insumo.nome);
+      continue;
+    }
+    total += Math.round(c.porBase * embalagemBase(f.insumo)) * f.embalagens;
+  }
+  return { total, semPreco };
 }
