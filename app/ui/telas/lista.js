@@ -3,13 +3,13 @@
 import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
-import { Topo, Secao, Campo, Chips, Segmento } from '../componentes.js';
+import { Topo, Secao, Campo, Chips, AbasSecao, Arrastavel } from '../componentes.js';
 import { useStore, apagar, toast } from '../../data/store.js';
 import { brl, parseBRL, toCents } from '../../core/money.js';
 import { fmtDay } from '../../core/dates.js';
 import { catalogo, interpretarLista, historicoPrecos, comparar, resumoLista } from '../../core/listacompras.js';
 import { produtos, listaSugerida, chaveProduto } from '../../core/mercado.js';
-import { adicionarItens, atualizarItem, finalizarCompra } from '../../data/lista-acoes.js';
+import { adicionarItens, atualizarItem, finalizarCompra, adicionarTarefas, marcarTarefa } from '../../data/lista-acoes.js';
 import { contasAtivas } from '../derivados.js';
 import { SelectConta } from '../folhas/lancamento.js';
 import { CampoFala } from '../voz.js';
@@ -73,7 +73,6 @@ function Item({ x, s, aberto, onAbrir }) {
 }
 
 // Duas listas: a da casa e a do pudim. O que se fala numa entra nela; cada uma tem a sua estimativa e o seu fechamento.
-const LISTAS = [['Casa', 'Casa'], ['Pudim', 'Pudim']];
 const daLista = (x) => (x.origem === 'Pudim' ? 'Pudim' : 'Casa');
 
 export function TelaLista({ params = {} }) {
@@ -82,7 +81,6 @@ export function TelaLista({ params = {} }) {
   const qual = params.lista === 'pudim' ? 'Pudim' : 'Casa';
   const todas = [...(s.tables.lista || [])].sort((a, b) => (a.criado_em < b.criado_em ? -1 : 1));
   const lista = todas.filter((x) => daLista(x) === qual);
-  const contagem = (o) => todas.filter((x) => daLista(x) === o && !x.comprado).length;
   const [frase, setFrase] = useState('');
   const [aberto, setAberto] = useState(null);
   const [mercado, setMercado] = useState('');
@@ -133,11 +131,9 @@ export function TelaLista({ params = {} }) {
   const bloco = (xs) => html`<ul class="lista painel lista-compras">${xs.map((x) => html`<${Item} key=${x.id} x=${x} s=${s} aberto=${aberto === x.id} onAbrir=${() => setAberto(aberto === x.id ? null : x.id)} />`)}</ul>`;
 
   return html`<main>
-    <${Topo} titulo="Lista de compras" sub="Fale o que precisa; o app estima quanto vai sair" voltar=${qual === 'Pudim' ? '#/pudim?aba=ingredientes' : '#/mais'} />
+    <${Topo} titulo=${qual === 'Pudim' ? 'Compras do pudim' : 'Compras da casa'} sub="Fale o que precisa; o app estima quanto vai sair" />
     <${FaixaDemo} />
-    <${Segmento} rotulo="Lista" classe="lista-qual" valor=${qual} onChange=${(v) => (location.hash = v === 'Pudim' ? '#/lista?lista=pudim' : '#/lista')}
-      opcoes=${LISTAS.map(([v, t]) => [v, contagem(v) ? `${t} (${contagem(v)})` : t])} />
-    <div style="margin-top:12px"></div>
+    <${AbasSecao} secao="casa" atual=${qual === 'Pudim' ? '/lista?lista=pudim' : '/lista'} />
     <${CampoFala} id="lista-frase" rotulo=${qual === 'Pudim' ? 'O que precisa comprar para o pudim' : 'O que precisa comprar para a casa'} frase=${frase} setFrase=${setFrase} onPronto=${ouvir}
       placeholder=${qual === 'Pudim' ? 'Ex.: 6 leites condensados, 4 creme de leite e 2 dúzias de ovos' : 'Ex.: um quilo de banana, arroz e detergente'} />
     <div class="acoes" style="margin-top:8px;justify-content:flex-end"><button class="btn btn-sec btn-mini" disabled=${!frase.trim()} onClick=${() => ouvir(frase)}>Pôr na lista</button></div>
@@ -173,5 +169,55 @@ export function TelaLista({ params = {} }) {
         <p class="muted" style="font-size:12.5px;margin:8px 0 0">${qual === 'Pudim' ? 'Vira gasto do Pudim (Ingrediente), soma no estoque de ingredientes' : 'Vira gasto da casa (Mercado)'} e os preços entram no histórico para a próxima lista.</p>
       </div>
     <//>`}
+  </main>`;
+}
+
+// Tarefas da casa (instalar o portão da escada, trocar a lâmpada): o que entrou e quando, e marcar como feita.
+export function TelaTarefas() {
+  const s = useStore();
+  const [texto, setTexto] = useState('');
+  const [verFeitas, setVerFeitas] = useState(false);
+  const todas = s.tables.tarefas || [];
+  const pendentes = todas.filter((t) => !t.feita).sort((a, b) => (a.criado_em < b.criado_em ? -1 : 1));
+  const feitas = todas.filter((t) => t.feita).sort((a, b) => (a.feita_em < b.feita_em ? 1 : -1));
+  const dia = (iso) => (iso ? fmtDay(String(iso).slice(0, 10)) : '');
+  const adicionar = async (t) => {
+    // Várias de uma vez: uma por linha, ou separadas por vírgula ("trocar lâmpada, consertar torneira").
+    const titulos = String(t).split(/\n|,|;/).map((x) => x.trim()).filter(Boolean).map((x) => x.charAt(0).toUpperCase() + x.slice(1));
+    if (!titulos.length) return;
+    try {
+      await adicionarTarefas(titulos);
+      setTexto('');
+      toast(titulos.length === 1 ? 'Tarefa anotada' : `${titulos.length} tarefas anotadas`);
+    } catch {
+      // o aviso de erro já apareceu
+    }
+  };
+  const concluir = async (t) => {
+    await marcarTarefa(t, !t.feita);
+    if (!t.feita) toast(`Feito: ${t.titulo}`, { acao: 'Desfazer', onAcao: () => marcarTarefa({ ...t, feita: true }, false) });
+  };
+  const apagarTarefa = async (t) => {
+    await apagar('tarefas', t.id);
+    toast('Tarefa apagada');
+  };
+  const item = (t) => html`<li key=${t.id}><${Arrastavel} onApagar=${() => apagarTarefa(t)}><div class=${`item item-tarefa ${t.feita ? 'feita' : ''}`}>
+    <button class="marcador" aria-pressed=${String(!!t.feita)} aria-label=${`${t.feita ? 'Reabrir' : 'Concluir'} ${t.titulo}`} onClick=${() => concluir(t)}><${Icone} n="check" /></button>
+    <div class="corpo"><div class="tit">${t.titulo}</div>
+      <div class="meta">Anotada em ${dia(t.criado_em)}${t.feita ? ` · feita em ${dia(t.feita_em)}` : ''}</div></div>
+  </div><//></li>`;
+  return html`<main>
+    <${Topo} titulo="Tarefas da casa" sub="O que precisa fazer em casa" />
+    <${FaixaDemo} />
+    <${AbasSecao} secao="casa" atual="/tarefas" />
+    <${CampoFala} id="tarefa-texto" rotulo="Nova tarefa" frase=${texto} setFrase=${setTexto} onPronto=${adicionar}
+      placeholder="Ex.: instalar portão na escada, trocar lâmpada da cozinha" />
+    <div class="acoes" style="margin-top:8px;justify-content:flex-end"><button class="btn btn-pri btn-mini" disabled=${!texto.trim()} onClick=${() => adicionar(texto)}><${Icone} n="mais" />Anotar</button></div>
+    <${Secao} titulo=${pendentes.length ? `Para fazer (${pendentes.length})` : 'Para fazer'}>
+      ${pendentes.length ? html`<ul class="lista painel">${pendentes.map(item)}</ul>` : html`<p class="muted" style="margin:0">Nada pendente. Anote acima o que precisa fazer.</p>`}
+    <//>
+    ${feitas.length > 0 && html`<div style="margin-top:14px"><button class="link" onClick=${() => setVerFeitas(!verFeitas)}>${verFeitas ? 'Esconder' : 'Mostrar'} ${feitas.length} feita${feitas.length > 1 ? 's' : ''}</button>
+      ${verFeitas && html`<ul class="lista painel" style="margin-top:8px">${feitas.map(item)}</ul>`}</div>`}
+    <p class="muted" style="font-size:12.5px;margin-top:14px">Toque no círculo para marcar como feita. Arraste para a esquerda para apagar.</p>
   </main>`;
 }

@@ -1,5 +1,5 @@
 import { html } from '../html.js';
-import { Topo, Secao } from '../componentes.js';
+import { Topo, Secao, AbasSecao } from '../componentes.js';
 import { BarrasSemanas } from '../graficos.js';
 import { useStore, abrirFolha } from '../../data/store.js';
 import { brl, brlSigned } from '../../core/money.js';
@@ -35,7 +35,8 @@ export function TelaNegocios() {
   };
 
   return html`<main>
-    <${Topo} titulo="Negócios" sub=${`Semana de ${fmtDay(atual.inicio)} a ${fmtDay(atual.fim)}, paga ${fmtDay(atual.pagarEm)}`} />
+    <${Topo} titulo="Dízimo dos negócios" sub=${`Semana de ${fmtDay(atual.inicio)} a ${fmtDay(atual.fim)}, paga ${fmtDay(atual.pagarEm)}`} />
+    <${AbasSecao} secao="dinheiro" atual="/dizimo" />
     <${FaixaDemo} />
     <div class="dupla"><${Coluna} o="Pudim" /><${Coluna} o="Hotmart" /></div>
     <${CartaoPudim} />

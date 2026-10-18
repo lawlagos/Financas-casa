@@ -1,7 +1,7 @@
 import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
-import { Topo, Secao, Marca, Vazio, Campo } from '../componentes.js';
+import { Topo, Secao, Marca, Vazio, Campo, AbasSecao } from '../componentes.js';
 import { useStore, abrirFolha, salvar, apagar, config, reiniciarDemo, sair, toast } from '../../data/store.js';
 import { brl, parseBRL } from '../../core/money.js';
 import { fmtDay, fmtMonthYear, monthName } from '../../core/dates.js';
@@ -142,7 +142,8 @@ export function TelaContas() {
   const s = useStore();
   const { saldos } = saldosHoje(s);
   return html`<main>
-    <${Topo} titulo="Contas" voltar="#/mais" direita=${html`<button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('conta', {})}><${Icone} n="mais" />Nova</button>`} />
+    <${Topo} titulo="Contas" voltar=${location.hash.startsWith('#/mais') ? '#/mais' : null} direita=${html`<button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('conta', {})}><${Icone} n="mais" />Nova</button>`} />
+    ${!location.hash.startsWith('#/mais') && html`<${AbasSecao} secao="dinheiro" atual="/contas" />`}
     <ul class="lista painel">
       ${GRUPOS.map((g) => {
         const lista = s.tables.contas.filter((c) => c.grupo === g);

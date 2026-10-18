@@ -131,3 +131,12 @@ export function Arrastavel({ onApagar, children }) {
     <div style=${`transform:translateX(${dx}px)`} class=${`deslizante ${ativo ? 'arrastando' : ''}`}>${children}</div>
   </div>`;
 }
+
+// Abas das seções do menu de baixo: Dinheiro (lançamentos, futuro, contas, dízimo) e Casa (compras e tarefas).
+const ABAS_SECAO = {
+  dinheiro: [['/lancamentos', 'Lançamentos'], ['/futuro', 'Futuro'], ['/contas', 'Contas'], ['/dizimo', 'Dízimo']],
+  casa: [['/lista', 'Compras casa'], ['/lista?lista=pudim', 'Compras pudim'], ['/tarefas', 'Tarefas']],
+};
+export function AbasSecao({ secao, atual }) {
+  return html`<${Segmento} rotulo=${secao === 'dinheiro' ? 'Dinheiro' : 'Casa'} classe="abas-secao" opcoes=${ABAS_SECAO[secao]} valor=${atual} onChange=${(v) => (location.hash = `#${v}`)} />`;
+}

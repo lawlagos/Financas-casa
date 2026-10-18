@@ -60,3 +60,12 @@ export function finalizarCompra({ itens, mercado, data, conta_id }) {
     return { total: comprados.reduce((s, x) => s + Math.round(Number(x.preco_pago) * 100), 0), itens: comprados.length };
   });
 }
+
+// Tarefas da casa.
+export function adicionarTarefas(titulos) {
+  const agora = new Date().toISOString();
+  return salvarVarias('tarefas', titulos.map((titulo) => ({ titulo: titulo.slice(0, 200), criado_em: agora, criado_por: quem(), feita: false, feita_em: '', feita_por: '' })));
+}
+export function marcarTarefa(t, feita) {
+  return salvar('tarefas', { ...t, feita, feita_em: feita ? new Date().toISOString() : '', feita_por: feita ? quem() : '' });
+}

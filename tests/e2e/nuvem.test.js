@@ -200,7 +200,7 @@ test('pudim na planilha: receita com ingredientes em texto, produção e venda c
 
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const { page, erros } = await novaPagina(ctx);
-  await page.goto(`${base}/#/pudim`);
+  await page.goto(`${base}/#/pudim?aba=estoque`);
   await page.getByRole('button', { name: 'Entrar com Google' }).click();
   await page.getByText('Pronto para vender').waitFor();
   await page.getByRole('button', { name: 'Produzi', exact: true }).click();
@@ -229,7 +229,7 @@ test('pudim na planilha: receita com ingredientes em texto, produção e venda c
   assert.deepEqual(ei[0], SCHEMA.estoque_insumos);
   assert.deepEqual([ei[1][2], ei[1][3], ei[1][4], ei[1][5], ei[1][6]], ['ins-lc', 'saida', 395, 'producao', est[1][0]]);
   assert.ok(env.abas['Categorias'].linhas.some((c) => c[0] === 'cat-taxa-ifood'));
-  await page.goto(`${base}/#/pudim`);
+  await page.goto(`${base}/#/pudim?aba=estoque`);
   await page.reload();
   await page.getByText('Pronto para vender').waitFor();
   assert.match(await page.locator('.hero-pudim .num-mercado').innerText(), /^1 pudim$/);
@@ -256,6 +256,27 @@ test('lista de compras na planilha: item comprado e preço pago voltam certos de
   await page.reload();
   await page.locator('.item-lista').nth(1).waitFor();
   assert.equal(await page.getByLabel(/^Quanto pagou em Banana/).inputValue(), '7,90');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+});
+
+test('tarefas da casa na planilha: aba própria, concluída volta marcada depois de recarregar', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const { page, erros } = await novaPagina(ctx);
+  await page.goto(`${base}/#/tarefas`);
+  await page.getByRole('button', { name: 'Entrar com Google' }).click();
+  await page.locator('#tarefa-texto').fill('trocar a lâmpada');
+  await page.getByRole('button', { name: 'Anotar' }).click();
+  await page.getByRole('button', { name: 'Concluir Trocar a lâmpada' }).click();
+  await page.locator('.toast', { hasText: 'Feito' }).waitFor();
+  await page.waitForTimeout(300);
+  const aba = env.abas['Tarefas da casa'].linhas;
+  assert.deepEqual(aba[0], SCHEMA.tarefas);
+  const t = aba.find((l) => l[1] === 'Trocar a lâmpada');
+  assert.equal(t[4], true);
+  await page.reload();
+  await page.getByRole('button', { name: /Mostrar 1 feita/ }).click();
+  await page.getByRole('button', { name: 'Reabrir Trocar a lâmpada' }).waitFor();
   assert.deepEqual(erros, []);
   await ctx.close();
 });

@@ -18,7 +18,7 @@ import { TelaMercado, FolhaProduto } from './telas/mercado.js';
 import { TelaPudim } from './telas/pudim.js';
 import { TelaPdv } from './telas/pdv.js';
 import { TelaCompras } from './telas/compras.js';
-import { TelaLista } from './telas/lista.js';
+import { TelaLista, TelaTarefas } from './telas/lista.js';
 import { FolhaMovimento, FolhaReceita, FolhaInsumo, FolhaVozEstoque, FolhaCustosPudim, FolhaContagem, FolhaLote, FolhaEnvio, FolhaEditarMovimento, FolhaEstoqueProduto } from './folhas/pudim.js';
 
 const TELAS = {
@@ -32,6 +32,9 @@ const TELAS = {
   '/mais': TelaMais,
   '/mais/mercado': TelaMercado,
   '/lista': TelaLista,
+  '/tarefas': TelaTarefas,
+  '/contas': TelaContas,
+  '/dizimo': TelaNegocios,
   '/mais/previstos': TelaPrevistos,
   '/mais/compromissos': TelaCompromissos,
   '/mais/contas': TelaContas,
@@ -80,15 +83,22 @@ function useRota() {
   return r;
 }
 
+// Navegação: Início, Pudim (tudo do pudim), lançar, Dinheiro (lançamentos, futuro, contas e dízimo) e Casa
+// (listas de compras e tarefas da casa).
+const SECOES = {
+  '/pudim': (c) => c.startsWith('/pudim'),
+  '/lancamentos': (c) => ['/lancamentos', '/futuro', '/contas', '/dizimo', '/negocios', '/mais/contas'].includes(c),
+  '/lista': (c) => c === '/lista' || c === '/tarefas',
+};
 function Nav({ caminho }) {
-  const atual = (p) => (caminho === p || (p === '/mais' && caminho.startsWith('/mais')) || (p === '/negocios' && caminho.startsWith('/pudim')) ? 'page' : null);
+  const atual = (p) => (caminho === p || SECOES[p]?.(caminho) ? 'page' : null);
   const link = (p, icone, rot) => html`<li><a href=${`#${p}`} aria-current=${atual(p)}><${Icone} n=${icone} />${rot}</a></li>`;
   return html`<nav class="nav" aria-label="Navegação principal"><ul>
     ${link('/inicio', 'inicio', 'Início')}
-    ${link('/lancamentos', 'lista', 'Lançamentos')}
+    ${link('/pudim', 'pudim', 'Pudim')}
     <li style="display:grid"><button class="fab" aria-label="Novo lançamento" onClick=${() => abrirFolha('lancamento', {})}><${Icone} n="mais" /></button></li>
-    ${link('/futuro', 'futuro', 'Futuro')}
-    ${link('/negocios', 'negocios', 'Negócios')}
+    ${link('/lancamentos', 'dinheiro', 'Dinheiro')}
+    ${link('/lista', 'casa', 'Casa')}
   </ul></nav>`;
 }
 

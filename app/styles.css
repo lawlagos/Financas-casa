@@ -549,3 +549,20 @@ button.cartao-custos { width: 100%; text-align: left; font: inherit; cursor: poi
 .custo-repor > div:not(.muted) { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .custo-repor strong { font: 700 19px var(--display); white-space: nowrap; }
 .custo-repor .muted { font-size: 12.5px; margin-top: 2px; }
+.segmento.abas-secao { margin-bottom: 12px; }
+.segmento.abas-secao button { font-size: 13px; padding-left: 4px; padding-right: 4px; }
+.item-tarefa { gap: 12px; align-items: center; }
+.item-tarefa.feita .tit { text-decoration: line-through; color: var(--ink-3); }
+/* Início do pudim: módulos */
+.grade-modulos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+@media (min-width: 620px) { .grade-modulos { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.modulo-pudim {
+  display: flex; flex-direction: column; gap: 4px; padding: 14px; min-height: 112px; border: 1px solid var(--line); border-radius: var(--r-card);
+  background: var(--surface); color: var(--ink); text-decoration: none; box-shadow: var(--shadow);
+}
+.modulo-pudim .marca { width: 36px; height: 36px; margin-bottom: 4px; }
+.modulo-tit { font-weight: 700; font-size: 15px; }
+.modulo-linha { font-size: 12.5px; color: var(--ink-3); line-height: 1.3; }
+.modulo-pudim.atencao-modulo { border-color: var(--caramel); }
+.modulo-pudim.atencao-modulo .modulo-linha { color: var(--caramel-ink); font-weight: 600; }
+.cartao-repor { display: block; margin-top: 12px; color: var(--ink); text-decoration: none; }

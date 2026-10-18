@@ -1,7 +1,7 @@
 import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
-import { Topo, Segmento, Chips } from '../componentes.js';
+import { Topo, Segmento, Chips, AbasSecao } from '../componentes.js';
 import { GraficoSaldo } from '../graficos.js';
 import { useStore, abrirFolha } from '../../data/store.js';
 import { brl, num } from '../../core/money.js';
@@ -42,6 +42,7 @@ export function TelaFuturo() {
   return html`<main>
     <${Topo} titulo="Futuro" sub="Saldo dia a dia, só com o que é certo"
       direita=${html`<a class="icone-btn" href="#/mais/previstos" aria-label="Previstos"><${Icone} n="repetir" /></a>`} />
+    <${AbasSecao} secao="dinheiro" atual="/futuro" />
     <${Chips} rotulo="Até quando" valor=${periodo} onChange=${(v) => setPeriodo(v || 'fim')}
       opcoes=${[['fim', `Até ${fmtDay(fimPadrao(s.hoje))}`], ['1', 'Próximo mês'], ['3', '3 meses'], ['6', '6 meses'], ['data', 'Outra data']]} />
     ${periodo === 'data' && html`<label class="campo" style="margin-top:6px"><span>Até</span><input type="date" value=${ateLivre} min=${addDays(s.hoje, 1)} onInput=${(e) => e.target.value && setAteLivre(e.target.value)} /></label>`}

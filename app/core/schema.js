@@ -20,6 +20,7 @@ export const SCHEMA = {
   estoque: ['id', 'data', 'receita_id', 'tipo', 'quantidade', 'custo_unitario', 'preco_unitario', 'validade', 'lancamento_id', 'obs', 'criado_em', 'canal', 'taxa_unitaria', 'custo_fixo_unitario', 'local', 'local_destino', 'lote_id'],
   lista: ['id', 'nome', 'quantidade', 'unidade', 'origem', 'preco_estimado', 'preco_pago', 'comprado', 'texto', 'criado_em', 'criado_por', 'comprado_em'],
   estoque_insumos: ['id', 'data', 'insumo_id', 'tipo', 'quantidade', 'origem', 'ref', 'obs', 'criado_em'],
+  tarefas: ['id', 'titulo', 'criado_em', 'criado_por', 'feita', 'feita_em', 'feita_por'],
 };
 
 export const TABELAS = Object.keys(SCHEMA);

@@ -45,7 +45,7 @@ const saldoConta = async (nome) => {
 const reais = (t) => Number(t.replace(/[^\d,-]/g, '').replace(',', '.'));
 
 test('todas as telas abrem sem erro', async () => {
-  for (const r of ['inicio', 'lancamentos', 'futuro', 'negocios', 'mais', 'mais/previstos', 'mais/compromissos', 'mais/contas', 'mais/categorias', 'mais/ajustes', 'mais/mercado', 'lista', 'pudim', 'pudim?aba=receitas', 'pudim?aba=ingredientes', 'pudim/vender', 'pudim/compras']) {
+  for (const r of ['inicio', 'lancamentos', 'futuro', 'negocios', 'dizimo', 'contas', 'tarefas', 'lista?lista=pudim', 'pudim?aba=estoque', 'mais', 'mais/previstos', 'mais/compromissos', 'mais/contas', 'mais/categorias', 'mais/ajustes', 'mais/mercado', 'lista', 'pudim', 'pudim?aba=receitas', 'pudim?aba=ingredientes', 'pudim/vender', 'pudim/compras']) {
     await page.goto(`${base}/?demo#/${r}`);
     await page.locator('main h1').waitFor();
   }
@@ -66,10 +66,11 @@ test('lançar saída pelo formulário: origem vem da categoria e aparece no lucr
   assert.equal(await folha().getByRole('button', { name: 'Pudim', exact: true }).getAttribute('aria-pressed'), 'true');
   await folha().getByRole('button', { name: 'Salvar lançamento' }).click();
   await toast().filter({ hasText: 'Lançamento salvo' }).waitFor();
-  await page.getByRole('link', { name: 'Negócios' }).click();
+  await page.getByRole('link', { name: 'Dinheiro' }).click();
+  await page.getByRole('group', { name: 'Dinheiro' }).getByRole('button', { name: 'Dízimo' }).click();
   const depois = reais(await page.locator('.mini', { hasText: 'Pudim' }).locator('.num').innerText());
   assert.equal(Math.round((antes - depois) * 100), 8750);
-  await page.getByRole('link', { name: 'Lançamentos' }).click();
+  await page.getByRole('group', { name: 'Dinheiro' }).getByRole('button', { name: 'Lançamentos' }).click();
   await page.getByText('Leite condensado').waitFor();
   assert.deepEqual(erros, []);
 });
@@ -113,7 +114,7 @@ test('baixa automática: lançar o aluguel pergunta se é o previsto e tira do F
   await page.getByRole('dialog', { name: 'Esse lançamento já estava previsto?' }).waitFor();
   await page.getByRole('button', { name: 'Sim, é esse' }).click();
   await toast().filter({ hasText: 'Aluguel marcado como pago' }).waitFor();
-  await page.getByRole('link', { name: 'Futuro' }).click();
+  await page.goto(`${base}/?demo#/futuro`);
   await page.locator('.tabela-futuro tbody tr').first().waitFor();
   const dia = `${dia30.slice(8, 10)}/${dia30.slice(5, 7)}`.replace('29/', '30/');
   assert.equal(await page.locator('.tabela-futuro tr', { hasText: dia }).filter({ hasText: '8.470,00' }).count(), 0, 'aluguel ainda aparece no Futuro');
@@ -151,7 +152,7 @@ test('pagar dízimo pendente da semana fechada', async () => {
   await folha().getByRole('button', { name: 'Marcar como pago' }).click();
   await toast().filter({ hasText: 'pago' }).waitFor();
   assert.equal(await page.locator('.dizimo-card', { hasText: 'A pagar, semana' }).count(), 0);
-  await page.getByRole('link', { name: 'Negócios' }).click();
+  await page.goto(`${base}/?demo#/dizimo`);
   await page.locator('.etiqueta.pago').first().waitFor();
 });
 
@@ -276,8 +277,10 @@ test('mercado: previsão, lista sugerida marcável, juntar produtos e trocar par
 });
 
 test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar a venda e ajustar receita', async () => {
-  await page.goto(`${base}/?demo#/negocios`);
-  await page.locator('a.cartao-pudim').click();
+  // pelo menu de baixo: Pudim abre o início do pudim; o módulo Estoque abre o estoque
+  await page.goto(`${base}/?demo#/inicio`);
+  await page.getByRole('link', { name: 'Pudim', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Módulos do pudim' }).getByRole('link', { name: /Estoque/ }).click();
   await page.getByText('Pronto para vender').waitFor();
   const pudins = async () => Number((await page.locator('.hero-pudim .num-mercado').innerText()).match(/\d+/)[0]);
   const antes = await pudins();
@@ -297,15 +300,15 @@ test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar
   await page.getByRole('button', { name: 'Finalizar venda · R$ 36,00' }).click();
   await toast().filter({ hasText: 'Venda de R$ 36,00 registrada e lançada no caixa' }).waitFor();
   assert.equal(reais(await saldoConta('Nubank PJ')), Math.round((reais(nubankPj) + 36) * 100) / 100);
-  await page.goto(`${base}/?demo#/pudim`);
+  await page.goto(`${base}/?demo#/pudim?aba=estoque`);
   assert.equal(await pudins(), antes + 3);
-  await page.goto(`${base}/?demo#/pudim`);
+  await page.goto(`${base}/?demo#/pudim?aba=estoque`);
   await page.getByRole('alert').filter({ hasText: /venc/ }).getByRole('button', { name: 'Dar baixa' }).click();
   await toast().filter({ hasText: /Baixa de \d+ pudi(m|ns) vencidos?/ }).waitFor();
   assert.equal(await page.getByRole('alert').filter({ hasText: /venc/ }).count(), 0);
 
   // apagar a venda tira a entrada do caixa junto
-  await page.goto(`${base}/?demo#/pudim`);
+  await page.goto(`${base}/?demo#/pudim?aba=estoque`);
   const venda = page.locator('.arrastavel', { hasText: 'Vendeu 3 Pudim tradicional 150' }).first();
   await venda.scrollIntoViewIfNeeded();
   const caixa = await venda.boundingBox();
@@ -340,7 +343,7 @@ test('pdv no iFood: preço calculado, taxa de 26,2% como gasto, conta iFood cria
   assert.match(await page.locator('.item', { hasText: 'Repasse iFood' }).first().innerText(), /130,04/);
   await page.goto(`${base}/?demo#/lancamentos`);
   await page.locator('.item', { hasText: 'Taxa iFood (26,2%)' }).first().waitFor();
-  await page.goto(`${base}/?demo#/pudim`);
+  await page.goto(`${base}/?demo#/pudim?aba=estoque`);
   await page.getByText('Taxa do iFood').waitFor();
   const venda = page.locator('.arrastavel', { hasText: 'Vendeu 2 Pudim tradicional 1100' }).first();
   await venda.scrollIntoViewIfNeeded();
@@ -360,7 +363,7 @@ test('pdv no iFood: preço calculado, taxa de 26,2% como gasto, conta iFood cria
 });
 
 test('estoque por voz: produz, vende e perde numa frase; o que faltou é respondido na lista', async () => {
-  await page.goto(`${base}/?demo#/pudim`);
+  await page.goto(`${base}/?demo#/pudim?aba=estoque`);
   const pudins = async () => Number((await page.locator('.hero-pudim .num-mercado').innerText()).match(/\d+/)[0]);
   const antes = await pudins();
   await page.getByRole('button', { name: 'Falar', exact: true }).click();
@@ -485,8 +488,8 @@ test('sabor novo nasce com 1 kg, 500 g e copo (rende 1, 2 e 6); sabor não apare
 });
 
 test('lista de compras: falar os itens, estimativa pela última compra, pago mais caro/barato e registrar a compra', async () => {
-  await page.goto(`${base}/?demo#/mais`);
-  await page.getByRole('link', { name: /Lista de compras/ }).click();
+  await page.goto(`${base}/?demo#/inicio`);
+  await page.getByRole('link', { name: 'Casa', exact: true }).click();
   await page.locator('#lista-frase').fill('2 leites condensados, detergente e papel toalha');
   await page.getByRole('button', { name: 'Pôr na lista' }).click();
   await toast().filter({ hasText: '3 itens na lista da casa' }).waitFor();
@@ -516,12 +519,12 @@ test('lista de compras: falar os itens, estimativa pela última compra, pago mai
   await page.locator('.item', { hasText: 'Assaí — casa' }).first().waitFor();
   // lista do pudim é separada: o que se fala nela fica nela, e não aparece na da casa
   await page.goto(`${base}/?demo#/lista?lista=pudim`);
-  await page.getByRole('group', { name: 'Lista' }).getByRole('button', { name: 'Pudim', pressed: true }).waitFor();
+  await page.getByRole('group', { name: 'Casa' }).getByRole('button', { name: 'Compras pudim', pressed: true }).waitFor();
   await page.locator('#lista-frase').fill('6 leites condensados');
   await page.getByRole('button', { name: 'Pôr na lista' }).click();
   await toast().filter({ hasText: 'Leite condensado na lista do pudim' }).waitFor();
   assert.equal(await page.locator('.item-lista').count(), 1);
-  await page.getByRole('group', { name: 'Lista' }).getByRole('button', { name: /^Casa/ }).click();
+  await page.getByRole('group', { name: 'Casa' }).getByRole('button', { name: 'Compras casa' }).click();
   await page.locator('.item-lista', { hasText: 'Papel toalha' }).waitFor();
   assert.equal(await page.locator('.item-lista', { hasText: 'Leite condensado' }).count(), 0);
   // a próxima lista já usa o preço desta compra
@@ -554,7 +557,7 @@ test('revisão: sabor desligado tira os tamanhos dele da venda; religar devolve'
 
 test('estoque de ingredientes: produção desconta pela receita, apagar devolve, contagem, falta vai para a lista', async () => {
   const emCasa = async (nome) => (await page.locator('.item-btn', { hasText: nome }).locator('.meta').first().innerText()).match(/Em casa: ([^·]+)/)[1].trim();
-  await page.goto(`${base}/?demo#/pudim`);
+  await page.goto(`${base}/?demo#/pudim?aba=estoque`);
   // abaixo do mínimo: 2 fornadas de 6 do tradicional 150
   const aviso = page.getByRole('alert', { name: 'Estoque mínimo' });
   // falta em número, e o custo estimado para repor
@@ -570,7 +573,7 @@ test('estoque de ingredientes: produção desconta pela receita, apagar devolve,
   assert.equal(await emCasa('Leite condensado'), '1,58 kg'); // 6 latas − 2 fornadas × 395 g
 
   // apagar a produção devolve os ingredientes
-  await page.goto(`${base}/?demo#/pudim`);
+  await page.goto(`${base}/?demo#/pudim?aba=estoque`);
   const mov = page.locator('.arrastavel', { hasText: 'Produziu 12 Pudim tradicional 150' }).first();
   await mov.scrollIntoViewIfNeeded();
   const caixa = await mov.boundingBox();
@@ -617,7 +620,7 @@ test('preparo (calda) entra no custo e no gasto de ingredientes de outra receita
 });
 
 test('dois locais: lote com vários sabores, envio para Ibiúna, perda lançada em Ibiúna corrigida para São Roque', async () => {
-  await page.goto(`${base}/?demo#/pudim`);
+  await page.goto(`${base}/?demo#/pudim?aba=estoque`);
   await page.getByText('Pronto para vender').waitFor();
   const local = async (nome) => {
     await page.getByRole('group', { name: 'Local' }).getByRole('button', { name: nome, exact: true }).click();
@@ -696,7 +699,7 @@ test('dois locais: lote com vários sabores, envio para Ibiúna, perda lançada 
 });
 
 test('produção lançada no pudim errado: trocar o pudim refaz o custo de cada e o gasto de ingredientes', async () => {
-  await page.goto(`${base}/?demo#/pudim`);
+  await page.goto(`${base}/?demo#/pudim?aba=estoque`);
   await page.getByRole('button', { name: 'Produzi', exact: true }).click();
   await folha().getByLabel('Qual pudim').selectOption({ label: 'Pudim tradicional 1100' });
   await page.locator('#mov-quantidade').fill('4');
@@ -714,5 +717,23 @@ test('produção lançada no pudim errado: trocar o pudim refaz o custo de cada 
   assert.match(await depois.innerText(), /4 × R\$ [\d,]+/);
   assert.ok(reais(await depois.locator('.valor').innerText()) < reais(antes));
   assert.equal(await page.locator('.item-btn', { hasText: 'Produziu 4 Pudim tradicional 1100' }).count(), 0);
+  assert.deepEqual(erros, []);
+});
+
+test('tarefas da casa: anotar várias, concluir, desfazer e ver as feitas', async () => {
+  await page.goto(`${base}/?demo#/inicio`);
+  await page.getByRole('link', { name: 'Casa', exact: true }).click();
+  await page.getByRole('group', { name: 'Casa' }).getByRole('button', { name: 'Tarefas' }).click();
+  await page.locator('#tarefa-texto').fill('consertar a torneira, pintar o portão');
+  await page.getByRole('button', { name: 'Anotar' }).click();
+  await toast().filter({ hasText: '2 tarefas anotadas' }).waitFor();
+  await page.locator('.item-tarefa', { hasText: 'Consertar a torneira' }).getByText(/Anotada em \d\d\/\d\d/).waitFor();
+  await page.getByRole('button', { name: 'Concluir Pintar o portão' }).click();
+  await toast().filter({ hasText: 'Feito: Pintar o portão' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Concluir Pintar o portão' }).count(), 0);
+  await page.getByRole('button', { name: /Mostrar 2 feitas/ }).click();
+  await page.locator('.item-tarefa.feita', { hasText: 'Pintar o portão' }).getByText(/feita em \d\d\/\d\d/).waitFor();
+  await page.getByRole('button', { name: 'Reabrir Pintar o portão' }).click();
+  await page.getByRole('button', { name: 'Concluir Pintar o portão' }).waitFor();
   assert.deepEqual(erros, []);
 });

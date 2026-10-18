@@ -125,7 +125,12 @@ export function demoTables(hoje) {
   }
   const mt = monthlyTithe(lancs, mesAnterior);
   if (mt.dizimo > 0) lancs.push({ id: `demo-l${++n}`, data: `${monthKey(hoje)}-01`, tipo: 'saida', valor: mt.dizimo / 100, descricao: 'Dízimo do mês', conta_id: 'itau', conta_destino_id: '', categoria_id: CATEGORIA_DIZIMO, origem: 'Casa', canal: 'manual', id_externo: refMes(mesAnterior), criado_por: 'demo', criado_em: hoje });
-  return { contas, categorias: baseCategorias(), lancamentos: lancs, previstos, baixas, config: [...baseConfig(), { id: 'custos_pudim', valor: JSON.stringify(demoCustosPudim()) }], itens: demoItens(hoje), ...demoPudim(hoje) };
+  return { contas, categorias: baseCategorias(), lancamentos: lancs, previstos, baixas, config: [...baseConfig(), { id: 'custos_pudim', valor: JSON.stringify(demoCustosPudim()) }], itens: demoItens(hoje), ...demoPudim(hoje),
+    tarefas: [
+      { id: 'demo-t1', titulo: 'Instalar portão na escada', criado_em: `${addDays(hoje, -6)}T20:00:00Z`, criado_por: '', feita: false, feita_em: '', feita_por: '' },
+      { id: 'demo-t2', titulo: 'Trocar a lâmpada da cozinha', criado_em: `${addDays(hoje, -2)}T19:00:00Z`, criado_por: '', feita: false, feita_em: '', feita_por: '' },
+      { id: 'demo-t3', titulo: 'Levar o carro na revisão', criado_em: `${addDays(hoje, -10)}T09:00:00Z`, criado_por: '', feita: true, feita_em: `${addDays(hoje, -3)}T18:00:00Z`, feita_por: '' },
+    ] };
 }
 
 // Ingredientes, três receitas e duas semanas de produção, venda e perda.

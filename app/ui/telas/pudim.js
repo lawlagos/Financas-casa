@@ -374,14 +374,57 @@ function AbaIngredientes({ s, d }) {
     <${Desativados} lista=${(s.tables.insumos || []).filter((x) => !ativo(x))} tipo="ingredientes" folha="insumo" chave="insumo" />`;
 }
 
+// Início do pudim: os módulos (vender, estoque, receitas, ingredientes, lista, preços) com um resumo de cada.
+function InicioPudim({ s, d }) {
+  const e = d.estoque;
+  const sem = semanaPudim({ movimentos: d.movimentos, saidas: d.saidas, lancamentos: s.tables.lancamentos, data: s.hoje });
+  const lista = (s.tables.lista || []).filter((x) => x.origem === 'Pudim' && !x.comprado);
+  const estimadoLista = lista.reduce((t, x) => t + (x.preco_estimado ? Math.round(Number(x.preco_estimado) * 100) : 0), 0);
+  const alerta = d.abaixo.length > 0 || e.vencidos > 0;
+  const modulo = (href, icone, titulo, linha, classe = '') => html`<a class=${`modulo-pudim ${classe}`} href=${href}>
+    <span class="marca suave"><${Icone} n=${icone} /></span>
+    <span class="modulo-tit">${titulo}</span>
+    <span class="modulo-linha">${linha}</span>
+  </a>`;
+  return html`
+    <div class="painel painel-pad hero-pudim hero-compacto">
+      <div><div class="rot-mercado">Pronto para vender</div>
+        <div class="num-mercado">${plural(e.quantidade, 'pudim', 'pudins')}</div>
+        <div class="muted" style="font-size:12.5px">${brl(e.potencial)} se vender tudo</div></div>
+      <div style="text-align:right"><div class="rot-mercado">Esta semana</div><strong style="font-size:17px">${brl(sem.vendas)}</strong>
+        <div class=${sem.ganho < 0 ? 'neg' : 'pos'} style="font-size:13px;font-weight:700">ganho ${brlSigned(sem.ganho)}</div></div>
+    </div>
+    <div class="acoes acoes-pudim">
+      <a class="btn btn-pri" href="#/pudim/vender">Vender</a>
+      <button class="btn btn-sec" onClick=${() => abrirFolha('movimento', { tipo: 'producao' })}>Produzi</button>
+      <button class="btn btn-sec" onClick=${() => abrirFolha('voz-estoque', {})}><${Icone} n="mic" />Falar</button>
+    </div>
+    <div class="grade-modulos" role="navigation" aria-label="Módulos do pudim">
+      ${modulo('#/pudim?aba=estoque', 'pilha', 'Estoque', alerta
+        ? [d.abaixo.length ? `${d.abaixo.length} abaixo do mínimo` : '', e.vencidos ? `${e.vencidos} vencido${e.vencidos > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')
+        : `${e.quantidade} prontos, tudo em dia`, alerta ? 'atencao-modulo' : '')}
+      ${modulo('#/pudim/vender', 'negocios', 'Vender (PDV)', `${sem.vendidos} vendido${sem.vendidos === 1 ? '' : 's'} na semana`)}
+      ${modulo('#/pudim?aba=receitas', 'etiqueta', 'Receitas', `${d.receitas.length} pudins, custo e preço`)}
+      ${modulo('#/pudim?aba=ingredientes', 'carrinho', 'Ingredientes', d.faltas.length ? `faltam ${d.faltas.length} · ≈ ${brl(d.compra.total)}` : 'tudo acima do mínimo', d.faltas.length ? 'atencao-modulo' : '')}
+      ${modulo('#/lista?lista=pudim', 'lista', 'Lista do pudim', lista.length ? `${lista.length} ${lista.length === 1 ? 'item' : 'itens'} · ≈ ${brl(estimadoLista)}` : 'vazia')}
+      ${modulo('#/pudim/compras', 'busca', 'Pesquisar preços', 'ofertas dos ingredientes')}
+    </div>
+    ${d.repor.falta > 0 && html`<a class="painel painel-pad aviso-minimo cartao-repor" href="#/pudim?aba=estoque">
+      <div class="custo-repor"><div><span>Para repor o mínimo: faltam <b>${d.repor.falta}</b> pudins</span><strong>≈ ${brl(d.repor.custo)}</strong></div>
+        <div class="muted">${plural(d.repor.fornadas, 'fornada', 'fornadas')} em ingredientes e embalagem. Toque para ver o que fazer.</div></div>
+    </a>`}`;
+}
+
 export function TelaPudim({ params = {} }) {
   const s = useStore();
+  const inicio = !params.aba;
   const aba = ['estoque', 'receitas', 'ingredientes'].includes(params.aba) ? params.aba : 'estoque';
   const d = dadosPudim(s);
   const vazio = !d.receitas.length;
   return html`<main>
-    <${Topo} titulo="Pudim" sub="Estoque, receitas e custo dos ingredientes" voltar="#/negocios" />
+    <${Topo} titulo=${inicio ? 'Pudim' : { estoque: 'Estoque do pudim', receitas: 'Receitas', ingredientes: 'Ingredientes' }[aba]} sub=${inicio ? 'Tudo do pudim num lugar só' : ''} voltar=${inicio ? null : '#/pudim'} />
     <${FaixaDemo} />
+    ${inicio && !vazio ? html`<${InicioPudim} s=${s} d=${d} />` : html`
     <${Segmento} rotulo="Parte" opcoes=${[['estoque', 'Estoque'], ['receitas', 'Receitas'], ['ingredientes', 'Ingredientes']]} valor=${aba}
       onChange=${(v) => (location.hash = `#/pudim?aba=${v}`)} />
     <div style="margin-top:12px">
@@ -391,6 +434,7 @@ export function TelaPudim({ params = {} }) {
             <button class="btn btn-pri" onClick=${() => abrirFolha('receita', {})}>Criar receita</button><//></div>`
         : aba === 'estoque' ? html`<${AbaEstoque} s=${s} d=${d} />` : aba === 'receitas' ? html`<${AbaReceitas} s=${s} d=${d} />` : html`<${AbaIngredientes} s=${s} d=${d} />`}
     </div>
+`}
   </main>`;
 }
 

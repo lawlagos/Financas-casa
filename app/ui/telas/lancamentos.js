@@ -1,7 +1,7 @@
 import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
-import { Topo, Chips, Marca, Arrastavel, Vazio } from '../componentes.js';
+import { Topo, Chips, Marca, Arrastavel, Vazio, AbasSecao } from '../componentes.js';
 import { useStore, abrirFolha, apagarLancamento } from '../../data/store.js';
 import { brl, toCents, sum } from '../../core/money.js';
 import { monthKey, addMonthsKey, monthName, fmtDayLong } from '../../core/dates.js';
@@ -49,6 +49,7 @@ export function TelaLancamentos({ params }) {
   const contaSel = contas[conta];
   return html`<main>
     <${Topo} titulo="Lançamentos" sub=${contaSel ? `Só ${contaSel.nome}` : 'Todas as contas'} />
+    <${AbasSecao} secao="dinheiro" atual="/lancamentos" />
     <${FaixaDemo} />
     <div style="display:flex;align-items:center;justify-content:space-between;margin:2px 0 12px">
       <button class="icone-btn" aria-label="Mês anterior" onClick=${() => setMes(addMonthsKey(mes, -1))}><${Icone} n="voltar" /></button>

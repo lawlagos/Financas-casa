@@ -19,7 +19,8 @@ var ESQUEMA = {
   receitas: ['id', 'nome', 'rendimento', 'validade_dias', 'preco_venda', 'preco_sugerido', 'custo_ref', 'ingredientes', 'ativo', 'preco_ifood', 'tempo_preparo', 'markup', 'tipo', 'sabor_id', 'porcao', 'estoque_minimo'],
   estoque: ['id', 'data', 'receita_id', 'tipo', 'quantidade', 'custo_unitario', 'preco_unitario', 'validade', 'lancamento_id', 'obs', 'criado_em', 'canal', 'taxa_unitaria', 'custo_fixo_unitario', 'local', 'local_destino', 'lote_id'],
   lista: ['id', 'nome', 'quantidade', 'unidade', 'origem', 'preco_estimado', 'preco_pago', 'comprado', 'texto', 'criado_em', 'criado_por', 'comprado_em'],
-  estoque_insumos: ['id', 'data', 'insumo_id', 'tipo', 'quantidade', 'origem', 'ref', 'obs', 'criado_em']
+  estoque_insumos: ['id', 'data', 'insumo_id', 'tipo', 'quantidade', 'origem', 'ref', 'obs', 'criado_em'],
+  tarefas: ['id', 'titulo', 'criado_em', 'criado_por', 'feita', 'feita_em', 'feita_por']
 };
 
 // Nome da aba na planilha para cada tabela.
@@ -36,10 +37,11 @@ var ABAS = {
   estoque: 'Estoque',
   lista: 'Lista de compras',
   estoque_insumos: 'Estoque de ingredientes',
+  tarefas: 'Tarefas da casa',
   sessoes: 'Sessões'
 };
 
 var COLUNAS_SESSOES = ['token', 'email', 'aparelho', 'criada_em', 'ultimo_uso'];
 
 var NUMERICAS = { quantidade: 1, tamanho: 1, qtd_embalagem: 1, preco_embalagem: 1, rendimento: 1, validade_dias: 1, preco_venda: 1, preco_sugerido: 1, custo_ref: 1, custo_unitario: 1, preco_ifood: 1, taxa_unitaria: 1, tempo_preparo: 1, markup: 1, custo_fixo_unitario: 1, preco_estimado: 1, preco_pago: 1, estoque_minimo: 1, preco_unitario: 1, valor: 1, saldo_inicial: 1, a_cada: 1, mes_ancora: 1, dia_inicio: 1, dia_fim: 1, dia_semana: 1, parcelas_total: 1, parcela_no_inicio: 1 };
-var BOOLEANAS = { ativa: 1, ativo: 1, renovacao: 1, comprado: 1 };
+var BOOLEANAS = { ativa: 1, ativo: 1, renovacao: 1, comprado: 1, feita: 1 };
