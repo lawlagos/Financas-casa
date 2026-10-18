@@ -277,3 +277,11 @@ test('revisão: tamanho com sabor apagado avisa no custo', () => {
   const c = custoReceita({ id: 'p', sabor_id: 'sumiu', rendimento: 6, ingredientes: [] }, {}, [], null, {});
   assert.deepEqual(c.faltando, ['sabor apagado']);
 });
+
+test('repasse do iFood: vendas de segunda a domingo caem na quarta-feira seguinte', async () => {
+  const { quartaDoRepasse } = await import('../../app/core/pudim.js');
+  // 2026-10-12 é segunda; 2026-10-18 é domingo
+  for (const d of ['2026-10-12', '2026-10-14', '2026-10-17', '2026-10-18']) assert.equal(quartaDoRepasse(d), '2026-10-21', d);
+  assert.equal(quartaDoRepasse('2026-10-19'), '2026-10-28');
+  assert.equal(quartaDoRepasse('2026-10-11'), '2026-10-14');
+});

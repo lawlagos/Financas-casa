@@ -321,7 +321,7 @@ function PainelEstoqueInsumos({ s, d }) {
   const paraLista = d.faltas.filter((f) => !naLista.has(chaveProduto(f.insumo.produto || f.insumo.nome)));
   const porNaLista = async () => {
     await adicionarItens(paraLista.map((f) => ({ nome: f.insumo.produto || f.insumo.nome, quantidade: f.embalagens, unidade: 'un', origem: 'Pudim' })));
-    toast(`${paraLista.length} ingrediente${paraLista.length > 1 ? 's' : ''} na lista de compras`);
+    toast(`${paraLista.length} ingrediente${paraLista.length > 1 ? 's' : ''} na lista de compras do pudim`, { acao: 'Ver lista', onAcao: () => (location.hash = '#/lista?lista=pudim') });
   };
   return html`<div class="painel painel-pad" style="margin-top:10px">
     <div class="rot-mercado">Estoque de ingredientes</div>
@@ -365,7 +365,10 @@ function AbaIngredientes({ s, d }) {
   return html`
     <div class="acoes" style="justify-content:flex-end"><button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('insumo', {})}><${Icone} n="mais" />Novo</button></div>
     <${PainelEstoqueInsumos} s=${s} d=${d} />
-    <a class="btn btn-pri btn-larga" style="margin-top:10px" href="#/pudim/compras"><${Icone} n="busca" />Pesquisar preços e comprar</a>
+    <div class="acoes" style="margin-top:10px">
+      <a class="btn btn-sec" style="flex:1" href="#/lista?lista=pudim"><${Icone} n="lista" />Lista do pudim${(s.tables.lista || []).some((x) => x.origem === 'Pudim' && !x.comprado) ? ` (${(s.tables.lista || []).filter((x) => x.origem === 'Pudim' && !x.comprado).length})` : ''}</a>
+      <a class="btn btn-pri" style="flex:1" href="#/pudim/compras"><${Icone} n="busca" />Pesquisar preços</a>
+    </div>
     <p class="muted" style="font-size:13px;margin:8px 2px">O preço vem da nota de mercado mais recente do produto. Sem nota, vale o preço digitado aqui.</p>
     <ul class="lista painel">${bloco('ingrediente', 'Ingredientes')}${bloco('embalagem', 'Embalagens')}</ul>
     <${Desativados} lista=${(s.tables.insumos || []).filter((x) => !ativo(x))} tipo="ingredientes" folha="insumo" chave="insumo" />`;

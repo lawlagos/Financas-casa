@@ -13,6 +13,13 @@ export const TAXA_IFOOD_PADRAO = 26.2;
 export const CANAIS = { direta: 'Venda direta', ifood: 'iFood' };
 export const CATEGORIA_TAXA_IFOOD = 'cat-taxa-ifood';
 export const CONTA_IFOOD = 'ifood';
+// O iFood junta as vendas de segunda a domingo e paga na quarta-feira seguinte: venda de seg 12 a dom 18 cai na qua 21.
+export function quartaDoRepasse(data) {
+  const dow = new Date(`${data}T12:00:00Z`).getUTCDay(); // 0 = domingo
+  const segunda = addDays(data, -((dow + 6) % 7));
+  return addDays(segunda, 9);
+}
+export const idRepasseIfood = (quarta) => `repasse-ifood-${quarta}`;
 export const MARKUP_PADRAO = 0.3;
 
 // Mão de obra e despesas fixas do pudim (Config "custos_pudim"), como na Base Cadastros da planilha:

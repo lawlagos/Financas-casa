@@ -6,8 +6,8 @@ import { Icone } from '../icones.js';
 import { Topo, Segmento, Campo } from '../componentes.js';
 import { useStore, toast } from '../../data/store.js';
 import { brl, parseBRL, toCents } from '../../core/money.js';
-import { addDays } from '../../core/dates.js';
-import { precoNoCanal, totaisCarrinho, CANAIS } from '../../core/pudim.js';
+import { addDays, fmtDay } from '../../core/dates.js';
+import { precoNoCanal, totaisCarrinho, CANAIS, quartaDoRepasse } from '../../core/pudim.js';
 import { interpretarEstoque } from '../../core/vozestoque.js';
 import { registrarVenda, taxaIfood } from '../../data/pudim-acoes.js';
 import { contasAtivas } from '../derivados.js';
@@ -126,7 +126,7 @@ export function TelaPdv({ params = {} }) {
       setCarrinho({});
       setPrecos({});
       setQtdTexto({});
-      toast(`Venda de ${brl(r.bruto)} registrada${r.lancado ? (canal === 'ifood' ? ', líquido ' + brl(r.liquido) + ' na conta iFood' : ' e lançada no caixa') : ''}`);
+      toast(`Venda de ${brl(r.bruto)} registrada${r.lancado ? (canal === 'ifood' ? `, líquido ${brl(r.liquido)} na conta iFood${r.repasse ? `, cai no banco na quarta ${fmtDay(r.repasse)}` : ''}` : ' e lançada no caixa') : ''}`);
     } catch {
       // o aviso de erro já apareceu; o carrinho continua para tentar de novo
     } finally {
@@ -139,7 +139,7 @@ export function TelaPdv({ params = {} }) {
     <${FaixaDemo} />
     ${d.locais.length > 1 && html`<${Segmento} rotulo="Local" classe="pdv-local" opcoes=${d.locais.map((l) => [l.id, l.nome])} valor=${local} onChange=${trocarLocal} />`}
     <${Segmento} rotulo="Canal" classe=${d.locais.length > 1 ? 'mt8' : ''} opcoes=${[['direta', CANAIS.direta], ['ifood', CANAIS.ifood]]} valor=${canal} onChange=${setCanal} />
-    ${canal === 'ifood' && html`<p class="muted" style="font-size:12.5px;margin:6px 2px 0">Preços do iFood; a taxa de ${qtdTxt(taxaPct)}% sai do valor da venda.</p>`}
+    ${canal === 'ifood' && html`<p class="muted" style="font-size:12.5px;margin:6px 2px 0">Preços do iFood; a taxa de ${qtdTxt(taxaPct)}% sai do valor da venda e o resto cai no banco na quarta-feira ${fmtDay(quartaDoRepasse(data))} (o iFood paga na quarta as vendas de segunda a domingo).</p>`}
     ${falando && html`<div style="margin-top:10px"><${CampoFala} id="pdv-frase" rotulo="O que vendeu" frase=${frase} setFrase=${setFrase} onPronto=${ouvido} placeholder="Ex.: 3 tradicionais no copo e 2 geladinhos de ninho com nutella" /></div>`}
 
     <div class="campo" style="margin-top:10px"><input class="pdv-busca" type="search" aria-label="Buscar pudim" placeholder="Buscar pudim" value=${busca} onInput=${(e) => setBusca(e.target.value)} /></div>

@@ -647,7 +647,7 @@ export function FolhaVozEstoque({ local: localPedido = '' }) {
       const n = res.movimentos;
       const v = res.venda;
       fecharFolha();
-      toast([n ? `${n} movimento${n > 1 ? 's' : ''} no estoque` : '', v ? `venda de ${brl(v.bruto)}${v.lancado ? ' lançada no caixa' : ''}` : ''].filter(Boolean).join(' e ').replace(/^./, (c) => c.toUpperCase()));
+      toast([n ? `${n} movimento${n > 1 ? 's' : ''} no estoque` : '', v ? `venda de ${brl(v.bruto)}${v.lancado ? ' lançada no caixa' : ''}${v.repasse ? ` (o iFood paga na quarta ${fmtDay(v.repasse)})` : ''}` : ''].filter(Boolean).join(' e ').replace(/^./, (c) => c.toUpperCase()));
     } catch {
       setSalvando(false);
     }

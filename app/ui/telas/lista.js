@@ -3,7 +3,7 @@
 import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
-import { Topo, Secao, Campo, Chips } from '../componentes.js';
+import { Topo, Secao, Campo, Chips, Segmento } from '../componentes.js';
 import { useStore, apagar, toast } from '../../data/store.js';
 import { brl, parseBRL, toCents } from '../../core/money.js';
 import { fmtDay } from '../../core/dates.js';
@@ -46,7 +46,7 @@ function Item({ x, s, aberto, onAbrir }) {
         <div class="tit">${x.nome} <span class="muted" style="font-weight:500">${qtdTxt(x.quantidade, x.unidade)}</span></div>
         <div class="meta">${ultimo ? `última: ${brl(ultimo.porUnidade)}${x.unidade === 'kg' && ultimo.porKg ? ` (${brl(ultimo.porKg)}/kg)` : ''} em ${fmtDay(ultimo.data)}${ultimo.mercado ? `, ${ultimo.mercado}` : ''}` : estimado ? 'pelo preço do cadastro' : 'sem preço anterior'}</div>
       </button>
-      <div class="valor">${estimado ? `≈ ${brl(estimado)}` : '—'}${x.origem === 'Pudim' ? html`<small>pudim</small>` : ''}</div>
+      <div class="valor">${estimado ? `≈ ${brl(estimado)}` : '—'}</div>
     </div>
     ${x.comprado && html`<div class="item-lista-pago">
       <label class="campo-pago"><span>Paguei</span><input aria-label=${`Quanto pagou em ${x.nome}`} inputmode="decimal" placeholder="0,00" value=${pago}
@@ -59,7 +59,7 @@ function Item({ x, s, aberto, onAbrir }) {
         <${Campo} rotulo="Medida"><select aria-label="Medida" value=${x.unidade || 'un'} onChange=${(e) => atualizarItem(x, { unidade: e.target.value })}>
           ${[['un', 'unidade'], ['kg', 'kg'], ['g', 'g'], ['l', 'litro'], ['ml', 'ml']].map(([v, t]) => html`<option value=${v}>${t}</option>`)}</select><//>
       </div>
-      <div class="campo"><span>É para</span><${Chips} rotulo="É para" valor=${x.origem} onChange=${(v) => atualizarItem(x, { origem: v || 'Casa' })} opcoes=${[['Casa', 'Casa'], ['Pudim', 'Pudim']]} /></div>
+      <div class="campo"><span>Mudar de lista</span><${Chips} rotulo="É para" valor=${x.origem} onChange=${(v) => atualizarItem(x, { origem: v || 'Casa' })} opcoes=${[['Casa', 'Casa'], ['Pudim', 'Pudim']]} /></div>
       ${hist.length > 0 && html`<div class="rot-mercado" style="margin:12px 0 4px">Preço nas últimas compras</div>
         <ul class="hist-precos">${hist.slice(0, 6).map((h, i) => {
           const antes = hist[i + 1];
@@ -72,14 +72,21 @@ function Item({ x, s, aberto, onAbrir }) {
   </li>`;
 }
 
-export function TelaLista() {
+// Duas listas: a da casa e a do pudim. O que se fala numa entra nela; cada uma tem a sua estimativa e o seu fechamento.
+const LISTAS = [['Casa', 'Casa'], ['Pudim', 'Pudim']];
+const daLista = (x) => (x.origem === 'Pudim' ? 'Pudim' : 'Casa');
+
+export function TelaLista({ params = {} }) {
   const s = useStore();
   const contas = contasAtivas(s);
-  const lista = [...(s.tables.lista || [])].sort((a, b) => (a.criado_em < b.criado_em ? -1 : 1));
+  const qual = params.lista === 'pudim' ? 'Pudim' : 'Casa';
+  const todas = [...(s.tables.lista || [])].sort((a, b) => (a.criado_em < b.criado_em ? -1 : 1));
+  const lista = todas.filter((x) => daLista(x) === qual);
+  const contagem = (o) => todas.filter((x) => daLista(x) === o && !x.comprado).length;
   const [frase, setFrase] = useState('');
   const [aberto, setAberto] = useState(null);
   const [mercado, setMercado] = useState('');
-  const ultimaCompra = [...s.tables.lancamentos].reverse().find((l) => l.categoria_id === 'cat-mercado');
+  const ultimaCompra = [...s.tables.lancamentos].reverse().find((l) => l.categoria_id === (qual === 'Pudim' ? 'cat-ingrediente' : 'cat-mercado'));
   const [conta_id, setConta] = useState(ultimaCompra?.conta_id || '');
   const [data, setData] = useState(s.hoje);
   const [salvando, setSalvando] = useState(false);
@@ -87,19 +94,20 @@ export function TelaLista() {
   const cat = catalogo({ itens: s.tables.itens || [], insumos: s.tables.insumos || [] });
   const linhas = lista.map((x) => ({ x, estimado: x.preco_estimado ? toCents(x.preco_estimado) : null, comprado: !!x.comprado, pago: x.preco_pago ? toCents(x.preco_pago) : 0 }));
   const r = resumoLista(linhas);
-  const naLista = new Set(lista.map((x) => chaveProduto(x.nome)));
-  const sugeridos = ['Casa', 'Pudim'].flatMap((origem) => listaSugerida(produtos(s.tables.itens || [], { origem, hoje: s.hoje })).itens.map((p) => ({ ...p, origem })))
+  const naLista = new Set(todas.map((x) => chaveProduto(x.nome)));
+  const sugeridos = listaSugerida(produtos(s.tables.itens || [], { origem: qual, hoje: s.hoje })).itens.map((p) => ({ ...p, origem: qual }))
     .filter((p) => !naLista.has(p.chave));
   const comprados = lista.filter((x) => x.comprado);
   const prontos = comprados.filter((x) => Number(x.preco_pago) > 0);
 
   const ouvir = async (texto) => {
-    const novos = interpretarLista(texto, cat);
+    // O que se fala na lista do pudim é do pudim; na da casa, da casa.
+    const novos = interpretarLista(texto, cat).map((x) => ({ ...x, origem: qual }));
     if (!novos.length) return toast('Não entendi nenhum item. Ex.: "2 leites condensados e um quilo de banana".', { tom: 'erro' });
     try {
       await adicionarItens(novos);
       setFrase('');
-      toast(novos.length === 1 ? `${novos[0].nome} na lista` : `${novos.length} itens na lista`);
+      toast(novos.length === 1 ? `${novos[0].nome} na lista ${qual === 'Pudim' ? 'do pudim' : 'da casa'}` : `${novos.length} itens na lista ${qual === 'Pudim' ? 'do pudim' : 'da casa'}`);
     } catch {
       // o aviso de erro já apareceu
     }
@@ -125,14 +133,17 @@ export function TelaLista() {
   const bloco = (xs) => html`<ul class="lista painel lista-compras">${xs.map((x) => html`<${Item} key=${x.id} x=${x} s=${s} aberto=${aberto === x.id} onAbrir=${() => setAberto(aberto === x.id ? null : x.id)} />`)}</ul>`;
 
   return html`<main>
-    <${Topo} titulo="Lista de compras" sub="Fale o que precisa; o app estima quanto vai sair" voltar="#/mais" />
+    <${Topo} titulo="Lista de compras" sub="Fale o que precisa; o app estima quanto vai sair" voltar=${qual === 'Pudim' ? '#/pudim?aba=ingredientes' : '#/mais'} />
     <${FaixaDemo} />
-    <${CampoFala} id="lista-frase" rotulo="O que precisa comprar" frase=${frase} setFrase=${setFrase} onPronto=${ouvir}
-      placeholder="Ex.: 2 leites condensados, um quilo de banana e detergente" />
+    <${Segmento} rotulo="Lista" classe="lista-qual" valor=${qual} onChange=${(v) => (location.hash = v === 'Pudim' ? '#/lista?lista=pudim' : '#/lista')}
+      opcoes=${LISTAS.map(([v, t]) => [v, contagem(v) ? `${t} (${contagem(v)})` : t])} />
+    <div style="margin-top:12px"></div>
+    <${CampoFala} id="lista-frase" rotulo=${qual === 'Pudim' ? 'O que precisa comprar para o pudim' : 'O que precisa comprar para a casa'} frase=${frase} setFrase=${setFrase} onPronto=${ouvir}
+      placeholder=${qual === 'Pudim' ? 'Ex.: 6 leites condensados, 4 creme de leite e 2 dúzias de ovos' : 'Ex.: um quilo de banana, arroz e detergente'} />
     <div class="acoes" style="margin-top:8px;justify-content:flex-end"><button class="btn btn-sec btn-mini" disabled=${!frase.trim()} onClick=${() => ouvir(frase)}>Pôr na lista</button></div>
 
     <div class="painel painel-pad" style="margin-top:12px">
-      <div class="rot-mercado">Deve sair por</div>
+      <div class="rot-mercado">${qual === 'Pudim' ? 'Compras do pudim' : 'Compras da casa'}: deve sair por</div>
       <div class="num-mercado">≈ ${brl(r.estimado)}</div>
       <div class="muted" style="font-size:13px">${lista.length} ${lista.length === 1 ? 'item' : 'itens'}, pelos preços da última compra${r.semPreco ? `; ${r.semPreco} sem preço anterior` : ''}</div>
       ${comprados.length > 0 && html`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
@@ -145,7 +156,7 @@ export function TelaLista() {
     ${sugeridos.length > 0 && html`<button class="btn btn-sec btn-larga" style="margin-top:10px" onClick=${addSugeridos}><${Icone} n="carrinho" />Pôr o que está acabando (${sugeridos.length})</button>`}
 
     <${Secao} titulo="Para comprar">
-      ${lista.some((x) => !x.comprado) ? bloco(lista.filter((x) => !x.comprado)) : html`<p class="muted" style="margin:0">${lista.length ? 'Tudo no carrinho.' : 'A lista está vazia. Fale ou digite o que precisa.'}</p>`}
+      ${lista.some((x) => !x.comprado) ? bloco(lista.filter((x) => !x.comprado)) : html`<p class="muted" style="margin:0">${lista.length ? 'Tudo no carrinho.' : `A lista ${qual === 'Pudim' ? 'do pudim' : 'da casa'} está vazia. Fale ou digite o que precisa.`}</p>`}
     <//>
     ${comprados.length > 0 && html`<${Secao} titulo="No carrinho">
       ${bloco(comprados)}
@@ -158,8 +169,8 @@ export function TelaLista() {
         </div>
         ${prontos.length < comprados.length && html`<p class="muted" style="font-size:12.5px;margin:8px 0 0">${comprados.length - prontos.length} ${comprados.length - prontos.length === 1 ? 'item está' : 'itens estão'} sem o preço pago e ${comprados.length - prontos.length === 1 ? 'fica' : 'ficam'} na lista.</p>`}
         <button class="btn btn-pri btn-larga" style="margin-top:12px" disabled=${salvando || !prontos.length || !conta_id} onClick=${finalizar}>
-          ${salvando ? 'Salvando…' : `Registrar compra · ${brl(prontos.reduce((t, x) => t + toCents(x.preco_pago), 0))}`}</button>
-        <p class="muted" style="font-size:12.5px;margin:8px 0 0">Vira gasto (casa no Mercado, pudim em Ingrediente) e os preços entram no histórico para a próxima lista.</p>
+          ${salvando ? 'Salvando…' : `Registrar compra ${qual === 'Pudim' ? 'do pudim' : 'da casa'} · ${brl(prontos.reduce((t, x) => t + toCents(x.preco_pago), 0))}`}</button>
+        <p class="muted" style="font-size:12.5px;margin:8px 0 0">${qual === 'Pudim' ? 'Vira gasto do Pudim (Ingrediente), soma no estoque de ingredientes' : 'Vira gasto da casa (Mercado)'} e os preços entram no histórico para a próxima lista.</p>
       </div>
     <//>`}
   </main>`;

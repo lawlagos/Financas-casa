@@ -1,8 +1,8 @@
 // Gravações do pudim que mexem em mais de uma aba: venda (estoque + caixa), movimentos ditos por voz e apagar venda.
 import { state, salvar, salvarVarias, apagar, config } from './store.js';
 import { uid } from '../core/schema.js';
-import { addDays } from '../core/dates.js';
-import { totaisCarrinho, taxaUnitaria, TAXA_IFOOD_PADRAO, CATEGORIA_TAXA_IFOOD, CONTA_IFOOD, VALIDADE_PADRAO } from '../core/pudim.js';
+import { addDays, fmtDay } from '../core/dates.js';
+import { totaisCarrinho, taxaUnitaria, TAXA_IFOOD_PADRAO, CATEGORIA_TAXA_IFOOD, CONTA_IFOOD, VALIDADE_PADRAO, quartaDoRepasse, idRepasseIfood } from '../core/pudim.js';
 import { gastoDaProducao, entradasDeItens } from '../core/estoqueinsumos.js';
 
 const porIdDe = (lista) => Object.fromEntries((lista || []).map((x) => [x.id, x]));
@@ -49,6 +49,34 @@ async function garantirIfood(data) {
   if (!state.tables.categorias.some((c) => c.id === CATEGORIA_TAXA_IFOOD)) {
     await salvar('categorias', { id: CATEGORIA_TAXA_IFOOD, nome: 'Taxa iFood', tipo: 'saida', origem_padrao: 'Pudim', ativa: true });
   }
+}
+
+// Conta onde o iFood deposita o repasse: a dos ajustes, senão a Nubank PJ, senão a primeira conta do Pudim ou da Empresa.
+export function contaRepasseIfood() {
+  const contas = state.tables.contas.filter((c) => c.ativa !== false && c.id !== CONTA_IFOOD);
+  const escolhida = config('conta_repasse_ifood', '');
+  return (contas.find((c) => c.id === escolhida) || contas.find((c) => c.id === 'nubank-pj') || contas.find((c) => c.grupo === 'Pudim') || contas.find((c) => c.grupo === 'Empresa') || contas[0])?.id || '';
+}
+
+// O dinheiro do iFood fica na conta iFood até a quarta-feira seguinte à semana da venda: soma o líquido (venda menos taxa)
+// no repasse daquela quarta, um previsto de transferência da conta iFood para a conta do banco. `delta` em centavos.
+async function somarNoRepasse(data, delta) {
+  const quarta = quartaDoRepasse(data);
+  const id = idRepasseIfood(quarta);
+  const atual = state.tables.previstos.find((p) => p.id === id);
+  const valor = Math.round(((atual ? Math.round(Number(atual.valor) * 100) : 0) + delta)) / 100;
+  if (valor <= 0) {
+    if (atual) await apagar('previstos', id);
+    return null;
+  }
+  const segunda = addDays(quarta, -9);
+  return salvar('previstos', {
+    ...(atual || {}),
+    id, descricao: `Repasse iFood (vendas de ${fmtDay(segunda)} a ${fmtDay(addDays(segunda, 6))})`, natureza: 'unico', tipo: 'transferencia', valor,
+    conta_id: CONTA_IFOOD, conta_destino_id: atual?.conta_destino_id || contaRepasseIfood(), categoria_id: '', origem: 'Pudim',
+    recorrencia: '', a_cada: '', mes_ancora: '', dia_inicio: '', dia_fim: '', dia_semana: '', data_unica: quarta, inicio: '',
+    parcelas_total: '', parcela_no_inicio: '', confianca: 'certo', renovacao: false, pessoa: '', ativo: true,
+  });
 }
 
 // Venda de um carrinho. linhas: [{ receita, quantidade, preco (centavos), custo (centavos por unidade) }].
@@ -99,7 +127,10 @@ async function gravarVenda({ linhas, canal, data, conta_id, lancar, local = '' }
     taxa_unitaria: canal === 'ifood' ? Math.round(taxaUnitaria(l.preco, taxaPct) * 100) / 10000 : '', canal, validade: '', lancamento_id, obs: '', criado_em: agora,
   })));
   for (const x of salvos) feitos.push({ tabela: 'estoque', id: x.id });
-  return { ...t, lancado: !!lancamento_id };
+  // Por último, para não precisar desfazer: o líquido do iFood entra no repasse da quarta-feira.
+  let repasse = null;
+  if (lancamento_id && canal === 'ifood') repasse = await somarNoRepasse(data, t.bruto - t.taxa);
+  return { ...t, lancado: !!lancamento_id, repasse: repasse?.data_unica || '' };
 }
 
 // Produção, perda e envio entre locais (vários de uma vez, como vêm da fala).
@@ -209,6 +240,13 @@ export async function apagarMovimento(m) {
   const lancs = state.tables.lancamentos.filter((l) => l.id === m.lancamento_id || (entrada?.grupo_id && l.grupo_id === entrada.grupo_id));
   for (const x of irmaos) await apagar('estoque', x.id);
   for (const l of lancs) await apagar('lancamentos', l.id);
+  // Venda do iFood apagada sai do repasse da quarta (se ele ainda não foi recebido).
+  if (entrada?.conta_id === CONTA_IFOOD) {
+    const liquido = lancs.reduce((t, l) => t + (l.tipo === 'entrada' ? 1 : -1) * Math.round(Number(l.valor) * 100), 0);
+    const quarta = quartaDoRepasse(entrada.data);
+    const recebido = (state.tables.baixas || []).some((b) => b.previsto_id === idRepasseIfood(quarta));
+    if (!recebido && liquido > 0) await somarNoRepasse(entrada.data, -liquido);
+  }
   return { itens: irmaos.length, lancamentos: lancs.length };
 }
 

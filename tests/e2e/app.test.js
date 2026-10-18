@@ -333,8 +333,11 @@ test('pdv no iFood: preço calculado, taxa de 26,2% como gasto, conta iFood cria
   await page.locator('#carrinho').getByText('− R$ 46,16').waitFor();
   await page.locator('#carrinho').getByText('R$ 130,04').waitFor();
   await page.getByRole('button', { name: 'Finalizar venda · R$ 176,20' }).click();
-  await toast().filter({ hasText: 'líquido R$ 130,04 na conta iFood' }).waitFor();
+  await toast().filter({ hasText: /líquido R\$ 130,04 na conta iFood, cai no banco na quarta \d\d\/\d\d/ }).waitFor();
   assert.match(await saldoConta('iFood'), /130,04/);
+  // o líquido vira um repasse previsto para a quarta-feira, da conta iFood para o banco
+  await page.goto(`${base}/?demo#/mais/previstos`);
+  assert.match(await page.locator('.item', { hasText: 'Repasse iFood' }).first().innerText(), /130,04/);
   await page.goto(`${base}/?demo#/lancamentos`);
   await page.locator('.item', { hasText: 'Taxa iFood (26,2%)' }).first().waitFor();
   await page.goto(`${base}/?demo#/pudim`);
@@ -350,6 +353,9 @@ test('pdv no iFood: preço calculado, taxa de 26,2% como gasto, conta iFood cria
   assert.match(await saldoConta('iFood'), /0,00/);
   await page.goto(`${base}/?demo#/lancamentos`);
   assert.equal(await page.locator('.item', { hasText: 'Taxa iFood' }).count(), 0);
+  await page.goto(`${base}/?demo#/mais/previstos`);
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('.item', { hasText: 'Repasse iFood' }).count(), 0, 'venda apagada sai do repasse');
   assert.deepEqual(erros, []);
 });
 
@@ -438,7 +444,7 @@ test('revisão: quantidade do PDV aceita apagar e digitar 1,5 sem sumir; receita
 
 test('comprar insumos: pesquisa simulada, carrinho, preço pago e registro que atualiza o custo das receitas', async () => {
   await page.goto(`${base}/?demo#/pudim?aba=ingredientes`);
-  await page.getByRole('link', { name: /Pesquisar preços e comprar/ }).click();
+  await page.getByRole('link', { name: /Pesquisar preços/ }).click();
   await page.getByRole('note').filter({ hasText: 'Preços simulados' }).waitFor();
   await page.getByLabel('Pesquisar insumos').fill('creme');
   assert.equal(await page.locator('.grupo-ofertas').count(), 1);
@@ -483,7 +489,7 @@ test('lista de compras: falar os itens, estimativa pela última compra, pago mai
   await page.getByRole('link', { name: /Lista de compras/ }).click();
   await page.locator('#lista-frase').fill('2 leites condensados, detergente e papel toalha');
   await page.getByRole('button', { name: 'Pôr na lista' }).click();
-  await toast().filter({ hasText: '3 itens na lista' }).waitFor();
+  await toast().filter({ hasText: '3 itens na lista da casa' }).waitFor();
   assert.deepEqual(await page.locator('.item-lista .tit').evaluateAll((els) => els.map((e) => e.firstChild.textContent.trim())), ['Leite condensado', 'Detergente', 'Papel toalha']);
   const estimadoLeite = reais(await page.locator('.item-lista', { hasText: 'Leite condensado' }).locator('.valor').innerText());
   assert.ok(estimadoLeite > 0);
@@ -508,7 +514,16 @@ test('lista de compras: falar os itens, estimativa pela última compra, pago mai
   assert.equal(await page.locator('.item-lista').count(), 1, 'só o papel toalha fica na lista');
   await page.goto(`${base}/?demo#/lancamentos`);
   await page.locator('.item', { hasText: 'Assaí — casa' }).first().waitFor();
-  await page.locator('.item', { hasText: 'Assaí — pudim' }).first().waitFor();
+  // lista do pudim é separada: o que se fala nela fica nela, e não aparece na da casa
+  await page.goto(`${base}/?demo#/lista?lista=pudim`);
+  await page.getByRole('group', { name: 'Lista' }).getByRole('button', { name: 'Pudim', pressed: true }).waitFor();
+  await page.locator('#lista-frase').fill('6 leites condensados');
+  await page.getByRole('button', { name: 'Pôr na lista' }).click();
+  await toast().filter({ hasText: 'Leite condensado na lista do pudim' }).waitFor();
+  assert.equal(await page.locator('.item-lista').count(), 1);
+  await page.getByRole('group', { name: 'Lista' }).getByRole('button', { name: /^Casa/ }).click();
+  await page.locator('.item-lista', { hasText: 'Papel toalha' }).waitFor();
+  assert.equal(await page.locator('.item-lista', { hasText: 'Leite condensado' }).count(), 0);
   // a próxima lista já usa o preço desta compra
   await page.goto(`${base}/?demo#/lista`);
   await page.locator('#lista-frase').fill('detergente');
@@ -578,7 +593,7 @@ test('estoque de ingredientes: produção desconta pela receita, apagar devolve,
   await painel.getByText('comprar 4').waitFor();
   await painel.getByRole('button', { name: 'Pôr na lista de compras' }).click();
   await toast().filter({ hasText: '1 ingrediente na lista de compras' }).waitFor();
-  await page.goto(`${base}/?demo#/lista`);
+  await page.goto(`${base}/?demo#/lista?lista=pudim`);
   assert.match(await page.locator('.item-lista', { hasText: 'Leite condensado' }).innerText(), /Leite condensado\s*4/);
   // aviso na tela inicial
   await page.goto(`${base}/?demo#/inicio`);
