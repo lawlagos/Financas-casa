@@ -764,3 +764,20 @@ test('lista de compras: mais e menos na quantidade, menos no 1 tira, lixeira tir
   await page.locator('.item-lista', { hasText: 'Papel toalha' }).waitFor();
   assert.deepEqual(erros, []);
 });
+
+test('lista do pudim: faixa no topo com o que falta para o estoque mínimo; pôr um ou todos', async () => {
+  await page.goto(`${base}/pudim/?demo#/pudim?aba=ingredientes`);
+  await page.getByRole('button', { name: 'Contar o que tem em casa' }).click();
+  await page.getByLabel('Quantas embalagens de Leite condensado').fill('1');
+  await page.getByRole('button', { name: 'Salvar 1 contagem' }).click();
+  await toast().filter({ hasText: 'Contagem de 1 ingrediente salva' }).waitFor();
+  await page.goto(`${base}/pudim/?demo#/lista`);
+  const faixa = page.getByRole('region', { name: 'Falta para o estoque mínimo' });
+  const card = faixa.locator('.falta-card', { hasText: 'Leite condensado' });
+  await card.getByText('tem 395 g de 1,78 kg').waitFor();
+  await card.getByText(/comprar 4/).waitFor();
+  await faixa.getByRole('button', { name: 'Pôr Leite condensado na lista' }).click();
+  await card.getByText('na lista').waitFor();
+  assert.equal(await page.getByLabel('Quantidade de Leite condensado').innerText(), '4');
+  assert.deepEqual(erros, []);
+});

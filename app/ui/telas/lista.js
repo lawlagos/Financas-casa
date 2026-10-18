@@ -15,6 +15,9 @@ import { contasAtivas } from '../derivados.js';
 import { SelectConta } from '../folhas/lancamento.js';
 import { CampoFala } from '../voz.js';
 import { FaixaDemo } from './inicio.js';
+import { dadosPudim, fmtQtd } from './pudim.js';
+import { custoInsumo } from '../../core/pudim.js';
+import { embalagemBase } from '../../core/estoqueinsumos.js';
 
 const qtdTxt = (q, u) => `${String(q).replace('.', ',')}${u && u !== 'un' ? ` ${u}` : ''}`;
 const valorTxt = (cents) => (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -99,6 +102,48 @@ function Item({ x, s, aberto, onAbrir }) {
 // Duas listas: a da casa e a do pudim. O que se fala numa entra nela; cada uma tem a sua estimativa e o seu fechamento.
 const daLista = (x) => (x.origem === 'Pudim' ? 'Pudim' : 'Casa');
 
+// Lista do pudim: no topo, uma faixa que desliza com o que falta para o estoque mínimo de ingredientes.
+function FaltasDoPudim({ s, naLista }) {
+  const d = dadosPudim(s);
+  if (!d.faltas.length) return null;
+  const preco = (f) => {
+    const c = custoInsumo(f.insumo, d.itens);
+    return c.porBase === null ? null : Math.round(c.porBase * embalagemBase(f.insumo)) * f.embalagens;
+  };
+  const nome = (f) => f.insumo.produto || f.insumo.nome;
+  const fora = d.faltas.filter((f) => !naLista.has(chaveProduto(nome(f))));
+  const por = (fs) => adicionarItens(fs.map((f) => ({ nome: nome(f), quantidade: f.embalagens, unidade: 'un', origem: 'Pudim' })));
+  const porUm = async (f) => {
+    await por([f]);
+    toast(`${nome(f)} na lista`);
+  };
+  const porTodos = async () => {
+    await por(fora);
+    toast(`${fora.length} ingrediente${fora.length > 1 ? 's' : ''} na lista`);
+  };
+  return html`<section class="faltas-pudim" aria-label="Falta para o estoque mínimo">
+    <div class="faltas-cab"><div><strong>Falta para o estoque mínimo</strong>
+      <div class="muted" style="font-size:12.5px">${d.faltas.length} ingrediente${d.faltas.length > 1 ? 's' : ''} · ≈ ${brl(d.compra.total)}</div></div>
+      ${fora.length > 0 && html`<button class="btn btn-pri btn-mini" onClick=${porTodos}>Pôr ${fora.length === d.faltas.length ? 'todos' : `os ${fora.length}`}</button>`}</div>
+    <div class="faltas-trilho">
+      ${d.faltas.map((f) => {
+        const ja = naLista.has(chaveProduto(nome(f)));
+        const pct = Math.max(0, Math.min(100, Math.round((f.tem / f.minimo) * 100)));
+        const p = preco(f);
+        return html`<div class=${`falta-card ${ja ? 'na-lista' : ''}`}>
+          <div class="falta-nome">${f.insumo.nome}</div>
+          <div class="falta-barra" role="img" aria-label=${`tem ${pct}% do mínimo`}><span style=${`width:${pct}%`}></span></div>
+          <div class="falta-tem">tem ${fmtQtd(f.tem, f.insumo)} de ${fmtQtd(f.minimo, f.insumo)}</div>
+          <div class="falta-comprar">comprar <b>${f.embalagens}</b>${p !== null ? html`<span class="muted">≈ ${brl(p)}</span>` : ''}</div>
+          ${ja
+            ? html`<span class="falta-ok"><${Icone} n="check" />na lista</span>`
+            : html`<button class="btn btn-sec btn-mini" aria-label=${`Pôr ${nome(f)} na lista`} onClick=${() => porUm(f)}><${Icone} n="mais" />Pôr</button>`}
+        </div>`;
+      })}
+    </div>
+  </section>`;
+}
+
 export function TelaLista({ params = {} }) {
   const s = useStore();
   const contas = contasAtivas(s);
@@ -162,6 +207,7 @@ export function TelaLista({ params = {} }) {
     <${Topo} titulo=${qual === 'Pudim' ? 'Compras do pudim' : 'Compras da casa'} sub="Fale o que precisa; o app estima quanto vai sair" />
     <${FaixaDemo} />
     ${qual === 'Casa' && html`<${AbasSecao} secao="casa" atual="/lista" />`}
+    ${qual === 'Pudim' && html`<${FaltasDoPudim} s=${s} naLista=${naLista} />`}
     <${CampoFala} id="lista-frase" rotulo=${qual === 'Pudim' ? 'O que precisa comprar para o pudim' : 'O que precisa comprar para a casa'} frase=${frase} setFrase=${setFrase} onPronto=${ouvir}
       placeholder=${qual === 'Pudim' ? 'Ex.: 6 leites condensados, 4 creme de leite e 2 dúzias de ovos' : 'Ex.: um quilo de banana, arroz e detergente'} />
     <div class="acoes" style="margin-top:8px;justify-content:flex-end"><button class="btn btn-sec btn-mini" disabled=${!frase.trim()} onClick=${() => ouvir(frase)}>Pôr na lista</button></div>
