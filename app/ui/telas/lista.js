@@ -4,7 +4,7 @@ import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Topo, Secao, Campo, Chips, AbasSecao, Arrastavel } from '../componentes.js';
-import { useStore, apagar, toast } from '../../data/store.js';
+import { useStore, apagar, salvar, toast } from '../../data/store.js';
 import { brl, parseBRL, toCents } from '../../core/money.js';
 import { fmtDay } from '../../core/dates.js';
 import { catalogo, interpretarLista, historicoPrecos, comparar, resumoLista } from '../../core/listacompras.js';
@@ -35,19 +35,38 @@ function Item({ x, s, aberto, onAbrir }) {
   const hist = historicoPrecos(x.nome, s.tables.itens || []);
   const ultimo = hist[0];
   const marcar = () => atualizarItem(x, { comprado: !x.comprado, comprado_em: x.comprado ? '' : new Date().toISOString() });
+  // Passo do − e +: 1 unidade; meio quilo ou meio litro; 100 g ou 100 ml.
+  const passo = { kg: 0.5, l: 0.5, g: 100, ml: 100 }[x.unidade] || 1;
+  const tirar = async () => {
+    await apagar('lista', x.id);
+    toast(`${x.nome} saiu da lista`, { acao: 'Desfazer', onAcao: () => salvar('lista', x) });
+  };
+  const mudarQtd = (delta) => {
+    const q = Math.round(((Number(x.quantidade) || 1) + delta) * 100) / 100;
+    if (q <= 0) return tirar();
+    return atualizarItem(x, { quantidade: q });
+  };
   const guardarPago = () => {
     const v = parseBRL(pago) || '';
     if (String(v) !== String(x.preco_pago ?? '')) atualizarItem(x, { preco_pago: v, comprado: v ? true : x.comprado });
   };
-  return html`<li class=${`item-lista ${x.comprado ? 'comprado' : ''}`}>
+  return html`<li class=${`item-lista ${x.comprado ? 'comprado' : ''}`}><${Arrastavel} onApagar=${tirar}>
     <div class="item-lista-linha">
       <button class="marcador" aria-pressed=${String(!!x.comprado)} aria-label=${`Peguei ${x.nome}`} onClick=${marcar}><${Icone} n="check" /></button>
       <button class="item-lista-corpo" onClick=${onAbrir} aria-expanded=${String(aberto)}>
-        <div class="tit">${x.nome} <span class="muted" style="font-weight:500">${qtdTxt(x.quantidade, x.unidade)}</span></div>
+        <div class="tit">${x.nome}</div>
         <div class="meta">${ultimo ? `última: ${brl(ultimo.porUnidade)}${x.unidade === 'kg' && ultimo.porKg ? ` (${brl(ultimo.porKg)}/kg)` : ''} em ${fmtDay(ultimo.data)}${ultimo.mercado ? `, ${ultimo.mercado}` : ''}` : estimado ? 'pelo preço do cadastro' : 'sem preço anterior'}</div>
       </button>
       <div class="valor">${estimado ? `≈ ${brl(estimado)}` : '—'}</div>
     </div>
+    <div class="item-lista-qtd">
+      <div class="pdv-contador">
+        <button class="icone-btn" aria-label=${`Menos ${x.nome}`} onClick=${() => mudarQtd(-passo)}>−</button>
+        <span class="qtd-lista" aria-label=${`Quantidade de ${x.nome}`}>${qtdTxt(x.quantidade, x.unidade)}</span>
+        <button class="icone-btn" aria-label=${`Mais ${x.nome}`} onClick=${() => mudarQtd(passo)}>+</button>
+      </div>
+      <button class="icone-btn tirar-lista" aria-label=${`Tirar ${x.nome} da lista`} onClick=${tirar}><${Icone} n="lixo" /></button>
+    </div><//>
     ${x.comprado && html`<div class="item-lista-pago">
       <label class="campo-pago"><span>Paguei</span><input aria-label=${`Quanto pagou em ${x.nome}`} inputmode="decimal" placeholder="0,00" value=${pago}
         onInput=${(e) => setPago(e.target.value)} onBlur=${guardarPago} onKeyDown=${(e) => e.key === 'Enter' && e.target.blur()} /></label>
@@ -55,7 +74,11 @@ function Item({ x, s, aberto, onAbrir }) {
     </div>`}
     ${aberto && html`<div class="item-lista-detalhe">
       <div class="linha2">
-        <${Campo} rotulo="Quantidade"><input inputmode="decimal" value=${String(x.quantidade).replace('.', ',')} onChange=${(e) => atualizarItem(x, { quantidade: Number(e.target.value.replace(',', '.')) || 1 })} /><//>
+        <${Campo} rotulo="Quantidade"><input aria-label="Quantidade" inputmode="decimal" value=${String(x.quantidade).replace('.', ',')} onChange=${(e) => {
+          const q = Number(e.target.value.replace(',', '.'));
+          if (q > 0) atualizarItem(x, { quantidade: q });
+          else if (e.target.value.trim() === '0') tirar();
+        }} /><//>
         <${Campo} rotulo="Medida"><select aria-label="Medida" value=${x.unidade || 'un'} onChange=${(e) => atualizarItem(x, { unidade: e.target.value })}>
           ${[['un', 'unidade'], ['kg', 'kg'], ['g', 'g'], ['l', 'litro'], ['ml', 'ml']].map(([v, t]) => html`<option value=${v}>${t}</option>`)}</select><//>
       </div>
@@ -67,7 +90,7 @@ function Item({ x, s, aberto, onAbrir }) {
           return html`<li><span>${fmtDay(h.data)}${h.mercado ? ` · ${h.mercado}` : ''}</span><strong>${brl(h.porUnidade)}</strong>
             ${c && Math.abs(c.diferenca) >= 5 ? html`<span class=${c.diferenca > 0 ? 'neg' : 'pos'}>${c.diferenca > 0 ? '▲' : '▼'} ${Math.abs(Math.round(c.fracao * 100))}%</span>` : html`<span class="muted">—</span>`}</li>`;
         })}</ul>`}
-      <button class="link" style="color:var(--neg);margin-top:10px" onClick=${() => apagar('lista', x.id)}>Tirar da lista</button>
+      <button class="link" style="color:var(--neg);margin-top:10px" onClick=${tirar}>Tirar da lista</button>
     </div>`}
   </li>`;
 }

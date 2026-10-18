@@ -737,3 +737,23 @@ test('tarefas da casa: anotar várias, concluir, desfazer e ver as feitas', asyn
   await page.getByRole('button', { name: 'Concluir Pintar o portão' }).waitFor();
   assert.deepEqual(erros, []);
 });
+
+test('lista de compras: mais e menos na quantidade, menos no 1 tira, lixeira tira e dá para desfazer', async () => {
+  await page.goto(`${base}/?demo#/lista`);
+  await page.locator('#lista-frase').fill('2 detergentes e papel toalha');
+  await page.getByRole('button', { name: 'Pôr na lista' }).click();
+  await toast().filter({ hasText: '2 itens na lista da casa' }).waitFor();
+  const qtd = (n) => page.getByLabel(`Quantidade de ${n}`);
+  await page.getByRole('button', { name: 'Mais Detergente' }).click();
+  await qtd('Detergente').filter({ hasText: '3' }).waitFor();
+  await page.getByRole('button', { name: 'Menos Detergente' }).click();
+  await page.getByRole('button', { name: 'Menos Detergente' }).click();
+  await qtd('Detergente').filter({ hasText: '1' }).waitFor();
+  await page.getByRole('button', { name: 'Menos Detergente' }).click();
+  await toast().filter({ hasText: 'Detergente saiu da lista' }).waitFor();
+  assert.equal(await page.locator('.item-lista', { hasText: 'Detergente' }).count(), 0);
+  await page.getByRole('button', { name: 'Tirar Papel toalha da lista' }).click();
+  await page.locator('.toast', { hasText: 'Papel toalha saiu da lista' }).getByRole('button', { name: 'Desfazer' }).click();
+  await page.locator('.item-lista', { hasText: 'Papel toalha' }).waitFor();
+  assert.deepEqual(erros, []);
+});

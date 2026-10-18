@@ -566,3 +566,11 @@ button.cartao-custos { width: 100%; text-align: left; font: inherit; cursor: poi
 .modulo-pudim.atencao-modulo { border-color: var(--caramel); }
 .modulo-pudim.atencao-modulo .modulo-linha { color: var(--caramel-ink); font-weight: 600; }
 .cartao-repor { display: block; margin-top: 12px; color: var(--ink); text-decoration: none; }
+.item-lista-qtd { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 0 38px; }
+.item-lista-qtd .pdv-contador { display: flex; align-items: center; gap: 4px; }
+.item-lista-qtd .icone-btn { width: 34px; height: 34px; font-size: 20px; border: 1px solid var(--line); border-radius: 50%; }
+.qtd-lista { min-width: 56px; text-align: center; font-weight: 700; }
+.tirar-lista { color: var(--neg); }
+.tirar-lista svg { width: 18px; height: 18px; }
+.item-lista .deslizante { background: var(--surface); }
+.item-lista .arrastavel .fundo-apagar { inset: 1px 1px 1px 2px; }
