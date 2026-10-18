@@ -597,7 +597,7 @@ test('estoque de ingredientes: produção desconta pela receita, apagar devolve,
   await painel.getByRole('button', { name: 'Pôr na lista de compras' }).click();
   await toast().filter({ hasText: '1 ingrediente na lista de compras' }).waitFor();
   await page.goto(`${base}/?demo#/lista?lista=pudim`);
-  assert.match(await page.locator('.item-lista', { hasText: 'Leite condensado' }).innerText(), /Leite condensado\s*4/);
+  assert.equal(await page.getByLabel('Quantidade de Leite condensado').innerText(), '4');
   // aviso na tela inicial
   await page.goto(`${base}/?demo#/inicio`);
   await page.locator('a.aviso-minimo', { hasText: 'ingrediente faltando' }).waitFor();
