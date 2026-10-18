@@ -12,7 +12,9 @@ const TIPOS = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 
 export async function servirApp(trocas = {}) {
   const server = createServer(async (req, res) => {
-    const caminho = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^\/+/, '') || 'index.html';
+    // Como o GitHub Pages: pasta serve o index.html dela (o app Pudins fica em pudim/).
+    let caminho = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^\/+/, '');
+    if (!caminho || caminho.endsWith('/')) caminho += 'index.html';
     try {
       const corpo = trocas[caminho] ?? (await readFile(join(RAIZ, caminho)));
       res.writeHead(200, { 'Content-Type': TIPOS[extname(caminho)] || 'application/octet-stream' });

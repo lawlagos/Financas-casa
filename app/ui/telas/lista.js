@@ -1,6 +1,7 @@
 // Lista de compras por voz, com quanto deve sair (pelos preços da última compra) e, ao marcar o que pegou e
 // digitar o preço, se ficou mais caro ou mais barato do que da outra vez.
-import { useState } from '../../vendor/hooks.module.js';
+import { useState, useEffect } from '../../vendor/hooks.module.js';
+import { appAtual, urlDoApp } from '../apps.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Topo, Secao, Campo, Chips, AbasSecao, Arrastavel } from '../componentes.js';
@@ -101,7 +102,11 @@ const daLista = (x) => (x.origem === 'Pudim' ? 'Pudim' : 'Casa');
 export function TelaLista({ params = {} }) {
   const s = useStore();
   const contas = contasAtivas(s);
-  const qual = params.lista === 'pudim' ? 'Pudim' : 'Casa';
+  // No Finanças a lista é a da casa; no Pudins, a do pudim.
+  const qual = appAtual() === 'pudim' ? 'Pudim' : 'Casa';
+  useEffect(() => {
+    if (qual === 'Casa' && params.lista === 'pudim') location.replace(urlDoApp('pudim', '/lista'));
+  }, []);
   const todas = [...(s.tables.lista || [])].sort((a, b) => (a.criado_em < b.criado_em ? -1 : 1));
   const lista = todas.filter((x) => daLista(x) === qual);
   const [frase, setFrase] = useState('');
@@ -156,7 +161,7 @@ export function TelaLista({ params = {} }) {
   return html`<main>
     <${Topo} titulo=${qual === 'Pudim' ? 'Compras do pudim' : 'Compras da casa'} sub="Fale o que precisa; o app estima quanto vai sair" />
     <${FaixaDemo} />
-    <${AbasSecao} secao="casa" atual=${qual === 'Pudim' ? '/lista?lista=pudim' : '/lista'} />
+    ${qual === 'Casa' && html`<${AbasSecao} secao="casa" atual="/lista" />`}
     <${CampoFala} id="lista-frase" rotulo=${qual === 'Pudim' ? 'O que precisa comprar para o pudim' : 'O que precisa comprar para a casa'} frase=${frase} setFrase=${setFrase} onPronto=${ouvir}
       placeholder=${qual === 'Pudim' ? 'Ex.: 6 leites condensados, 4 creme de leite e 2 dúzias de ovos' : 'Ex.: um quilo de banana, arroz e detergente'} />
     <div class="acoes" style="margin-top:8px;justify-content:flex-end"><button class="btn btn-sec btn-mini" disabled=${!frase.trim()} onClick=${() => ouvir(frase)}>Pôr na lista</button></div>

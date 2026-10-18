@@ -13,6 +13,7 @@ import { saldosHoje, agendaTexto, valorPrevistoTexto, porId, origemLabel } from 
 import { projectedValue } from '../../core/recurrence.js';
 import { prepararImportacao } from '../../core/importacao.js';
 import { TAXA_IFOOD_PADRAO } from '../../core/pudim.js';
+import { urlDoApp } from '../apps.js';
 import { suportaAvisos, instalado, ehIphone, estadoAvisos, ativarAvisos, desativarAvisos, testarAvisos } from '../../data/avisos.js';
 
 export function TelaMais() {
@@ -31,7 +32,8 @@ export function TelaMais() {
       ${it('#/mais/categorias', 'etiqueta', 'Categorias', 'Nomes e origem sugerida')}
       ${it('#/mais/ajustes', 'ajustes', 'Ajustes', 'Gasto diário, reserva mínima, tema')}
     </ul>
-    <p class="muted" style="font-size:12.5px;margin-top:18px">Próximas etapas: Hotmart e Meta automáticos, depois o radar de ofertas.</p>
+    <a class="btn btn-sec btn-larga" style="margin-top:14px" href=${urlDoApp('pudim', '/inicio')}><${Icone} n="pudim" />Abrir o app Pudins</a>
+    <p class="muted" style="font-size:12.5px;margin-top:12px">O pudim é gerenciado no app Pudins, com a mesma planilha. Próximos: o app da empresa (cursos e kimonos) e o cardápio web.</p>
   </main>`;
 }
 
@@ -175,7 +177,7 @@ export function TelaCategorias() {
 }
 
 // Carrega saldos e previstos de um arquivo de importação (gerado pelo Claude a partir da planilha antiga).
-function Importar() {
+export function Importar() {
   const s = useStore();
   const [texto, setTexto] = useState('');
   const [erros, setErros] = useState([]);
@@ -229,7 +231,7 @@ function Importar() {
   <//>`;
 }
 
-function lerTema() {
+export function lerTema() {
   try {
     return localStorage.getItem('fc-tema') || 'auto';
   } catch {

@@ -7,7 +7,36 @@ import { fmtDay, monthKey, addMonthsKey, monthName } from '../../core/dates.js';
 import { businessWeeks, monthlyTithe, refSemana, refMes } from '../../core/tithe.js';
 import { origemLabel } from '../derivados.js';
 import { FaixaDemo } from './inicio.js';
-import { CartaoPudim } from './pudim.js';
+import { dadosPudim } from './pudim.js';
+import { semanaPudim } from '../../core/pudim.js';
+import { Icone } from '../icones.js';
+import { urlDoApp } from '../apps.js';
+import { toCents } from '../../core/money.js';
+
+// Resumo do pudim no Finanças: só ganhos, perdas, lucro e compras. O pudim é gerenciado no app Pudins.
+function ResumoPudim({ s }) {
+  const d = dadosPudim(s);
+  const sem = semanaPudim({ movimentos: d.movimentos, saidas: d.saidas, lancamentos: s.tables.lancamentos, data: s.hoje });
+  const recebidos = new Set((s.tables.baixas || []).map((b) => b.previsto_id));
+  const repasses = (s.tables.previstos || []).filter((p) => String(p.id).startsWith('repasse-ifood-') && p.ativo !== false && !recebidos.has(p.id))
+    .sort((a, b) => (a.data_unica < b.data_unica ? -1 : 1));
+  const aReceber = repasses.reduce((t, p) => t + toCents(p.valor), 0);
+  const linha = (rot, valor, classe = '') => html`<div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px"><span>${rot}</span><span class=${classe} style="white-space:nowrap">${valor}</span></div>`;
+  const e = d.estoque;
+  return html`<div class="painel painel-pad" style="margin-top:10px" aria-label="Resumo do pudim">
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><div class="rot-mercado">Pudim, esta semana</div><span class="muted" style="font-size:12.5px">${fmtDay(sem.inicio)} a ${fmtDay(sem.fim)}</span></div>
+    ${linha(`Vendas (${sem.vendidos} pudins${sem.porCanal.ifood ? `, ${sem.porCanal.ifood.quantidade} no iFood` : ''})`, brl(sem.vendas))}
+    ${sem.taxas > 0 && linha('Taxa do iFood', `− ${brl(sem.taxas)}`)}
+    ${linha('Custo do que vendeu', `− ${brl(sem.custoVendido)}`)}
+    ${linha(`Perdas (${sem.perdidos})`, `− ${brl(sem.custoPerdido)}`, sem.custoPerdido ? 'neg' : '')}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+      <strong>Lucro</strong><span class=${sem.ganho < 0 ? 'neg' : 'pos'} style="font:700 22px var(--display)">${brlSigned(sem.ganho)}</span></div>
+    ${linha('Compras do pudim (saiu do caixa)', brl(sem.comprasCaixa))}
+    ${aReceber > 0 && linha(`A receber do iFood (quarta ${fmtDay(repasses[0].data_unica)})`, brl(aReceber), 'pos')}
+    <div class="muted" style="font-size:12.5px;margin-top:8px">${e.quantidade} prontos no estoque (${brl(e.potencial)} se vender tudo)${d.abaixo.length ? ` · ${d.abaixo.length} abaixo do mínimo` : ''}${e.vencidos ? ` · ${e.vencidos} vencidos` : ''}</div>
+    <a class="btn btn-sec btn-larga" style="margin-top:12px" href=${urlDoApp('pudim', '/inicio')}><${Icone} n="pudim" />Abrir o app Pudins</a>
+  </div>`;
+}
 
 function Status({ w, hoje }) {
   if (w.pago) return html`<span class="etiqueta pago">Pago ${brl(w.pago.valor)}</span>${w.mudouDepoisDePago ? html` <span class="etiqueta atraso">Valor mudou depois</span>` : ''}`;
@@ -35,11 +64,10 @@ export function TelaNegocios() {
   };
 
   return html`<main>
-    <${Topo} titulo="Dízimo dos negócios" sub=${`Semana de ${fmtDay(atual.inicio)} a ${fmtDay(atual.fim)}, paga ${fmtDay(atual.pagarEm)}`} />
-    <${AbasSecao} secao="dinheiro" atual="/dizimo" />
+    <${Topo} titulo="Negócios" sub=${`Semana de ${fmtDay(atual.inicio)} a ${fmtDay(atual.fim)}, paga ${fmtDay(atual.pagarEm)}`} />
     <${FaixaDemo} />
     <div class="dupla"><${Coluna} o="Pudim" /><${Coluna} o="Hotmart" /></div>
-    <${CartaoPudim} />
+    <${ResumoPudim} s=${s} />
     <div class="painel painel-pad" style="margin-top:10px">
       <div style="display:flex;justify-content:space-between"><span>Lucro do casal na semana</span><strong class=${atual.lucro < 0 ? 'neg' : ''}>${brlSigned(atual.lucro)}</strong></div>
       ${atual.carryIn !== 0 && html`<div style="display:flex;justify-content:space-between;margin-top:6px"><span>Prejuízo que veio da semana anterior</span><strong class="neg">${brl(atual.carryIn)}</strong></div>`}

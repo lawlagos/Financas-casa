@@ -200,14 +200,14 @@ test('pudim na planilha: receita com ingredientes em texto, produção e venda c
 
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const { page, erros } = await novaPagina(ctx);
-  await page.goto(`${base}/#/pudim?aba=estoque`);
+  await page.goto(`${base}/pudim/#/pudim?aba=estoque`);
   await page.getByRole('button', { name: 'Entrar com Google' }).click();
   await page.getByText('Pronto para vender').waitFor();
   await page.getByRole('button', { name: 'Produzi', exact: true }).click();
   await page.locator('.folha').getByText('R$ 3,20').first().waitFor();
   await page.getByRole('button', { name: 'Pôr no estoque' }).click();
   await page.locator('.toast', { hasText: 'no estoque' }).waitFor();
-  await page.getByRole('link', { name: 'Vender' }).click();
+  await page.getByRole('link', { name: 'Vender', exact: true }).first().click();
   await page.getByRole('group', { name: 'Canal' }).getByRole('button', { name: 'iFood' }).click();
   await page.getByLabel('Buscar pudim').fill('teste');
   await page.getByRole('button', { name: 'Adicionar Pudim teste' }).click();
@@ -229,7 +229,7 @@ test('pudim na planilha: receita com ingredientes em texto, produção e venda c
   assert.deepEqual(ei[0], SCHEMA.estoque_insumos);
   assert.deepEqual([ei[1][2], ei[1][3], ei[1][4], ei[1][5], ei[1][6]], ['ins-lc', 'saida', 395, 'producao', est[1][0]]);
   assert.ok(env.abas['Categorias'].linhas.some((c) => c[0] === 'cat-taxa-ifood'));
-  await page.goto(`${base}/#/pudim?aba=estoque`);
+  await page.goto(`${base}/pudim/#/pudim?aba=estoque`);
   await page.reload();
   await page.getByText('Pronto para vender').waitFor();
   assert.match(await page.locator('.hero-pudim .num-mercado').innerText(), /^1 pudim$/);

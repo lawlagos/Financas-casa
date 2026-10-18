@@ -13,6 +13,7 @@ import { cartoesEstoque } from '../../core/cardapio.js';
 import { chaveProduto } from '../../core/mercado.js';
 import { adicionarItens } from '../../data/lista-acoes.js';
 import { FaixaDemo } from './inicio.js';
+import { appAtual, urlDoApp } from '../apps.js';
 
 const ativo = (x) => x.ativo !== false && x.ativo !== 'FALSE';
 
@@ -422,7 +423,8 @@ export function TelaPudim({ params = {} }) {
   const d = dadosPudim(s);
   const vazio = !d.receitas.length;
   return html`<main>
-    <${Topo} titulo=${inicio ? 'Pudim' : { estoque: 'Estoque do pudim', receitas: 'Receitas', ingredientes: 'Ingredientes' }[aba]} sub=${inicio ? 'Tudo do pudim num lugar só' : ''} voltar=${inicio ? null : '#/pudim'} />
+    <${Topo} titulo=${inicio ? (appAtual() === 'pudim' ? 'Pudins' : 'Pudim') : { estoque: 'Estoque do pudim', receitas: 'Receitas', ingredientes: 'Ingredientes' }[aba]} sub=${inicio ? 'Estoque, vendas, receitas e compras' : ''} voltar=${inicio ? null : '#/pudim'}
+      direita=${inicio && appAtual() === 'pudim' ? html`<a class="icone-btn" href="#/ajustes" aria-label="Ajustes"><${Icone} n="engrenagem" /></a>` : null} />
     <${FaixaDemo} />
     ${inicio && !vazio ? html`<${InicioPudim} s=${s} d=${d} />` : html`
     <${Segmento} rotulo="Parte" opcoes=${[['estoque', 'Estoque'], ['receitas', 'Receitas'], ['ingredientes', 'Ingredientes']]} valor=${aba}
@@ -443,7 +445,7 @@ export function CartaoPudim() {
   const s = useStore();
   const d = dadosPudim(s);
   const e = d.estoque;
-  return html`<a class="painel painel-pad cartao-pudim" href="#/pudim">
+  return html`<a class="painel painel-pad cartao-pudim" href=${urlDoApp('pudim', '/inicio')}>
     <div class="corpo"><div class="rot-mercado">Estoque do pudim</div>
       <div style="font-weight:700;margin-top:2px">${d.receitas.length ? `${plural(e.quantidade, 'pudim pronto', 'pudins prontos')}, ${brl(e.potencial)} se vender tudo` : 'Receitas, custos e estoque'}</div>
       ${e.vencidos > 0 && html`<div class="neg" style="font-size:13px;margin-top:2px">${plural(e.vencidos, 'vencido', 'vencidos')} para dar baixa</div>`}</div>

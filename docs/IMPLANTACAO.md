@@ -66,3 +66,10 @@ Cada versão que funcionou fica guardada num ramo `estavel-…` do GitHub (o pri
 - **Servidor:** em Implantar > Gerenciar implantações > lápis, escolha no campo Versão o número anterior e clique em Implantar. Volta na hora, sem colar nada. Se quiser o código antigo no editor, copie de `https://raw.githubusercontent.com/lawlagos/Financas-casa/estavel-v1/dist/servidor.gs`.
 - **App:** peça ao Claude para "voltar o app para o estavel-v1"; ele publica o código daquele ramo de novo no GitHub Pages.
 - **Planilha:** as versões novas só acrescentam colunas no fim das abas, então a versão anterior continua lendo a planilha normalmente. Para ter uma cópia dos dados, use Arquivo > Fazer uma cópia, ou Arquivo > Histórico de versões para voltar a planilha a um dia anterior.
+
+## App Pudins
+
+O pudim tem um app próprio, com a mesma planilha e o mesmo login: `https://lawlagos.github.io/Financas-casa/pudim/`.
+Ele é publicado junto com o Finanças (mesmo repositório), então não precisa de nada novo no Google Cloud: o endereço
+autorizado `https://lawlagos.github.io` vale para os dois. No iPhone, abra esse endereço no Safari e use
+**Compartilhar → Adicionar à Tela de Início** para ter o ícone do Pudins. Veja `docs/PROXIMOS-APPS.md` para os próximos apps.

@@ -1,4 +1,5 @@
 import { html } from '../html.js';
+import { urlDoApp } from '../apps.js';
 import { Icone } from '../icones.js';
 import { Secao, Marca, Topo } from '../componentes.js';
 import { GraficoSaldo } from '../graficos.js';
@@ -55,7 +56,7 @@ function AvisoPudim({ s }) {
     d.faltas.length ? `${d.faltas.length} ingrediente${d.faltas.length > 1 ? 's' : ''} faltando` : '',
     d.estoque.vencidos ? `${d.estoque.vencidos} vencido${d.estoque.vencidos > 1 ? 's' : ''}` : '',
   ].filter(Boolean);
-  return html`<a class="painel painel-pad cartao-pudim aviso-minimo" href="#/pudim" style="margin-top:12px">
+  return html`<a class="painel painel-pad cartao-pudim aviso-minimo" href=${urlDoApp('pudim', '/pudim?aba=estoque')} style="margin-top:12px">
     <div class="corpo"><div class="rot-mercado">Pudim</div><div style="font-weight:700;margin-top:2px">${partes.join(' · ')}</div></div>
     <span style="width:18px;color:var(--ink-3)"><${Icone} n="seta" /></span></a>`;
 }
