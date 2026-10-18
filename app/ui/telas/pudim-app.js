@@ -15,8 +15,8 @@ export function NavPudins({ caminho }) {
   const aba = new URLSearchParams(location.hash.split('?')[1] || '').get('aba');
   const atual = (id) => {
     if (id === 'inicio') return (caminho === '/inicio' || (caminho === '/pudim' && !aba)) ? 'page' : null;
-    if (id === 'estoque') return caminho === '/pudim' && aba === 'estoque' ? 'page' : null;
-    if (id === 'receitas') return caminho === '/pudim' && (aba === 'receitas' || aba === 'ingredientes') ? 'page' : null;
+    if (id === 'estoque') return caminho === '/pudim' && (aba === 'estoque' || aba === 'ingredientes') ? 'page' : null;
+    if (id === 'receitas') return caminho === '/pudim' && (aba === 'receitas' || aba === 'custos') ? 'page' : null;
     if (id === 'lista') return caminho === '/lista' || caminho === '/pudim/compras' ? 'page' : null;
     return null;
   };

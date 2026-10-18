@@ -441,7 +441,7 @@ export function FolhaReceita({ receita, novoSabor, novoPreparo, sabor_id: novoTa
       if (!receita && f.criarTamanhos) await salvarVarias('receitas', produtosDoSabor(salvo, s.tables.insumos));
     }
     fecharFolha();
-    toast(modo === 'sabor' ? (receita ? 'Sabor salvo' : `Sabor criado${f.criarTamanhos ? ' com 1 kg, 500 g e copo' : ''}`) : modo === 'preparo' ? 'Preparo salvo' : receita ? 'Receita salva' : 'Tamanho criado');
+    toast(modo === 'sabor' ? (receita ? 'Receita salva' : `Sabor criado${f.criarTamanhos ? ' com 1 kg, 500 g e copo' : ''}`) : modo === 'preparo' ? 'Preparo salvo' : modo === 'tamanho' ? (receita ? 'Tamanho salvo' : 'Tamanho criado') : 'Receita salva');
   };
   const criarPadrao = async () => {
     // Tamanho que já existiu (desligado) volta como estava, com preço e nome; só os novos nascem do padrão.
@@ -449,10 +449,15 @@ export function FolhaReceita({ receita, novoSabor, novoPreparo, sabor_id: novoTa
     await salvarVarias('receitas', produtosDoSabor(receita, s.tables.insumos, faltamPadrao).map((novo) => (porId[novo.id] ? { ...porId[novo.id], ativo: true } : novo)));
     toast(`Tamanhos criados: ${faltamPadrao.map((t) => t.nome).join(', ')}`);
   };
-  const titulo = receita ? receita.nome : modo === 'preparo' ? 'Novo preparo' : modo === 'sabor' ? 'Novo sabor' : modo === 'tamanho' ? `Novo tamanho de ${sabor?.nome || ''}` : 'Nova receita';
+  const titulo = receita
+    ? modo === 'sabor' ? `Receita: ${receita.nome}` : receita.nome
+    : modo === 'preparo' ? 'Novo preparo' : modo === 'sabor' ? 'Novo sabor' : modo === 'tamanho' ? `Novo tamanho de ${sabor?.nome || ''}` : 'Nova receita';
   const rotuloLista = modo === 'preparo' ? 'Ingredientes de um preparo' : modo === 'sabor' ? 'Ingredientes de uma receita (uma fornada)' : modo === 'tamanho' ? 'Embalagens e extras (por receita do sabor)' : 'Ingredientes e embalagens da receita inteira';
 
-  return html`<${Folha} titulo=${titulo} rodape=${html`<button class="btn btn-pri" onClick=${() => guardar()}>${modo === 'sabor' ? 'Salvar sabor' : modo === 'preparo' ? 'Salvar preparo' : 'Salvar receita'}</button>`}>
+  return html`<${Folha} titulo=${titulo} rodape=${html`<button class="btn btn-pri" onClick=${() => guardar()}>${modo === 'sabor' ? 'Salvar receita' : modo === 'preparo' ? 'Salvar preparo' : modo === 'tamanho' ? 'Salvar tamanho' : 'Salvar receita'}</button>`}>
+    ${modo === 'tamanho' && sabor && html`<div class="painel painel-pad" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
+      <span class="muted" style="font-size:13px">Tamanho do sabor <b>${sabor.nome}</b>: aqui ficam embalagem, rendimento, validade e preço.</span>
+      <button class="btn btn-sec btn-mini" style="white-space:nowrap" onClick=${() => abrirFolha('receita', { receita: sabor })}>Ver receita</button></div>`}
     ${receita?.sabor_id && !saborDoTamanho && html`<div class="duvida" style="margin-top:0"><${Icone} n="alerta" /><span>O sabor deste tamanho foi apagado da planilha. Ele passa a ser uma receita avulsa: confira os ingredientes ou desligue.</span></div>`}
     ${modo === 'tamanho' && sabor && html`<div class="duvida" style="margin-top:0"><${Icone} n="info" /><span>Os ingredientes e o tempo de preparo vêm do sabor <strong>${sabor.nome}</strong>. Aqui ficam o rendimento, as embalagens e o preço.
       <button class="link" style="display:block;margin-top:4px" onClick=${() => abrirFolha('receita', { receita: sabor })}>Abrir o sabor</button></span></div>`}

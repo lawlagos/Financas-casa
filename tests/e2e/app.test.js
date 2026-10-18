@@ -325,10 +325,10 @@ test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar
   await toast().filter({ hasText: 'Venda apagada, e o lançamento no caixa também' }).waitFor();
   assert.equal(reais(await saldoConta('Nubank PJ')), reais(nubankPj));
 
-  await page.goto(`${base}/pudim/?demo#/pudim?aba=receitas`);
+  await page.goto(`${base}/pudim/?demo#/pudim?aba=custos`);
   await page.locator('.item-btn', { hasText: 'Pudim tradicional 150' }).click();
   await page.getByRole('button', { name: 'Manter o preço e tirar o aviso' }).click();
-  await toast().filter({ hasText: 'Receita salva' }).waitFor();
+  await toast().filter({ hasText: 'Tamanho salvo' }).waitFor();
   assert.equal(await page.locator('.item-btn', { hasText: 'Pudim tradicional 150' }).locator('.etiqueta').count(), 0);
   assert.deepEqual(erros, []);
 });
@@ -395,7 +395,7 @@ test('estoque por voz: produz, vende e perde numa frase; o que faltou é respond
 });
 
 test('custos do pudim: mão de obra e despesas fixas entram na receita pelo tempo de preparo, com preço sugerido', async () => {
-  await page.goto(`${base}/pudim/?demo#/pudim?aba=receitas`);
+  await page.goto(`${base}/pudim/?demo#/pudim?aba=custos`);
   await page.getByRole('button', { name: /Mão de obra e despesas fixas/ }).click();
   await page.locator('#custos-salario').fill('200');
   await page.getByLabel('13º por mês').fill('125');
@@ -410,19 +410,22 @@ test('custos do pudim: mão de obra e despesas fixas entram na receita pelo temp
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await toast().filter({ hasText: 'Custos do pudim salvos' }).waitFor();
 
-  // o tempo de preparo e o markup ficam no sabor; os tamanhos herdam
-  await page.locator('.sabor-cab', { hasText: 'Pudim tradicional' }).click();
+  // o tempo de preparo e o markup ficam na receita do sabor; os tamanhos herdam
+  await page.getByRole('group', { name: 'Receitas ou custos' }).getByRole('button', { name: 'Receitas' }).click();
+  await page.getByRole('region', { name: 'Pudim tradicional', exact: true }).locator('.receita-abrir').click();
   await page.locator('#receita-tempo').fill('60');
   // 60 min: mão de obra 3,61 e despesas 24,36 numa receita
   await folha().getByText('R$ 3,61').waitFor();
   await folha().getByText('R$ 24,36').waitFor();
   await page.locator('#receita-markup').fill('50');
-  await page.getByRole('button', { name: 'Salvar sabor' }).click();
-  await toast().filter({ hasText: 'Sabor salvo' }).waitFor();
-  await page.locator('.item-btn', { hasText: 'Pudim tradicional 150' }).click();
+  await page.getByRole('button', { name: 'Salvar receita' }).click();
+  await toast().filter({ hasText: 'Receita salva' }).waitFor();
+  // o tamanho abre pelo botão dentro do cartão do sabor
+  await page.getByRole('button', { name: 'Tamanho Pudim tradicional 150' }).click();
   await folha().getByText(/Preço sugerido \(markup 50%\)/).waitFor();
   await folha().getByText('Os ingredientes e o tempo de preparo vêm do sabor').waitFor();
   await page.keyboard.press('Escape');
+  await page.getByRole('group', { name: 'Receitas ou custos' }).getByRole('button', { name: 'Custos' }).click();
   assert.match(await page.locator('.item-btn', { hasText: 'Pudim tradicional 150' }).innerText(), /Custo R\$ [\d,]+ cada/);
   assert.deepEqual(erros, []);
 });
@@ -440,14 +443,14 @@ test('revisão: quantidade do PDV aceita apagar e digitar 1,5 sem sumir; receita
   assert.equal(await page.getByLabel('Quantidade de Pudim tradicional 1100').count(), 0);
 
   await page.goto(`${base}/pudim/?demo#/pudim?aba=receitas`);
-  await page.locator('.item-btn', { hasText: 'Pudim ninho com Nutella 1100' }).click();
+  await page.getByRole('button', { name: 'Tamanho Pudim ninho com Nutella 1100' }).click();
   await folha().getByLabel('Receita em uso').uncheck();
-  await page.getByRole('button', { name: 'Salvar receita' }).click();
+  await page.getByRole('button', { name: 'Salvar tamanho' }).click();
   await page.getByRole('button', { name: 'Mostrar 1 receitas desativadas' }).click();
   await page.getByRole('button', { name: /Pudim ninho com Nutella 1100.*reativar/ }).click();
   await folha().getByLabel('Receita em uso').check();
-  await page.getByRole('button', { name: 'Salvar receita' }).click();
-  await page.locator('.lista .item-btn', { hasText: 'Pudim ninho com Nutella 1100' }).first().waitFor();
+  await page.getByRole('button', { name: 'Salvar tamanho' }).click();
+  await page.getByRole('button', { name: 'Tamanho Pudim ninho com Nutella 1100' }).waitFor();
   assert.deepEqual(erros, []);
 });
 
@@ -482,11 +485,12 @@ test('sabor novo nasce com 1 kg, 500 g e copo (rende 1, 2 e 6); sabor não apare
   await page.getByRole('button', { name: 'Ingrediente ou embalagem' }).click();
   await page.getByLabel('Ingrediente 1').selectOption({ label: 'Leite condensado' });
   await page.getByLabel('Quantidade de Leite condensado').fill('395');
-  await page.getByRole('button', { name: 'Salvar sabor' }).click();
+  await page.getByRole('button', { name: 'Salvar receita' }).click();
   await toast().filter({ hasText: 'Sabor criado com 1 kg, 500 g e copo' }).waitFor();
   const sabor = page.getByRole('region', { name: 'Pudim de coco' });
-  assert.deepEqual(await sabor.locator('.item-btn .tit').allInnerTexts(), ['Pudim de coco 1 kg', 'Pudim de coco 500 g', 'Pudim de coco no copo']);
-  assert.match(await sabor.locator('.item-btn', { hasText: 'Pudim de coco no copo' }).innerText(), /rende 6 · vale 25 dias/);
+  assert.deepEqual(await sabor.locator('.receita-tamanhos .chip').allInnerTexts(), ['1 kg', '500 g', 'Copo']);
+  await page.goto(`${base}/pudim/?demo#/pudim?aba=custos`);
+  assert.match(await page.locator('.item-btn', { hasText: 'Pudim de coco no copo' }).innerText(), /rende 6 · vale 25 dias/);
   await page.goto(`${base}/pudim/?demo#/pudim/vender`);
   await page.getByLabel('Buscar pudim').fill('coco');
   assert.deepEqual(await page.locator('.pdv-nome').allInnerTexts(), ['Pudim de coco 1 kg', 'Pudim de coco 500 g', 'Pudim de coco no copo']);
@@ -552,9 +556,9 @@ test('lista de compras: falar os itens, estimativa pela última compra, pago mai
 
 test('revisão: sabor desligado tira os tamanhos dele da venda; religar devolve', async () => {
   await page.goto(`${base}/pudim/?demo#/pudim?aba=receitas`);
-  await page.locator('.sabor-cab', { hasText: 'Pudim ninho com Nutella' }).click();
+  await page.getByRole('region', { name: 'Pudim ninho com Nutella', exact: true }).locator('.receita-abrir').click();
   await folha().getByLabel('Sabor em uso').uncheck();
-  await page.getByRole('button', { name: 'Salvar sabor' }).click();
+  await page.getByRole('button', { name: 'Salvar receita' }).click();
   await page.goto(`${base}/pudim/?demo#/pudim/vender`);
   await page.getByLabel('Buscar pudim').fill('ninho');
   assert.equal(await page.locator('.pdv-produto').count(), 0);
@@ -562,7 +566,7 @@ test('revisão: sabor desligado tira os tamanhos dele da venda; religar devolve'
   await page.getByRole('button', { name: /Mostrar 1 receitas desativadas/ }).click();
   await page.getByRole('button', { name: /Pudim ninho com Nutella.*reativar/ }).click();
   await folha().getByLabel('Sabor em uso').check();
-  await page.getByRole('button', { name: 'Salvar sabor' }).click();
+  await page.getByRole('button', { name: 'Salvar receita' }).click();
   await page.goto(`${base}/pudim/?demo#/pudim/vender`);
   await page.getByLabel('Buscar pudim').fill('ninho');
   assert.equal(await page.locator('.pdv-produto').count(), 1);
@@ -620,16 +624,16 @@ test('estoque de ingredientes: produção desconta pela receita, apagar devolve,
 
 test('preparo (calda) entra no custo e no gasto de ingredientes de outra receita', async () => {
   await page.goto(`${base}/pudim/?demo#/pudim?aba=receitas`);
-  await page.getByRole('region', { name: 'Preparos' }).getByText('Calda de morango').waitFor();
-  await page.locator('.sabor-cab', { hasText: 'Pudim ninho com Nutella' }).click();
+  await page.locator('.item-btn', { hasText: 'Calda de morango' }).waitFor();
+  await page.getByRole('region', { name: 'Pudim ninho com Nutella', exact: true }).locator('.receita-abrir').click();
   await page.getByRole('button', { name: 'Ingrediente ou embalagem' }).click();
   const n = await page.locator('.ing-linha select').count();
   await page.getByLabel(`Ingrediente ${n}`).selectOption({ label: 'Calda de morango' });
   await page.getByLabel('Quantidade de Calda de morango').fill('200');
   // calda: 200 g de açúcar (R$ 0,76) rende 400 g → 200 g custam R$ 0,38
   await page.locator('.ing-linha', { hasText: 'g' }).last().getByText('R$ 0,38').waitFor();
-  await page.getByRole('button', { name: 'Salvar sabor' }).click();
-  await toast().filter({ hasText: 'Sabor salvo' }).waitFor();
+  await page.getByRole('button', { name: 'Salvar receita' }).click();
+  await toast().filter({ hasText: 'Receita salva' }).waitFor();
   assert.deepEqual(erros, []);
 });
 

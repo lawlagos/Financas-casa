@@ -6,10 +6,10 @@ import { useStore, abrirFolha, salvarVarias, toast, config } from '../../data/st
 import { apagarMovimento, taxaIfood } from '../../data/pudim-acoes.js';
 import { brl, brlSigned } from '../../core/money.js';
 import { fmtDay, addDays, businessWeekStart } from '../../core/dates.js';
-import { precoNoCanal, VALIDADE_PADRAO, custoReceita, processarEstoque, estoqueAtual, lotesNaGeladeira, lerLocais, localDe, semanaPudim, custoInsumo, lerCustos, valorMinuto, ehSabor, ehPreparo } from '../../core/pudim.js';
+import { precoNoCanal, VALIDADE_PADRAO, ingredientesDe, custoReceita, processarEstoque, estoqueAtual, lotesNaGeladeira, lerLocais, localDe, semanaPudim, custoInsumo, lerCustos, valorMinuto, ehSabor, ehPreparo } from '../../core/pudim.js';
 import { saldos, minimos, faltas, pudinsAbaixo, baseDe, embalagemBase, reposicao, custoDasFaltas } from '../../core/estoqueinsumos.js';
 import { porId } from '../derivados.js';
-import { cartoesEstoque } from '../../core/cardapio.js';
+import { cartoesEstoque, CATEGORIAS, categoriaDoProduto } from '../../core/cardapio.js';
 import { chaveProduto } from '../../core/mercado.js';
 import { adicionarItens } from '../../data/lista-acoes.js';
 import { FaixaDemo } from './inicio.js';
@@ -273,9 +273,61 @@ function ItemProduto({ r, c }) {
   </button></li>`;
 }
 
+// Nome curto do tamanho para o botão dentro do sabor: "1 kg", "500 g", "Copo", "Geladinho".
+function nomeDoTamanho(r, sabor) {
+  const c = categoriaDoProduto(r);
+  if (c === 'copo') return 'Copo';
+  if (c === 'geladinho') return 'Geladinho';
+  const p = Number(r.porcao) || 0;
+  if (p >= 1000) return '1 kg';
+  if (p >= 500) return '500 g';
+  return r.nome.replace(sabor?.nome || '', '').trim() || r.nome;
+}
+
+// Receitas: um cartão por sabor. Tocar no sabor abre a receita (ingredientes de uma fornada);
+// os botões de tamanho abrem embalagem, rendimento, validade e preço daquele tamanho.
 function AbaReceitas({ s, d }) {
+  const semSabor = d.receitas.filter((r) => !r.sabor_id || !d.receitasPorId[r.sabor_id]);
+  return html`
+    <div class="acoes" style="justify-content:flex-end">
+      <button class="btn btn-sec btn-mini" onClick=${() => abrirFolha('receita', { novoPreparo: true })}><${Icone} n="mais" />Novo preparo</button>
+      <button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('receita', { novoSabor: true })}><${Icone} n="mais" />Novo sabor</button></div>
+    <p class="muted" style="font-size:12.5px;margin:8px 2px 0">Toque no sabor para editar a receita (ingredientes de uma fornada). Os tamanhos têm a embalagem, quanto rende, a validade e o preço.</p>
+    <div class="grade-receitas">
+      ${d.sabores.map((sabor) => {
+        const c = d.custos[sabor.id];
+        const tamanhos = d.receitas.filter((r) => r.sabor_id === sabor.id).sort(porTamanho);
+        return html`<section class="cartao-receita" aria-label=${sabor.nome}>
+          <button class="receita-abrir" onClick=${() => abrirFolha('receita', { receita: sabor })}>
+            <span class="receita-nome">${sabor.nome}</span>
+            <span class="receita-meta">${ingredientesDe(sabor).length} ingredientes · fornada ≈ ${brl(c.ingredientes)}${sabor.tempo_preparo ? ` · ${sabor.tempo_preparo} min` : ''}</span>
+            ${c.faltando.length > 0 && html`<span class="receita-meta neg">falta preço: ${c.faltando.join(', ')}</span>`}
+          </button>
+          <div class="receita-tamanhos">
+            ${tamanhos.map((r) => html`<button class="chip" aria-label=${`Tamanho ${r.nome}`} onClick=${() => abrirFolha('receita', { receita: r })}>${nomeDoTamanho(r, sabor)}</button>`)}
+            ${!tamanhos.length && html`<button class="chip" onClick=${() => abrirFolha('receita', { receita: sabor })}>+ criar tamanhos</button>`}
+          </div>
+        </section>`;
+      })}
+    </div>
+    ${d.preparos.length > 0 && html`<${Secao} titulo="Preparos (caldas e bases)">
+      <ul class="lista painel">${d.preparos.map((p) => html`<li><button class="item item-btn" onClick=${() => abrirFolha('receita', { receita: p })}>
+        <div class="corpo"><div class="tit">${p.nome}</div><div class="meta">${ingredientesDe(p).length} ingredientes · rende ${p.rendimento} g</div></div>
+        <span style="width:18px;color:var(--ink-3)"><${Icone} n="seta" /></span></button></li>`)}</ul>
+    <//>`}
+    ${semSabor.length > 0 && html`<${Secao} titulo="Outros produtos (receita própria)">
+      <ul class="lista painel">${semSabor.map((r) => html`<li><button class="item item-btn" onClick=${() => abrirFolha('receita', { receita: r })}>
+        <div class="corpo"><div class="tit">${r.nome}</div><div class="meta">${ingredientesDe(r).length} ingredientes · rende ${r.rendimento || 1}</div></div>
+        <span style="width:18px;color:var(--ink-3)"><${Icone} n="seta" /></span></button></li>`)}</ul>
+    <//>`}
+    <${Desativados} lista=${(s.tables.receitas || []).filter((r) => !ativo(r))} tipo="receitas" folha="receita" chave="receita" />`;
+}
+
+// Custos: quanto custa cada pudim, o preço e o lucro na venda direta e no iFood, na ordem do cardápio.
+function AbaCustos({ d }) {
   const m = valorMinuto(d.custosFixos);
   const configurado = m.maoDeObra > 0 || m.despesas > 0;
+  const grupos = CATEGORIAS.map(([k, titulo]) => ({ titulo, lista: d.receitas.filter((r) => categoriaDoProduto(r) === k).sort((a, b) => (Number(a.preco_venda) || 0) - (Number(b.preco_venda) || 0) || porTamanho(a, b)) })).filter((g) => g.lista.length);
   return html`
     <button class="painel painel-pad cartao-pudim cartao-custos" onClick=${() => abrirFolha('custos-pudim', {})}>
       <div class="corpo"><div class="rot-mercado">Mão de obra e despesas fixas</div>
@@ -285,34 +337,10 @@ function AbaReceitas({ s, d }) {
         ${configurado && html`<div class="muted" style="font-size:12.5px;margin-top:2px">Entram no custo de cada receita pelo tempo de preparo.</div>`}</div>
       <span style="width:18px;color:var(--ink-3)"><${Icone} n="seta" /></span>
     </button>
-    <div class="acoes" style="justify-content:flex-end;margin-top:10px">
-      <button class="btn btn-sec btn-mini" onClick=${() => abrirFolha('receita', { novoPreparo: true })}><${Icone} n="mais" />Novo preparo</button>
-      <button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('receita', { novoSabor: true })}><${Icone} n="mais" />Novo sabor</button></div>
-    ${d.preparos.length > 0 && html`<section class="sabor" aria-label="Preparos"><div class="sabor-cab"><div class="corpo"><div class="tit">Preparos</div><div class="meta">Caldas e bases que entram em outras receitas</div></div></div>
-      <ul class="lista painel">${d.preparos.map((p) => {
-        const c = d.custos[p.id];
-        return html`<li><button class="item item-btn" onClick=${() => abrirFolha('receita', { receita: p })}><div class="corpo"><div class="tit">${p.nome}</div>
-          <div class="meta">Rende ${p.rendimento} g${c.faltando.length ? ', falta preço' : ''}</div></div>
-          <div class="valor">${brl(Math.round((c.total / (Number(p.rendimento) || 1)) * 100))}<small>por 100 g</small></div></button></li>`;
-      })}</ul></section>`}
-    ${d.sabores.map((sabor) => {
-      const c = d.custos[sabor.id];
-      const tamanhos = d.receitas.filter((r) => r.sabor_id === sabor.id).sort(porTamanho);
-      return html`<section class="sabor" aria-label=${sabor.nome}>
-        <button class="sabor-cab" onClick=${() => abrirFolha('receita', { receita: sabor })}>
-          <div class="corpo"><div class="tit">${sabor.nome}</div>
-            <div class="meta">Receita: ${brl(c.ingredientes)} de ingredientes, ${sabor.tempo_preparo || '?'} min${c.faltando.length ? ', falta preço de algum ingrediente' : ''}</div></div>
-          <span class="link" style="white-space:nowrap">Ingredientes</span>
-        </button>
-        <ul class="lista painel">
-          ${tamanhos.map((r) => html`<${ItemProduto} r=${r} c=${d.custos[r.id]} />`)}
-          ${!tamanhos.length && html`<li class="item muted">Sem tamanhos. Abra o sabor para criar 1 kg, 500 g e copo.</li>`}
-        </ul>
-      </section>`;
-    })}
-    ${d.receitas.some((r) => !r.sabor_id || !d.receitasPorId[r.sabor_id]) && html`<section class="sabor"><div class="sabor-cab"><div class="corpo"><div class="tit">Outros produtos</div><div class="meta">Com receita própria, sem sabor</div></div></div>
-      <ul class="lista painel">${d.receitas.filter((r) => !r.sabor_id || !d.receitasPorId[r.sabor_id]).map((r) => html`<${ItemProduto} r=${r} c=${d.custos[r.id]} />`)}</ul></section>`}
-    <${Desativados} lista=${(s.tables.receitas || []).filter((r) => !ativo(r))} tipo="receitas" folha="receita" chave="receita" />`;
+    <p class="muted" style="font-size:12.5px;margin:10px 2px 0">O custo vem dos ingredientes da receita (pelo último preço pago) e da embalagem de cada tamanho. Toque para mudar preço, embalagem ou rendimento.</p>
+    ${grupos.map((g) => html`<${Secao} titulo=${g.titulo}>
+      <ul class="lista painel">${g.lista.map((r) => html`<${ItemProduto} r=${r} c=${d.custos[r.id]} />`)}</ul>
+    <//>`)}`;
 }
 
 // Estoque de ingredientes: o que falta para o mínimo, com um toque para pôr na lista de compras.
@@ -404,8 +432,8 @@ function InicioPudim({ s, d }) {
       ${modulo('#/pudim?aba=estoque', 'pilha', 'Estoque', alerta
         ? [d.abaixo.length ? `${d.abaixo.length} abaixo do mínimo` : '', e.vencidos ? `${e.vencidos} vencido${e.vencidos > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')
         : `${e.quantidade} prontos, tudo em dia`, alerta ? 'atencao-modulo' : '')}
-      ${modulo('#/pudim/vender', 'negocios', 'Vender (PDV)', `${sem.vendidos} vendido${sem.vendidos === 1 ? '' : 's'} na semana`)}
-      ${modulo('#/pudim?aba=receitas', 'etiqueta', 'Receitas', `${d.receitas.length} pudins, custo e preço`)}
+      ${modulo('#/pudim?aba=custos', 'dinheiro', 'Custos', 'custo e lucro de cada pudim')}
+      ${modulo('#/pudim?aba=receitas', 'etiqueta', 'Receitas', `${d.sabores.length} sabores, ${d.receitas.length} pudins`)}
       ${modulo('#/pudim?aba=ingredientes', 'carrinho', 'Ingredientes', d.faltas.length ? `faltam ${d.faltas.length} · ≈ ${brl(d.compra.total)}` : 'tudo acima do mínimo', d.faltas.length ? 'atencao-modulo' : '')}
       ${modulo('#/lista?lista=pudim', 'lista', 'Lista do pudim', lista.length ? `${lista.length} ${lista.length === 1 ? 'item' : 'itens'} · ≈ ${brl(estimadoLista)}` : 'vazia')}
       ${modulo('#/pudim/compras', 'busca', 'Pesquisar preços', 'ofertas dos ingredientes')}
@@ -419,22 +447,25 @@ function InicioPudim({ s, d }) {
 export function TelaPudim({ params = {} }) {
   const s = useStore();
   const inicio = !params.aba;
-  const aba = ['estoque', 'receitas', 'ingredientes'].includes(params.aba) ? params.aba : 'estoque';
+  const aba = ['estoque', 'receitas', 'ingredientes', 'custos'].includes(params.aba) ? params.aba : 'estoque';
+  // Estoque (pudins primeiro, ingredientes no seletor) e Receitas (receitas e custos) são telas separadas.
+  const grupoEstoque = aba === 'estoque' || aba === 'ingredientes';
   const d = dadosPudim(s);
   const vazio = !d.receitas.length;
   return html`<main>
-    <${Topo} titulo=${inicio ? (appAtual() === 'pudim' ? 'Pudins' : 'Pudim') : { estoque: 'Estoque do pudim', receitas: 'Receitas', ingredientes: 'Ingredientes' }[aba]} sub=${inicio ? 'Estoque, vendas, receitas e compras' : ''} voltar=${inicio ? null : '#/pudim'}
+    <${Topo} titulo=${inicio ? (appAtual() === 'pudim' ? 'Pudins' : 'Pudim') : (grupoEstoque ? 'Estoque' : 'Receitas')} sub=${inicio ? 'Estoque, vendas, receitas e compras' : ''} voltar=${inicio ? null : '#/pudim'}
       direita=${inicio && appAtual() === 'pudim' ? html`<a class="icone-btn" href="#/ajustes" aria-label="Ajustes"><${Icone} n="engrenagem" /></a>` : null} />
     <${FaixaDemo} />
     ${inicio && !vazio ? html`<${InicioPudim} s=${s} d=${d} />` : html`
-    <${Segmento} rotulo="Parte" opcoes=${[['estoque', 'Estoque'], ['receitas', 'Receitas'], ['ingredientes', 'Ingredientes']]} valor=${aba}
-      onChange=${(v) => (location.hash = `#/pudim?aba=${v}`)} />
+    ${grupoEstoque
+      ? html`<${Segmento} rotulo="Estoque de" opcoes=${[['estoque', 'Pudins'], ['ingredientes', 'Ingredientes']]} valor=${aba} onChange=${(v) => (location.hash = `#/pudim?aba=${v}`)} />`
+      : html`<${Segmento} rotulo="Receitas ou custos" opcoes=${[['receitas', 'Receitas'], ['custos', 'Custos']]} valor=${aba} onChange=${(v) => (location.hash = `#/pudim?aba=${v}`)} />`}
     <div style="margin-top:12px">
-      ${vazio && aba !== 'ingredientes'
+      ${vazio && aba !== 'ingredientes' && aba !== 'custos'
         ? html`<div class="painel"><${Vazio} titulo="Nenhuma receita ainda">
             <p style="margin:6px 0 12px">Importe as receitas da planilha do Pudim Perfeito em Mais > Ajustes > Importar, ou crie a primeira.</p>
             <button class="btn btn-pri" onClick=${() => abrirFolha('receita', {})}>Criar receita</button><//></div>`
-        : aba === 'estoque' ? html`<${AbaEstoque} s=${s} d=${d} />` : aba === 'receitas' ? html`<${AbaReceitas} s=${s} d=${d} />` : html`<${AbaIngredientes} s=${s} d=${d} />`}
+        : aba === 'estoque' ? html`<${AbaEstoque} s=${s} d=${d} />` : aba === 'receitas' ? html`<${AbaReceitas} s=${s} d=${d} />` : aba === 'custos' ? html`<${AbaCustos} d=${d} />` : html`<${AbaIngredientes} s=${s} d=${d} />`}
     </div>
 `}
   </main>`;
