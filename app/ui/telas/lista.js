@@ -113,6 +113,10 @@ function FaltasDoPudim({ s, naLista }) {
   };
   const nome = (f) => f.insumo.produto || f.insumo.nome;
   const fora = d.faltas.filter((f) => !naLista.has(chaveProduto(nome(f))));
+  // Nome em até duas linhas: corta nomes longos.
+  const curto = (t) => (t.length > 26 ? `${t.slice(0, 25).trimEnd()}…` : t);
+  // Só o que está abaixo do mínimo (o que já tem o suficiente não aparece); o que já está na lista vai para o fim.
+  const cartoes = [...fora, ...d.faltas.filter((f) => !fora.includes(f))];
   const por = (fs) => adicionarItens(fs.map((f) => ({ nome: nome(f), quantidade: f.embalagens, unidade: 'un', origem: 'Pudim' })));
   const porUm = async (f) => {
     await por([f]);
@@ -127,18 +131,20 @@ function FaltasDoPudim({ s, naLista }) {
       <div class="muted" style="font-size:12.5px">${d.faltas.length} ingrediente${d.faltas.length > 1 ? 's' : ''} · ≈ ${brl(d.compra.total)}</div></div>
       ${fora.length > 0 && html`<button class="btn btn-pri btn-mini" onClick=${porTodos}>Pôr ${fora.length === d.faltas.length ? 'todos' : `os ${fora.length}`}</button>`}</div>
     <div class="faltas-trilho">
-      ${d.faltas.map((f) => {
+      ${cartoes.filter((f) => f.tem < f.minimo).map((f) => {
         const ja = naLista.has(chaveProduto(nome(f)));
         const pct = Math.max(0, Math.min(100, Math.round((f.tem / f.minimo) * 100)));
         const p = preco(f);
         return html`<div class=${`falta-card ${ja ? 'na-lista' : ''}`}>
-          <div class="falta-nome">${f.insumo.nome}</div>
+          <div class="falta-topo">
+            <div class="falta-nome" title=${f.insumo.nome}>${curto(f.insumo.nome)}</div>
+            ${ja
+              ? html`<span class="falta-mais ok" aria-label=${`${nome(f)} já está na lista`}><${Icone} n="check" /></span>`
+              : html`<button class="falta-mais" aria-label=${`Pôr ${nome(f)} na lista`} onClick=${() => porUm(f)}><${Icone} n="mais" /></button>`}
+          </div>
           <div class="falta-barra" role="img" aria-label=${`tem ${pct}% do mínimo`}><span style=${`width:${pct}%`}></span></div>
           <div class="falta-tem">tem ${fmtQtd(f.tem, f.insumo)} de ${fmtQtd(f.minimo, f.insumo)}</div>
           <div class="falta-comprar">comprar <b>${f.embalagens}</b>${p !== null ? html`<span class="muted">≈ ${brl(p)}</span>` : ''}</div>
-          ${ja
-            ? html`<span class="falta-ok"><${Icone} n="check" />na lista</span>`
-            : html`<button class="btn btn-sec btn-mini" aria-label=${`Pôr ${nome(f)} na lista`} onClick=${() => porUm(f)}><${Icone} n="mais" />Pôr</button>`}
         </div>`;
       })}
     </div>

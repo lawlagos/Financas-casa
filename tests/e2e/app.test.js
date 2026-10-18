@@ -784,7 +784,7 @@ test('lista do pudim: faixa no topo com o que falta para o estoque mínimo; pôr
   await card.getByText('tem 395 g de 1,78 kg').waitFor();
   await card.getByText(/comprar 4/).waitFor();
   await faixa.getByRole('button', { name: 'Pôr Leite condensado na lista' }).click();
-  await card.getByText('na lista').waitFor();
+  await card.getByLabel('Leite condensado já está na lista').waitFor();
   assert.equal(await page.getByLabel('Quantidade de Leite condensado').innerText(), '4');
   assert.deepEqual(erros, []);
 });
