@@ -782,7 +782,6 @@ test('lista do pudim: faixa no topo com o que falta para o estoque mínimo; pôr
   const faixa = page.getByRole('region', { name: 'Falta para o estoque mínimo' });
   const card = faixa.locator('.falta-card', { hasText: 'Leite condensado' });
   await card.getByText('tem 395 g de 1,78 kg').waitFor();
-  await card.getByText(/comprar 4/).waitFor();
   await faixa.getByRole('button', { name: 'Pôr Leite condensado na lista' }).click();
   await card.getByLabel('Leite condensado já está na lista').waitFor();
   assert.equal(await page.getByLabel('Quantidade de Leite condensado').innerText(), '4');

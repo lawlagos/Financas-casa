@@ -17,8 +17,6 @@ import { CampoFala } from '../voz.js';
 import { FaixaDemo } from './inicio.js';
 import { dadosPudim, fmtQtd } from './pudim.js';
 import { entradasDeItens } from '../../core/estoqueinsumos.js';
-import { custoInsumo } from '../../core/pudim.js';
-import { embalagemBase } from '../../core/estoqueinsumos.js';
 
 const qtdTxt = (q, u) => `${String(q).replace('.', ',')}${u && u !== 'un' ? ` ${u}` : ''}`;
 const valorTxt = (cents) => (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -107,10 +105,6 @@ const daLista = (x) => (x.origem === 'Pudim' ? 'Pudim' : 'Casa');
 function FaltasDoPudim({ s, naLista }) {
   const d = dadosPudim(s);
   if (!d.faltas.length) return null;
-  const preco = (f) => {
-    const c = custoInsumo(f.insumo, d.itens);
-    return c.porBase === null ? null : Math.round(c.porBase * embalagemBase(f.insumo)) * f.embalagens;
-  };
   const nome = (f) => f.insumo.produto || f.insumo.nome;
   const fora = d.faltas.filter((f) => !naLista.has(chaveProduto(nome(f))));
   // Nome em até duas linhas: corta nomes longos.
@@ -134,7 +128,6 @@ function FaltasDoPudim({ s, naLista }) {
       ${cartoes.filter((f) => f.tem < f.minimo).map((f) => {
         const ja = naLista.has(chaveProduto(nome(f)));
         const pct = Math.max(0, Math.min(100, Math.round((f.tem / f.minimo) * 100)));
-        const p = preco(f);
         return html`<div class=${`falta-card ${ja ? 'na-lista' : ''}`}>
           <div class="falta-topo">
             <div class="falta-nome" title=${f.insumo.nome}>${curto(f.insumo.nome)}</div>
@@ -144,7 +137,6 @@ function FaltasDoPudim({ s, naLista }) {
           </div>
           <div class="falta-barra" role="img" aria-label=${`tem ${pct}% do mínimo`}><span style=${`width:${pct}%`}></span></div>
           <div class="falta-tem">tem ${fmtQtd(f.tem, f.insumo)} de ${fmtQtd(f.minimo, f.insumo)}</div>
-          <div class="falta-comprar">comprar <b>${f.embalagens}</b>${p !== null ? html`<span class="muted">≈ ${brl(p)}</span>` : ''}</div>
         </div>`;
       })}
     </div>
