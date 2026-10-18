@@ -1,7 +1,7 @@
 // Ponto de entrada do Web App. O app manda POST com {acao, sessao, dados}.
 
 // Mude a cada atualização do servidor: abrir o endereço /exec no navegador mostra este número.
-var VERSAO_SERVIDOR = '2026-10-18.1';
+var VERSAO_SERVIDOR = '2026-10-18.2';
 
 function doPost(e) {
   var resposta;
@@ -14,13 +14,18 @@ function doPost(e) {
   return ContentService.createTextOutput(JSON.stringify(resposta)).setMimeType(ContentService.MimeType.JSON);
 }
 
-function doGet() {
+function doGet(e) {
+  // O celular que recebeu um aviso busca o texto dele aqui.
+  if (e && e.parameter && e.parameter.aviso) {
+    return ContentService.createTextOutput(JSON.stringify(textoDoAviso_(String(e.parameter.aviso)))).setMimeType(ContentService.MimeType.JSON);
+  }
   var props = PropertiesService.getScriptProperties();
   var info = {
     app: 'Finanças da Casa',
     versao: VERSAO_SERVIDOR,
     leitura_de_prints: props.getProperty('GEMINI_API_KEY') ? 'chave do Gemini configurada' : 'FALTA a propriedade GEMINI_API_KEY',
-    modelo: props.getProperty('GEMINI_MODELO') || props.getProperty('GEMINI_MODELO_AUTO') || 'escolhido sozinho no primeiro print'
+    modelo: props.getProperty('GEMINI_MODELO') || props.getProperty('GEMINI_MODELO_AUTO') || 'escolhido sozinho no primeiro print',
+    avisos: inscricoes_().length + ' celular(es) com avisos ligados'
   };
   return ContentService.createTextOutput(JSON.stringify(info, null, 2)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -44,6 +49,14 @@ function tratar_(pedido) {
       return salvarVarias_(d.tabela, d.linhas);
     case 'interpretar':
       return interpretar_(d);
+    case 'avisos':
+      return estadoAvisos_(d, usuario);
+    case 'inscreverAviso':
+      return inscreverAviso_(d, usuario);
+    case 'desinscreverAviso':
+      return desinscreverAviso_(d, usuario);
+    case 'testarAviso':
+      return testarAviso_(d, usuario);
     default:
       throw erro_('acao-invalida', 'Ação desconhecida: ' + pedido.acao);
   }

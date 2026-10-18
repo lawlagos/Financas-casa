@@ -1,4 +1,4 @@
-import { useState } from '../../vendor/hooks.module.js';
+import { useState, useEffect } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Topo, Secao, Marca, Vazio, Campo, AbasSecao } from '../componentes.js';
@@ -13,6 +13,7 @@ import { saldosHoje, agendaTexto, valorPrevistoTexto, porId, origemLabel } from 
 import { projectedValue } from '../../core/recurrence.js';
 import { prepararImportacao } from '../../core/importacao.js';
 import { TAXA_IFOOD_PADRAO } from '../../core/pudim.js';
+import { suportaAvisos, instalado, ehIphone, estadoAvisos, ativarAvisos, desativarAvisos, testarAvisos } from '../../data/avisos.js';
 
 export function TelaMais() {
   const s = useStore();
@@ -250,6 +251,55 @@ export function aplicarTema(t = lerTema()) {
   raiz.dataset.temaApp = '1';
 }
 
+// Avisos no celular a cada 2 dias: tarefas da casa pendentes e dias sem lançar entradas e saídas.
+function PainelAvisos({ s }) {
+  const [estado, setEstado] = useState(null);
+  const [erro, setErro] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const demo = s.modo === 'demo';
+  const atualizar = () => estadoAvisos().then(setEstado).catch((e) => setErro(e.message));
+  useEffect(() => {
+    if (!demo && suportaAvisos()) atualizar();
+  }, []);
+  const fazer = async (fn, msg) => {
+    setOcupado(true);
+    setErro('');
+    try {
+      const r = await fn();
+      if (msg) toast(typeof msg === 'function' ? msg(r) : msg);
+      await atualizar();
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setOcupado(false);
+    }
+  };
+  const ligado = estado?.inscritoAqui && estado?.permissao === 'granted';
+  return html`<${Secao} titulo="Avisos no celular">
+    <div class="painel painel-pad" aria-label="Avisos no celular">
+      <p style="margin:0 0 10px;color:var(--ink-2)">A cada 2 dias, uma notificação lembra das tarefas da casa pendentes e avisa quando faz 2 dias ou mais sem lançar entradas e saídas.</p>
+      ${demo
+        ? html`<p class="muted" style="margin:0">Funciona com a planilha ligada, não no modo demonstração.</p>`
+        : !suportaAvisos()
+          ? html`<div class="duvida"><${Icone} n="info" /><span>${ehIphone() ? 'No iPhone, abra o app pelo ícone na tela de início (no Safari: Compartilhar > Adicionar à Tela de Início) e volte aqui. Precisa do iOS 16.4 ou mais novo.' : 'Este navegador não recebe notificações.'}</span></div>`
+          : html`
+            ${ehIphone() && !instalado() && html`<div class="duvida" style="margin-bottom:10px"><${Icone} n="info" /><span>Abra pelo ícone na tela de início para ligar os avisos.</span></div>`}
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <strong class=${ligado ? 'pos' : ''}>${!estado ? 'Conferindo…' : ligado ? 'Ligados neste celular' : 'Desligados neste celular'}</strong>
+              ${estado && html`<span class="muted" style="font-size:12.5px">${estado.aparelhos} celular${estado.aparelhos === 1 ? '' : 'es'} no total</span>`}
+            </div>
+            <div class="acoes" style="margin-top:12px">
+              ${ligado
+                ? html`<button class="btn btn-sec" style="flex:1" disabled=${ocupado} onClick=${() => fazer(testarAvisos, (r) => (r.enviados ? 'Aviso de teste enviado. Deve chegar em instantes.' : 'Não consegui entregar o aviso. Tente desligar e ligar de novo.'))}>Mandar um teste</button>
+                  <button class="btn btn-sec" style="flex:1" disabled=${ocupado} onClick=${() => fazer(desativarAvisos, 'Avisos desligados neste celular')}>Desligar</button>`
+                : html`<button class="btn btn-pri btn-larga" disabled=${ocupado || !estado} onClick=${() => fazer(ativarAvisos, 'Avisos ligados neste celular')}>Ligar avisos neste celular</button>`}
+            </div>
+            ${estado?.ultimo && html`<p class="muted" style="font-size:12.5px;margin:10px 0 0">Último aviso: ${new Date(estado.ultimo.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}, "${estado.ultimo.texto}"</p>`}`}
+      ${erro && html`<div class="duvida" role="alert" style="margin-top:10px"><${Icone} n="alerta" /><span>${erro}</span></div>`}
+    </div>
+  <//>`;
+}
+
 export function TelaAjustes() {
   const s = useStore();
   const [diario, setDiario] = useState(String(config('gasto_diario', 0)).replace('.', ','));
@@ -286,6 +336,7 @@ export function TelaAjustes() {
       <//>
       <button class="btn btn-pri btn-larga" style="margin-top:16px" onClick=${guardar}>Salvar ajustes</button>
     </div>
+    <${PainelAvisos} s=${s} />
     <${Importar} />
     <${Secao} titulo="Tema">
       <div class="segmento" role="group" aria-label="Tema">

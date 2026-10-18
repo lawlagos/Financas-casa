@@ -280,3 +280,34 @@ test('tarefas da casa na planilha: aba própria, concluída volta marcada depois
   assert.deepEqual(erros, []);
   await ctx.close();
 });
+
+test('avisos no celular: ligar inscreve o celular na planilha, teste manda o aviso, desligar tira', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  // Celular de mentira: permissão concedida e inscrição de push (o serviço de push de verdade não existe no teste).
+  await ctx.addInitScript(() => {
+    let sub = null;
+    const pushManager = {
+      getSubscription: async () => sub,
+      subscribe: async () => (sub = { endpoint: 'https://web.push.apple.com/celular-teste', unsubscribe: async () => { sub = null; return true; } }),
+    };
+    Object.defineProperty(navigator, 'serviceWorker', { value: { ready: Promise.resolve({ pushManager }), register: async () => ({}) } });
+    window.PushManager = function PushManager() {};
+    window.Notification = { permission: 'default', requestPermission: async () => (window.Notification.permission = 'granted') };
+  });
+  const { page, erros } = await novaPagina(ctx);
+  await page.goto(`${base}/#/mais/ajustes`);
+  await page.getByRole('button', { name: 'Entrar com Google' }).click();
+  const painel = page.getByLabel('Avisos no celular');
+  await painel.getByRole('button', { name: 'Ligar avisos neste celular' }).click();
+  await painel.getByText('Ligados neste celular', { exact: true }).waitFor();
+  assert.equal(JSON.parse(env.props.AVISOS_INSCRICOES)[0].endpoint, 'https://web.push.apple.com/celular-teste');
+  await painel.getByRole('button', { name: 'Mandar um teste' }).click();
+  await page.locator('.toast', { hasText: 'Aviso de teste enviado' }).waitFor();
+  assert.equal(env.chamadasPush.at(-1).url, 'https://web.push.apple.com/celular-teste');
+  await painel.getByText(/Último aviso: .*Os avisos estão funcionando/).waitFor();
+  await painel.getByRole('button', { name: 'Desligar' }).click();
+  await painel.getByText('Desligados neste celular', { exact: true }).waitFor();
+  assert.equal(JSON.parse(env.props.AVISOS_INSCRICOES).length, 0);
+  assert.deepEqual(erros, []);
+  await ctx.close();
+});

@@ -1,6 +1,7 @@
 // Planilha falsa em memória para rodar o código do Apps Script fora do Google.
 import { readFileSync, readdirSync } from 'node:fs';
 import vm from 'node:vm';
+import crypto from 'node:crypto';
 
 const DIR = new URL('../../apps-script/', import.meta.url);
 
@@ -56,8 +57,12 @@ class Aba {
   }
 }
 
-export function ambiente({ props = {}, tokeninfo, gemini } = {}) {
+export function ambiente({ props = {}, tokeninfo, gemini, push } = {}) {
   const chamadasGemini = [];
+  const chamadasPush = [];
+  // Bytes como no Apps Script: com sinal (-128 a 127).
+  const comSinal = (buf) => Array.from(buf, (b) => (b > 127 ? b - 256 : b));
+  const buffer = (bytes) => Buffer.from(typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : bytes.map((b) => (b < 0 ? b + 256 : b)));
   const abas = {};
   const ss = {
     getSheetByName: (n) => abas[n] || null,
@@ -71,6 +76,11 @@ export function ambiente({ props = {}, tokeninfo, gemini } = {}) {
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
     UrlFetchApp: {
       fetch: (url, opcoes) => {
+        if (/push|notify/.test(url)) {
+          chamadasPush.push({ url, opcoes });
+          const codigo = push ? push(url, opcoes) : 201;
+          return { getResponseCode: () => codigo, getContentText: () => '' };
+        }
         if (url.includes('generativelanguage.googleapis.com')) {
           chamadasGemini.push({ url, opcoes });
           const g = gemini ? gemini(url, opcoes) : { code: 500, body: '{}' };
@@ -83,6 +93,11 @@ export function ambiente({ props = {}, tokeninfo, gemini } = {}) {
     Utilities: {
       getUuid: () => `00000000-0000-0000-0000-${String(++uuid).padStart(12, '0')}`,
       // Como o Apps Script: a data no fuso pedido (o servidor usa o de São Paulo), não em UTC.
+      DigestAlgorithm: { SHA_256: 'sha256' },
+      computeDigest: (alg, v) => comSinal(crypto.createHash(alg).update(buffer(v)).digest()),
+      computeHmacSha256Signature: (v, chave) => comSinal(crypto.createHmac('sha256', buffer(chave)).update(buffer(v)).digest()),
+      base64EncodeWebSafe: (bytes) => buffer(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_'),
+      newBlob: (t) => ({ getBytes: () => comSinal(Buffer.from(String(t), 'utf8')) }),
       formatDate: (d, tz = 'UTC') => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d),
     },
     ContentService: {
@@ -101,6 +116,6 @@ export function ambiente({ props = {}, tokeninfo, gemini } = {}) {
   vm.createContext(ctx);
   for (const f of readdirSync(DIR).filter((x) => x.endsWith('.gs'))) vm.runInContext(readFileSync(new URL(f, DIR), 'utf8'), ctx, { filename: f });
   const post = (corpo) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(corpo) } }).texto);
-  return { ctx, abas, post, chamadasGemini };
+  return { ctx, abas, post, chamadasGemini, chamadasPush, props };
 }
 

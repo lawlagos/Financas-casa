@@ -106,6 +106,13 @@ export async function reiniciarDemo() {
 }
 
 // Manda a imagem para a IA (via servidor) e devolve a leitura bruta.
+// Chamada direta ao servidor (avisos no celular). No modo demonstração não há servidor.
+export function chamarServidor(acao, dados = {}) {
+  if (!api.chamar || api.modo !== 'nuvem') return Promise.reject(new Error('Os avisos no celular só funcionam com a planilha, não no modo demonstração.'));
+  return api.chamar(acao, dados);
+}
+export const urlServidor = () => (api.modo === 'nuvem' ? api.url : '');
+
 export function interpretarImagem(dados) {
   return api.interpretar(dados);
 }

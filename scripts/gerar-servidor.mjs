@@ -1,7 +1,7 @@
 // Junta os arquivos de apps-script/ num só (dist/servidor.gs), para colar de uma vez no editor do Apps Script.
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 
-const ORDEM = ['Inicial.gs', 'Esquema.gs', 'Planilha.gs', 'Acesso.gs', 'Leitura.gs', 'Codigo.gs'];
+const ORDEM = ['Inicial.gs', 'Esquema.gs', 'Planilha.gs', 'Acesso.gs', 'Leitura.gs', 'Avisos.gs', 'Codigo.gs'];
 
 export function conteudoServidor() {
   const dir = new URL('../apps-script/', import.meta.url);
