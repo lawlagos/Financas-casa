@@ -220,7 +220,6 @@ a { color: inherit; }
 }
 .btn svg { width: 18px; height: 18px; }
 .btn-pri { background: var(--caramel); color: #fff; }
-.btn-pri:disabled { opacity: 0.45; }
 .btn-sec { background: var(--surface); border-color: var(--line); color: var(--ink); }
 .btn-perigo { background: var(--neg-soft); color: var(--neg); }
 .btn-txt { background: none; color: var(--caramel-ink); padding: 8px 4px; }
@@ -624,7 +623,6 @@ a.fab { color: #fff; display: grid; place-items: center; text-decoration: none; 
   filter: brightness(0.92);
 }
 .item-btn:active, a.item:active, button.item:active, .receita-abrir:active { transform: scale(0.985); background: var(--surface-2); }
-.btn:disabled { opacity: .55; }
 .btn.carregando { position: relative; color: transparent !important; pointer-events: none; opacity: 1; }
 .btn.carregando::after {
   content: ''; position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px;
@@ -647,3 +645,11 @@ a.fab { color: #fff; display: grid; place-items: center; text-decoration: none; 
 .extrato-data { flex: none; width: 38px; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
 .extrato-data b { font: 700 17px var(--display); }
 .extrato-data span { font-size: 11px; color: var(--ink-3); text-transform: uppercase; }
+
+/* Botão que não dá para usar agora: apagado e sem o efeito de toque.
+   .inativo: ainda tocável, para mostrar o que falta (ex.: salvar lançamento sem valor). */
+.btn:disabled, .btn.inativo, .icone-btn:disabled, .chip:disabled, .modo:disabled {
+  opacity: .42; filter: grayscale(.6); box-shadow: none; cursor: not-allowed;
+}
+.btn:disabled:active, .icone-btn:disabled:active, .chip:disabled:active { transform: none; filter: grayscale(.6); }
+.btn.carregando:disabled { opacity: 1; filter: none; cursor: progress; }

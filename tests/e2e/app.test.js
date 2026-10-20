@@ -872,3 +872,31 @@ test('dízimo: pagar o da semana zera o que falta; dízimo lançado à mão tamb
   assert.equal(await page.locator('.dizimo-card', { hasText: 'A pagar, semana' }).count(), 0);
   assert.deepEqual(erros, []);
 });
+
+test('fala só escreve o texto; preenche ao tocar em Preencher; salvar fica apagado enquanto falta algo', async () => {
+  await page.addInitScript(() => {
+    window.SpeechRecognition = window.webkitSpeechRecognition = class {
+      start() {
+        setTimeout(() => {
+          this.onresult?.({ results: [Object.assign([{ transcript: 'gastei 30 na padaria no itaú' }], { isFinal: true })] });
+          this.onend?.();
+        }, 50);
+      }
+      stop() { this.onend?.(); }
+      abort() {}
+    };
+  });
+  await page.reload();
+  await page.getByText('Saldo hoje, todas as contas').waitFor();
+  await novo();
+  assert.match(await page.getByRole('button', { name: 'Salvar lançamento' }).getAttribute('class'), /inativo/);
+  await folha().getByRole('button', { name: 'Falar', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.folha textarea')?.value === 'gastei 30 na padaria no itaú');
+  await page.waitForTimeout(300);
+  // nada foi preenchido sozinho
+  assert.equal(await folha().locator('.valor-grande input').count(), 0);
+  await page.getByRole('button', { name: 'Preencher' }).click();
+  assert.equal(await folha().locator('.valor-grande input').inputValue(), '30,00');
+  assert.doesNotMatch(await page.getByRole('button', { name: 'Salvar lançamento' }).getAttribute('class'), /inativo/);
+  assert.deepEqual(erros, []);
+});

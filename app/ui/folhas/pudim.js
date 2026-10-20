@@ -91,7 +91,7 @@ export function FolhaMovimento({ tipo = 'producao', receita_id: receitaPedida, q
   if (!d.receitas.length) {
     return html`<${Folha} titulo=${TITULO[tipo]}><p class="muted">Cadastre ou importe as receitas primeiro, em Pudim > Receitas.</p><//>`;
   }
-  return html`<${Folha} titulo=${TITULO[tipo]} rodape=${html`<button class="btn btn-pri" disabled=${tentou && !ok} onClick=${guardar}>${tipo === 'producao' ? 'Pôr no estoque' : 'Registrar perda'}</button>`}>
+  return html`<${Folha} titulo=${TITULO[tipo]} rodape=${html`<button class=${`btn btn-pri ${!ok ? 'inativo' : ''}`} disabled=${tentou && !ok} onClick=${guardar}>${tipo === 'producao' ? 'Pôr no estoque' : 'Registrar perda'}</button>`}>
     <${EscolheLocal} locais=${d.locais} valor=${local} onChange=${trocaLocal} />
     <${Campo} rotulo="Qual pudim">
       <select aria-label="Qual pudim" value=${f.receita_id} onChange=${(e) => trocaReceita(e.target.value)}>

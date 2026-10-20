@@ -1,5 +1,5 @@
 // Campo de frase com microfone (reconhecimento de voz do navegador, em português).
-// Quando a fala termina, chama onPronto com o texto; também dá para digitar e apertar Enter.
+// A fala só escreve o texto no campo; quem usa decide quando aplicar (botão ao lado ou Enter).
 import { useEffect, useRef, useState } from '../vendor/hooks.module.js';
 import { html } from './html.js';
 import { Icone } from './icones.js';
@@ -23,7 +23,6 @@ export function CampoFala({ frase, setFrase, onPronto, placeholder, rotulo = 'Fr
     r.onresult = (e) => {
       const t = Array.from(e.results).map((x) => x[0].transcript).join(' ');
       setFrase(t);
-      if (e.results[e.results.length - 1].isFinal) onPronto(t);
     };
     r.onerror = (e) => {
       setOuvindo(false);

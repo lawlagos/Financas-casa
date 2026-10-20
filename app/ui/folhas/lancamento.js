@@ -100,7 +100,6 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
     r.onresult = (e) => {
       const t = Array.from(e.results).map((x) => x[0].transcript).join(' ');
       setFrase(t);
-      if (e.results[e.results.length - 1].isFinal) interpretar(t);
     };
     r.onerror = (e) => {
       setOuvindo(false);
@@ -201,10 +200,10 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
     }
   };
   const rodape = varios
-    ? html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${salvando} onClick=${salvarVarios}>${salvando ? 'Salvando…' : `Salvar ${varios.length} lançamentos`}</button>`
+    ? html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''} ${faltaVarios ? 'inativo' : ''}`} disabled=${salvando} onClick=${salvarVarios}>${salvando ? 'Salvando…' : `Salvar ${varios.length} lançamentos`}</button>`
     : html`
     ${editando && html`<button class="btn btn-perigo" style="flex:0 0 auto" onClick=${apagar} aria-label="Apagar lançamento"><${Icone} n="lixo" /></button>`}
-    <button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${salvando} onClick=${salvarUm}>${salvando ? 'Salvando…' : editando ? 'Salvar alterações' : 'Salvar lançamento'}</button>`;
+    <button class=${`btn btn-pri ${salvando ? 'carregando' : ''} ${faltando.length ? 'inativo' : ''}`} disabled=${salvando} onClick=${salvarUm}>${salvando ? 'Salvando…' : editando ? 'Salvar alterações' : 'Salvar lançamento'}</button>`;
 
   return html`<${Folha} titulo=${editando ? 'Editar lançamento' : 'Novo lançamento'} rodape=${rodape}>
     ${!editando && !inicial && html`<div class="modos" role="group" aria-label="Como lançar">
