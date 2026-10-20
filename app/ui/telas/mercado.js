@@ -168,7 +168,7 @@ export function FolhaProduto({ chave, grupo }) {
       setSalvando(false);
     }
   };
-  return html`<${Folha} titulo=${p.nome} rodape=${html`<button class="btn btn-pri" style="width:100%" disabled=${salvando || !nome.trim()} onClick=${renomear}>${salvando ? 'Salvando…' : juntaCom ? `Juntar com ${juntaCom}` : 'Salvar nome'}</button>`}>
+  return html`<${Folha} titulo=${p.nome} rodape=${html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} style="width:100%" disabled=${salvando || !nome.trim()} onClick=${renomear}>${salvando ? 'Salvando…' : juntaCom ? `Juntar com ${juntaCom}` : 'Salvar nome'}</button>`}>
     <div class="dupla" style="margin-bottom:12px">
       <div class="painel mini"><div class="rot">Compras</div><div class="num">${p.compras}</div><div class="rod">${ritmoTxt(p)}</div></div>
       <div class="painel mini"><div class="rot">Preço médio</div><div class="num">${p.precoMedio !== null ? brl(p.precoMedio) : '—'}</div><div class="rod">por ${unidadeTxt(p.unidade)}</div></div>

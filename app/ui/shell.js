@@ -110,6 +110,7 @@ function App({ Nav }) {
     <${Nav} caminho=${rota.caminho} />
     ${F && html`<${F} key=${s.folha.id} ...${s.folha.props} />`}
     <${Toast} />
+    ${s.ocupado > 0 && html`<div class="barra-ocupado" role="progressbar" aria-label="Salvando na planilha"></div>`}
   </div>`;
 }
 

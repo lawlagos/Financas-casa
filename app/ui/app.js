@@ -13,6 +13,7 @@ import { TelaNegocios } from './telas/negocios.js';
 import { TelaMais, TelaPrevistos, TelaCompromissos, TelaContas, TelaCategorias, TelaAjustes } from './telas/mais.js';
 import { TelaMercado } from './telas/mercado.js';
 import { TelaLista, TelaTarefas } from './telas/lista.js';
+import { TelaExtrato } from './telas/extrato.js';
 
 definirApp('financas');
 
@@ -28,6 +29,7 @@ const irPara = (caminho) => ({ params }) => html`<${IrParaPudins} caminho=${cami
 
 const TELAS = {
   '/inicio': TelaInicio,
+  '/extrato': TelaExtrato,
   '/lancamentos': TelaLancamentos,
   '/futuro': TelaFuturo,
   '/contas': TelaContas,
@@ -47,10 +49,10 @@ const TELAS = {
   '/pudim/compras': irPara('/pudim/compras'),
 };
 
-// Menu: Início, Negócios (pudim e empresa, dízimo), lançar, Dinheiro (lançamentos, futuro, contas) e Casa.
+// Menu: Início, Negócios (pudim e empresa, dízimo), lançar, Dinheiro (extrato, lançamentos, futuro, contas) e Casa.
 const SECOES = {
   '/negocios': (c) => c === '/negocios' || c === '/dizimo',
-  '/lancamentos': (c) => ['/lancamentos', '/futuro', '/contas', '/mais/contas'].includes(c),
+  '/extrato': (c) => ['/extrato', '/lancamentos', '/futuro', '/contas', '/mais/contas'].includes(c),
   '/lista': (c) => c === '/lista' || c === '/tarefas',
 };
 function Nav({ caminho }) {
@@ -60,7 +62,7 @@ function Nav({ caminho }) {
     ${link('/inicio', 'inicio', 'Início')}
     ${link('/negocios', 'negocios', 'Negócios')}
     <li style="display:grid"><button class="fab" aria-label="Novo lançamento" onClick=${() => abrirFolha('lancamento', {})}><${Icone} n="mais" /></button></li>
-    ${link('/lancamentos', 'dinheiro', 'Dinheiro')}
+    ${link('/extrato', 'dinheiro', 'Dinheiro')}
     ${link('/lista', 'casa', 'Casa')}
   </ul></nav>`;
 }

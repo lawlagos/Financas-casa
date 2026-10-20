@@ -197,7 +197,7 @@ export function FolhaLeitura() {
   const resumo = nota ? resumoNota(nota, { diferencaEm: diferencaEfetiva(nota) }) : null;
   const qtd = nota ? Object.values(resumo.soma).filter((v) => v > 0).length : aSalvar.length;
   const rodape = etapa === 'revisar'
-    ? html`<button class="btn btn-pri" disabled=${salvando || pendencias.length > 0 || !aSalvar.length} onClick=${gravar}>
+    ? html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${salvando || pendencias.length > 0 || !aSalvar.length} onClick=${gravar}>
         ${salvando ? 'Salvando…' : qtd > 1 ? `Salvar ${qtd} lançamentos` : 'Salvar lançamento'}</button>`
     : null;
 

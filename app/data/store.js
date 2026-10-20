@@ -14,9 +14,19 @@ export const state = {
   erro: null,
   toast: null,
   usuario: null,
+  ocupado: 0, // gravações em andamento na planilha (mostra a barra de "salvando" no topo)
 };
 
 let api;
+// Marca que a planilha está trabalhando enquanto a promessa não termina.
+function ocupar(p) {
+  state.ocupado += 1;
+  emit();
+  return Promise.resolve(p).finally(() => {
+    state.ocupado = Math.max(0, state.ocupado - 1);
+    emit();
+  });
+}
 const listeners = new Set();
 
 // O app pode ficar aberto de um dia para o outro: ao voltar para ele, confere a data de hoje.
@@ -109,12 +119,12 @@ export async function reiniciarDemo() {
 // Chamada direta ao servidor (avisos no celular). No modo demonstração não há servidor.
 export function chamarServidor(acao, dados = {}) {
   if (!api.chamar || api.modo !== 'nuvem') return Promise.reject(new Error('Os avisos no celular só funcionam com a planilha, não no modo demonstração.'));
-  return api.chamar(acao, dados);
+  return ocupar(api.chamar(acao, dados));
 }
 export const urlServidor = () => (api.modo === 'nuvem' ? api.url : '');
 
 export function interpretarImagem(dados) {
-  return api.interpretar(dados);
+  return ocupar(api.interpretar(dados));
 }
 
 export function config(chave, padrao = '') {
@@ -141,7 +151,7 @@ export async function salvar(tabela, linha) {
   state.tables[tabela] = anterior ? state.tables[tabela].map((x) => (x.id === nova.id ? nova : x)) : [...state.tables[tabela], nova];
   emit();
   try {
-    await api.salvar(tabela, nova);
+    await ocupar(api.salvar(tabela, nova));
   } catch (e) {
     // Desfaz pelo id na lista de agora: outras gravações podem ter mudado a lista enquanto esta ia.
     state.tables[tabela] = anterior
@@ -162,7 +172,7 @@ export async function salvarVarias(tabela, linhas) {
   state.tables[tabela] = (state.tables[tabela] || []).filter((l) => !ids.has(l.id)).concat(novas);
   emit();
   try {
-    await api.salvarVarias(tabela, novas);
+    await ocupar(api.salvarVarias(tabela, novas));
   } catch (e) {
     state.tables[tabela] = state.tables[tabela].filter((l) => !ids.has(l.id)).concat(anteriores);
     toast(`Não salvou: ${e.message}`, { tom: 'erro' });
@@ -178,7 +188,7 @@ export async function apagar(tabela, id) {
   state.tables[tabela] = lista.filter((x) => x.id !== id);
   emit();
   try {
-    await api.apagar(tabela, id);
+    await ocupar(api.apagar(tabela, id));
   } catch (e) {
     if (linha && !state.tables[tabela].some((x) => x.id === id)) state.tables[tabela] = [...state.tables[tabela], linha];
     toast(`Não apagou: ${e.message}`, { tom: 'erro' });

@@ -87,3 +87,16 @@ test('dízimo mensal: 10% bruto de salário, consultoria e YouTube', () => {
   lancs.push(L('2026-10-31', 'saida', 583.33, { categoria_id: CATEGORIA_DIZIMO, id_externo: refMes('2026-10') }));
   assert.equal(monthlyTithe(lancs, '2026-10').pago.valor, 58333);
 });
+
+test('dízimo lançado à mão conta para o mais antigo em aberto', async () => {
+  const { dizimoEmAberto, refSemana } = await import('../../app/core/tithe.js');
+  const L = (data, tipo, valor, origem, extra = {}) => ({ id: `${data}${valor}`, data, tipo, valor, origem, categoria_id: 'x', ...extra });
+  // semana 10/10 a 16/10 com lucro 1000 (dízimo 100), semana atual 17/10 com lucro 500 (dízimo 50)
+  const lancs = [L('2026-10-12', 'entrada', 1000, 'Pudim'), L('2026-10-18', 'entrada', 500, 'Pudim')];
+  const hoje = '2026-10-20';
+  assert.deepEqual(dizimoEmAberto(lancs, hoje), { referencia: refSemana('2026-10-10'), titulo: 'semana de 2026-10-10', falta: 10000 });
+  // depois de pagar a semana fechada, o próximo é a semana atual
+  const pago = [...lancs, L('2026-10-19', 'saida', 100, 'Casa', { categoria_id: 'cat-dizimo', id_externo: refSemana('2026-10-10') })];
+  assert.equal(dizimoEmAberto(pago, hoje).referencia, refSemana('2026-10-17'));
+  assert.equal(dizimoEmAberto(pago, hoje).falta, 5000);
+});

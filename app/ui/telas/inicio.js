@@ -70,6 +70,10 @@ function Dizimo({ s }) {
   const mAtual = monthlyTithe(s.tables.lancamentos, mes);
   const mAnt = monthlyTithe(s.tables.lancamentos, mesAnt);
   const pagar = (referencia, valor, titulo) => abrirFolha('dizimo', { referencia, valor, titulo });
+  // O que ainda falta pagar: o dízimo menos o que já foi pago para aquela semana ou mês (pagar zera).
+  const falta = (x) => Math.max(0, x.dizimo - (x.pago?.valor || 0));
+  const faltaSemana = falta(atual);
+  const faltaMes = falta(mAtual);
   return html`<${Secao} titulo="Dízimo" acao="Detalhes" onAcao=${() => (location.hash = '#/negocios')}>
     ${pendentes.slice(-1).map((w) => html`<div class="painel dizimo-card" style="border-color:var(--caramel)">
       <div class="corpo"><div class="rot">A pagar, semana de ${fmtDay(w.inicio)} a ${fmtDay(w.fim)}</div>
@@ -79,15 +83,17 @@ function Dizimo({ s }) {
     </div>`)}
     ${pendentes.length > 1 && html`<p class="muted" style="font-size:13px;margin:8px 2px 0">Mais ${pendentes.length - 1} ${pendentes.length === 2 ? 'semana' : 'semanas'} sem pagamento marcado. <a href="#/negocios" style="color:var(--caramel-ink);font-weight:700">Ver em Negócios</a></p>`}
     <div class="dupla" style=${pendentes.length ? 'margin-top:10px' : ''}>
-      <div class="painel mini">
+      <div class="painel mini" aria-label="Dízimo dos negócios desta semana">
         <div class="rot">Negócios, esta semana</div>
-        <div class="num">${brl(atual.dizimo)}</div>
-        <div class="rod">Lucro ${brlSigned(atual.lucro)}${atual.carryIn ? `, prejuízo anterior ${brl(atual.carryIn)}` : ''}. Paga ${fmtDay(atual.pagarEm)}.</div>
+        <div class="num">${brl(faltaSemana)}</div>
+        <div class="rod">${atual.pago ? html`<span class="etiqueta pago">Pago ${brl(atual.pago.valor)}</span> ` : ''}Lucro ${brlSigned(atual.lucro)}${atual.carryIn ? `, prejuízo anterior ${brl(atual.carryIn)}` : ''}. Vence ${fmtDay(atual.pagarEm)}.</div>
+        ${faltaSemana > 0 && html`<button class="btn btn-pri btn-mini" style="margin-top:8px" onClick=${() => pagar(refSemana(atual.inicio), faltaSemana, `Dízimo dos negócios, semana de ${fmtDay(atual.inicio)} a ${fmtDay(atual.fim)}`)}>Pagar</button>`}
       </div>
-      <div class="painel mini">
+      <div class="painel mini" aria-label="Dízimo do salário deste mês">
         <div class="rot">Salário e consultoria, ${monthName(mes)}</div>
-        <div class="num">${brl(mAtual.dizimo)}</div>
-        <div class="rod">${mAtual.pago ? html`<span class="etiqueta pago">Pago</span>` : `10% de ${brl(mAtual.bruto)}`}</div>
+        <div class="num">${brl(faltaMes)}</div>
+        <div class="rod">${mAtual.pago ? html`<span class="etiqueta pago">Pago ${brl(mAtual.pago.valor)}</span>` : `10% de ${brl(mAtual.bruto)}`}</div>
+        ${faltaMes > 0 && html`<button class="btn btn-pri btn-mini" style="margin-top:8px" onClick=${() => pagar(refMes(mes), faltaMes, `Dízimo de ${monthName(mes)} (salário e consultoria)`)}>Pagar</button>`}
       </div>
     </div>
     ${mAnt.dizimo > 0 && !mAnt.pago && html`<div class="painel dizimo-card" style="margin-top:10px">

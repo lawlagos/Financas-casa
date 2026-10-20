@@ -259,7 +259,7 @@ export function TelaLista({ params = {} }) {
           <ul class="previa-estoque">${previa.map((e) => html`<li><span>${insumosPorId[e.insumo_id]?.nome}</span><b>+ ${fmtQtd(e.quantidade, insumosPorId[e.insumo_id])}</b></li>`)}</ul>`}
         ${foraDoEstoque.length > 0 && html`<p class="muted" style="font-size:12.5px;margin:6px 0 0">Não entra no estoque (não é ingrediente cadastrado): ${foraDoEstoque.map((x) => x.nome).join(', ')}.</p>`}
         ${prontos.length < comprados.length && html`<p class="muted" style="font-size:12.5px;margin:8px 0 0">${comprados.length - prontos.length} ${comprados.length - prontos.length === 1 ? 'item está' : 'itens estão'} sem o preço pago e ${comprados.length - prontos.length === 1 ? 'fica' : 'ficam'} na lista.</p>`}
-        <button class="btn btn-pri btn-larga" style="margin-top:12px" disabled=${salvando || !prontos.length || !conta_id || !data} onClick=${finalizar}>
+        <button class=${`btn btn-pri btn-larga ${salvando ? 'carregando' : ''}`} style="margin-top:12px" disabled=${salvando || !prontos.length || !conta_id || !data} onClick=${finalizar}>
           ${salvando ? 'Salvando…' : `Consolidar mercado · ${brl(totalCompra)}`}</button>
         ${!conta_id && html`<p class="muted" style="font-size:12.5px;margin:6px 0 0">Escolha com que conta pagou.</p>`}
       </div>

@@ -73,3 +73,24 @@ export function monthlyTithe(lancs, key) {
   const pago = pagamento(lancs, refMes(key));
   return { mes: key, detalhe, bruto, dizimo, pago, mudouDepoisDePago: !!pago && pago.valor !== dizimo };
 }
+
+// Dízimo lançado à mão (categoria Dízimo, sem referência): conta como pagamento do mais antigo que ainda falta,
+// primeiro as semanas dos negócios já fechadas e o mês passado, depois a semana e o mês atuais.
+// Devolve { referencia, titulo, falta } ou null se não há nada em aberto.
+export function dizimoEmAberto(lancs, hoje) {
+  const falta = (x) => Math.max(0, x.dizimo - (x.pago?.valor || 0));
+  const semanas = businessWeeks(lancs, hoje);
+  const mes = monthKey(hoje);
+  const anterior = monthKey(addDays(`${mes}-01`, -1));
+  const mesAnt = monthlyTithe(lancs, anterior);
+  const mesAtual = monthlyTithe(lancs, mes);
+  const atual = semanas[semanas.length - 1];
+  const fechadas = semanas.filter((w) => w.fim < hoje);
+  const opcoes = [
+    ...fechadas.map((w) => ({ referencia: refSemana(w.inicio), titulo: `semana de ${w.inicio}`, falta: falta(w) })),
+    { referencia: refMes(anterior), titulo: `mês ${anterior}`, falta: falta(mesAnt) },
+    ...(atual && atual.fim >= hoje ? [{ referencia: refSemana(atual.inicio), titulo: `semana de ${atual.inicio}`, falta: falta(atual) }] : []),
+    { referencia: refMes(mes), titulo: `mês ${mes}`, falta: falta(mesAtual) },
+  ];
+  return opcoes.find((o) => o.falta > 0) || null;
+}

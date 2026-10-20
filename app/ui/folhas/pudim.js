@@ -160,7 +160,7 @@ export function FolhaLote({ local: localPedido }) {
       setSalvando(false);
     }
   };
-  return html`<${Folha} titulo="Novo lote" rodape=${html`<button class="btn btn-pri" disabled=${!itens.length || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : total ? `Pôr ${virgula(total)} no estoque` : 'Pôr no estoque'}</button>`}>
+  return html`<${Folha} titulo="Novo lote" rodape=${html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${!itens.length || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : total ? `Pôr ${virgula(total)} no estoque` : 'Pôr no estoque'}</button>`}>
     <p class="muted" style="font-size:13px;margin:0 0 6px">Vários sabores feitos juntos, com a mesma validade. Digite quantos de cada.</p>
     <${EscolheLocal} locais=${d.locais} valor=${local} onChange=${setLocal} />
     <div class="linha2">
@@ -206,7 +206,7 @@ export function FolhaEnvio({ de: dePedido, para: paraPedido, quantidades = {} })
     }
   };
   if (d.locais.length < 2) return html`<${Folha} titulo="Enviar"><p class="muted">Só há um local de estoque.</p><//>`;
-  return html`<${Folha} titulo="Enviar pudins" rodape=${html`<button class="btn btn-pri" disabled=${!itens.length || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : `Enviar ${total || ''} para ${nome(para)}`.replace('  ', ' ')}</button>`}>
+  return html`<${Folha} titulo="Enviar pudins" rodape=${html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${!itens.length || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : `Enviar ${total || ''} para ${nome(para)}`.replace('  ', ' ')}</button>`}>
     <${EscolheLocal} locais=${d.locais} valor=${de} onChange=${trocaDe} rotulo="Sai de" />
     <${EscolheLocal} locais=${d.locais.filter((l) => l.id !== de)} valor=${para} onChange=${setPara} rotulo="Vai para" />
     ${d.locais.length === 2 && html`<p class="muted" style="font-size:13px;margin:6px 2px 0">Vai para ${nome(para)}.</p>`}
@@ -345,7 +345,7 @@ export function FolhaEditarMovimento({ id }) {
     toast(venda && m.lancamento_id ? 'Venda apagada, e o lançamento no caixa também' : 'Movimento apagado');
   };
 
-  return html`<${Folha} titulo=${`Corrigir ${(TIPO_TXT[m.tipo] || 'movimento').toLowerCase()}`} rodape=${html`<button class="btn btn-sec" onClick=${apagarEste}>Apagar</button><button class="btn btn-pri" disabled=${!ok || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : 'Salvar'}</button>`}>
+  return html`<${Folha} titulo=${`Corrigir ${(TIPO_TXT[m.tipo] || 'movimento').toLowerCase()}`} rodape=${html`<button class="btn btn-sec" onClick=${apagarEste}>Apagar</button><button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${!ok || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : 'Salvar'}</button>`}>
     <div class="painel painel-pad"><strong>${TIPO_TXT[m.tipo] || m.tipo}: ${virgula(m.quantidade)} ${r?.nome || 'receita apagada'}</strong>
       <div class="muted" style="font-size:13px">${fmtDay(m.data)}${m.tipo === 'transferencia' ? `, de ${nome(localInicial)} para ${nome(m.local_destino)}` : d.locais.length > 1 ? `, ${nome(localInicial)}` : ''}${m.lancamento_id ? ', lançada no caixa' : ''}</div></div>
     <${EscolheLocal} locais=${m.tipo === 'transferencia' ? d.locais : locaisOk} valor=${f.local} onChange=${(v) => set({ local: v, ...(v === f.local_destino ? { local_destino: d.locais.find((l) => l.id !== v)?.id || '' } : {}) })}
@@ -658,7 +658,7 @@ export function FolhaVozEstoque({ local: localPedido = '' }) {
     }
   };
 
-  return html`<${Folha} titulo="Estoque por voz" rodape=${r && html`<button class="btn btn-pri" disabled=${!ok || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : 'Confirmar'}</button>`}>
+  return html`<${Folha} titulo="Estoque por voz" rodape=${r && html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${!ok || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : 'Confirmar'}</button>`}>
     <${CampoFala} id="voz-estoque" rotulo="O que aconteceu" frase=${frase} setFrase=${setFrase} onPronto=${entender}
       placeholder="Ex.: fiz uma fornada de tradicional no copo e vendi 2 brigadeirão de 1 kg no iFood" />
     <div class="acoes" style="margin-top:8px;justify-content:flex-end"><button class="btn btn-sec btn-mini" disabled=${!frase.trim()} onClick=${() => entender(frase)}>Entender</button></div>
@@ -782,7 +782,7 @@ export function FolhaContagem() {
       setSalvando(false);
     }
   };
-  return html`<${Folha} titulo="O que tem em casa" rodape=${html`<button class="btn btn-pri" disabled=${salvando || !mudados.length} onClick=${guardar}>${salvando ? 'Salvando…' : mudados.length ? `Salvar ${mudados.length} contage${mudados.length > 1 ? 'ns' : 'm'}` : 'Nada mudou'}</button>`}>
+  return html`<${Folha} titulo="O que tem em casa" rodape=${html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${salvando || !mudados.length} onClick=${guardar}>${salvando ? 'Salvando…' : mudados.length ? `Salvar ${mudados.length} contage${mudados.length > 1 ? 'ns' : 'm'}` : 'Nada mudou'}</button>`}>
     <p class="muted" style="font-size:13px;margin:0 0 8px">Quantas embalagens tem de cada um (aceita 0,5 para meio pacote). Deixe em branco o que não quer contar agora.</p>
     <ul class="lista painel">
       ${insumos.map((x) => html`<li class="item contagem-linha">

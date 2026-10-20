@@ -134,7 +134,7 @@ export function Arrastavel({ onApagar, children }) {
 
 // Abas das seções do menu de baixo do Finanças: Dinheiro (lançamentos, futuro, contas) e Casa (compras e tarefas).
 const ABAS_SECAO = {
-  dinheiro: [['/lancamentos', 'Lançamentos'], ['/futuro', 'Futuro'], ['/contas', 'Contas']],
+  dinheiro: [['/extrato', 'Extrato'], ['/lancamentos', 'Lançamentos'], ['/futuro', 'Futuro'], ['/contas', 'Contas']],
   casa: [['/lista', 'Compras da casa'], ['/tarefas', 'Tarefas da casa']],
 };
 export function AbasSecao({ secao, atual }) {

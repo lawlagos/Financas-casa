@@ -143,7 +143,7 @@ export function TelaCompras({ params = {} }) {
           <${Campo} rotulo="Dia"><input type="date" value=${data} onInput=${(e) => setData(e.target.value)} /><//>
           <${SelectConta} rotulo="Pago com" valor=${conta_id} onChange=${setConta} contas=${contas} />
         </div>
-        <button class="btn btn-pri btn-larga" style="margin-top:14px" disabled=${salvando || !conta_id || linhas.some((l) => !l.preco)} onClick=${registrar}>
+        <button class=${`btn btn-pri btn-larga ${salvando ? 'carregando' : ''}`} style="margin-top:14px" disabled=${salvando || !conta_id || linhas.some((l) => !l.preco)} onClick=${registrar}>
           ${salvando ? 'Salvando…' : `Registrar compra · ${brl(total)}`}</button>
         <p class="muted" style="font-size:12.5px;margin:8px 0 0">Entra como gasto do Pudim (ingredientes e embalagens) e atualiza o custo das receitas.</p>`}
     </section>

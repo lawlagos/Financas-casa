@@ -4,13 +4,21 @@ import { Icone } from '../icones.js';
 import { Folha, Segmento, Chips, Campo } from '../componentes.js';
 import { useStore, state, salvar, apagarLancamento, fecharFolha, abrirFolha, toast } from '../../data/store.js';
 import { SeletorCategoria } from '../categorias.js';
-import { parseQuick } from '../../core/quickparse.js';
+import { parseQuick, parseVarios } from '../../core/quickparse.js';
 import { parseBRL, brl, toCents } from '../../core/money.js';
 import { ORIGENS } from '../../core/schema.js';
 import { findMatch, matchCandidates } from '../../core/planning.js';
 import { fmtDay } from '../../core/dates.js';
 import { contasAtivas, origemLabel } from '../derivados.js';
 import { GRUPOS } from '../../core/balances.js';
+import { CATEGORIA_DIZIMO, dizimoEmAberto } from '../../core/tithe.js';
+
+// Saída na categoria Dízimo sem referência conta como pagamento do dízimo mais antigo em aberto.
+const comDizimo = (linha, hoje) => {
+  if (linha.tipo !== 'saida' || linha.categoria_id !== CATEGORIA_DIZIMO || linha.id_externo) return linha;
+  const aberto = dizimoEmAberto(state.tables.lancamentos, hoje);
+  return aberto ? { ...linha, id_externo: aberto.referencia } : linha;
+};
 
 const vazio = (hoje) => ({ tipo: 'saida', valor: '', descricao: '', data: hoje, conta_id: '', conta_destino_id: '', categoria_id: '', origem: '' });
 
@@ -52,8 +60,19 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
 
   const temVoz = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
+  // Vários valores na frase ("248,55 dízimo - 51,45 oferta"): um rascunho para cada, salvos de uma vez.
+  const [varios, setVarios] = useState(null);
+  const [salvando, setSalvando] = useState(false);
   const interpretar = (texto) => {
-    const r = parseQuick(texto, { contas, categorias: s.tables.categorias, hoje: s.hoje });
+    const ctx = { contas, categorias: s.tables.categorias, hoje: s.hoje };
+    const lista = parseVarios(texto, ctx);
+    if (lista) {
+      setVarios(lista.map((r) => ({ tipo: r.tipo || 'saida', valor: valorTexto(r.valor), descricao: r.descricao, categoria_id: r.categoria_id || '', origem: r.origem || (r.tipo === 'entrada' ? '' : 'Casa'), conta_id: r.conta_id || '', data: r.data })));
+      setInterpretado(true);
+      return;
+    }
+    setVarios(null);
+    const r = parseQuick(texto, ctx);
     setF((x) => ({
       ...x,
       tipo: r.tipo || x.tipo,
@@ -126,7 +145,7 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
     };
     let salvo;
     try {
-      salvo = await salvar('lancamentos', linha);
+      salvo = await salvar('lancamentos', editando ? linha : comDizimo(linha, s.hoje));
     } catch {
       return;
     }
@@ -145,7 +164,7 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
       }
     }
     fecharFolha();
-    toast(editando ? 'Lançamento atualizado' : 'Lançamento salvo');
+    toast(editando ? 'Lançamento atualizado' : salvo.id_externo?.startsWith('dizimo:') ? 'Lançamento salvo e contado como dízimo pago' : 'Lançamento salvo');
   };
 
   const apagar = async () => {
@@ -153,9 +172,39 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
     await apagarLancamento(lanc.id);
   };
 
-  const rodape = html`
+  // Vários de uma vez: conta e dia em comum (cada um pode ter os seus, vindos da frase).
+  const setItem = (i, p) => setVarios((xs) => xs.map((x, j) => (j === i ? { ...x, ...p } : x)));
+  const faltaVarios = varios ? varios.filter((x) => !(parseBRL(x.valor) > 0) || !x.conta_id || (x.tipo !== 'transferencia' && !x.origem)).length : 0;
+  const salvarVarios = async () => {
+    setTentouSalvar(true);
+    if (faltaVarios) return;
+    setSalvando(true);
+    try {
+      for (const x of varios) {
+        await salvar('lancamentos', comDizimo({
+          tipo: x.tipo, valor: parseBRL(x.valor), descricao: x.descricao.trim() || (s.tables.categorias.find((c) => c.id === x.categoria_id)?.nome ?? ''),
+          data: x.data, conta_id: x.conta_id, conta_destino_id: '', categoria_id: x.categoria_id, origem: x.origem, canal: 'voz', id_externo: '', previsto_id: '',
+        }, s.hoje));
+      }
+      fecharFolha();
+      toast(`${varios.length} lançamentos salvos`);
+    } catch {
+      setSalvando(false);
+    }
+  };
+  const salvarUm = async () => {
+    setSalvando(true);
+    try {
+      await salvarLanc();
+    } finally {
+      setSalvando(false);
+    }
+  };
+  const rodape = varios
+    ? html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${salvando} onClick=${salvarVarios}>${salvando ? 'Salvando…' : `Salvar ${varios.length} lançamentos`}</button>`
+    : html`
     ${editando && html`<button class="btn btn-perigo" style="flex:0 0 auto" onClick=${apagar} aria-label="Apagar lançamento"><${Icone} n="lixo" /></button>`}
-    <button class="btn btn-pri" onClick=${salvarLanc}>${editando ? 'Salvar alterações' : 'Salvar lançamento'}</button>`;
+    <button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${salvando} onClick=${salvarUm}>${salvando ? 'Salvando…' : editando ? 'Salvar alterações' : 'Salvar lançamento'}</button>`;
 
   return html`<${Folha} titulo=${editando ? 'Editar lançamento' : 'Novo lançamento'} rodape=${rodape}>
     ${!editando && !inicial && html`<div class="modos" role="group" aria-label="Como lançar">
@@ -178,7 +227,38 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
       </div>
     </div>`}
 
-    ${(modo === 'digitar' || interpretado || editando) && html`<div>
+    ${varios && html`<div aria-label="Vários lançamentos">
+      <div class="duvida"><${Icone} n="info" /><span>Entendi ${varios.length} lançamentos. Confira e salve todos de uma vez.</span></div>
+      <ul class="lista painel varios-lanc" style="margin-top:10px">
+        ${varios.map((x, i) => {
+          const cats = s.tables.categorias.filter((c) => c.tipo === x.tipo && c.ativa !== false);
+          return html`<li class="item varios-item">
+            <div class="varios-linha">
+              <select aria-label=${`Tipo do lançamento ${i + 1}`} value=${x.tipo} onChange=${(e) => setItem(i, { tipo: e.target.value, categoria_id: '' })}>
+                <option value="saida">Saída</option><option value="entrada">Entrada</option></select>
+              <input aria-label=${`Valor do lançamento ${i + 1}`} inputmode="decimal" value=${x.valor} onInput=${(e) => setItem(i, { valor: e.target.value })} aria-invalid=${tentouSalvar && !(parseBRL(x.valor) > 0)} />
+              <button class="icone-btn" aria-label=${`Tirar lançamento ${i + 1}`} onClick=${() => setVarios((xs) => (xs.length > 2 ? xs.filter((_, j) => j !== i) : null))}><${Icone} n="fechar" /></button>
+            </div>
+            <input aria-label=${`Descrição do lançamento ${i + 1}`} value=${x.descricao} placeholder="Descrição" onInput=${(e) => setItem(i, { descricao: e.target.value })} />
+            <div class="varios-linha">
+              <select aria-label=${`Categoria do lançamento ${i + 1}`} value=${x.categoria_id} onChange=${(e) => {
+                const c = s.tables.categorias.find((k) => k.id === e.target.value);
+                setItem(i, { categoria_id: e.target.value, ...(c?.origem_padrao ? { origem: c.origem_padrao } : {}) });
+              }}><option value="">Categoria</option>${cats.map((c) => html`<option value=${c.id}>${c.nome}</option>`)}</select>
+              <select aria-label=${`Origem do lançamento ${i + 1}`} value=${x.origem} onChange=${(e) => setItem(i, { origem: e.target.value })} aria-invalid=${tentouSalvar && !x.origem}>
+                <option value="">Origem</option>${ORIGENS.map((o) => html`<option value=${o}>${origemLabel(o)}</option>`)}</select>
+            </div>
+          </li>`;
+        })}
+      </ul>
+      <div class="linha2">
+        <${SelectConta} rotulo="Conta (de todos)" valor=${varios.every((x) => x.conta_id === varios[0].conta_id) ? varios[0].conta_id : ''} contas=${contas} onChange=${(c) => setVarios((xs) => xs.map((x) => ({ ...x, conta_id: c })))} />
+        <${Campo} rotulo="Dia (de todos)"><input type="date" value=${varios[0].data} onInput=${(e) => setVarios((xs) => xs.map((x) => ({ ...x, data: e.target.value })))} /><//>
+      </div>
+      ${tentouSalvar && faltaVarios > 0 && html`<div class="duvida" role="alert"><${Icone} n="alerta" /><span>Falta valor, conta ou origem em ${faltaVarios} ${faltaVarios === 1 ? 'lançamento' : 'lançamentos'}.</span></div>`}
+    </div>`}
+
+    ${!varios && (modo === 'digitar' || interpretado || editando) && html`<div>
       ${interpretado && faltando.length > 0 && html`<div class="duvida"><${Icone} n="info" /><span>Confira antes de salvar: falta ${faltando.join(', ')}.</span></div>`}
       <div style="margin-top:12px">
         <${Segmento} classe="tipo" rotulo="Tipo" valor=${f.tipo} onChange=${(t) => set({ tipo: t, categoria_id: '' })}

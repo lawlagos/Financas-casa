@@ -311,3 +311,26 @@ test('avisos no celular: ligar inscreve o celular na planilha, teste manda o avi
   assert.deepEqual(erros, []);
   await ctx.close();
 });
+
+test('salvando com a planilha lenta: botão gira e a barra do topo aparece até terminar', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const { page, erros } = await novaPagina(ctx);
+  // a planilha demora 1,2 s para responder ao salvar
+  await ctx.route(`${API}*`, async (r) => {
+    const pedido = JSON.parse(r.request().postData() || '{}');
+    if (pedido.acao === 'salvar') await new Promise((ok) => setTimeout(ok, 1200));
+    await r.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(env.post(pedido)) });
+  });
+  await page.goto(`${base}/#/inicio`);
+  await page.getByRole('button', { name: 'Entrar com Google' }).click();
+  await page.getByRole('button', { name: 'Novo lançamento' }).click();
+  await page.locator('.folha textarea').fill('gastei 12,50 na padaria no itaú');
+  await page.getByRole('button', { name: 'Preencher' }).click();
+  await page.getByRole('button', { name: 'Salvar lançamento' }).click();
+  await page.locator('.folha .btn.carregando', { hasText: 'Salvando…' }).waitFor();
+  await page.getByRole('progressbar', { name: 'Salvando na planilha' }).waitFor();
+  await page.locator('.toast', { hasText: 'Lançamento salvo' }).waitFor();
+  assert.equal(await page.getByRole('progressbar', { name: 'Salvando na planilha' }).count(), 0);
+  assert.deepEqual(erros, []);
+  await ctx.close();
+});

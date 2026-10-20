@@ -194,7 +194,7 @@ export function TelaPdv({ params = {} }) {
         </div>
         <label class="interruptor"><span>Lançar no caixa</span><input type="checkbox" checked=${lancar} onChange=${(e) => setLancar(e.target.checked)} /></label>
         ${semPreco.length > 0 && html`<div class="duvida" style="margin-top:10px"><${Icone} n="alerta" /><span>Digite o preço de ${semPreco.map((l) => l.receita.nome).join(', ')}.</span></div>`}
-        <button class="btn btn-pri btn-larga" style="margin-top:14px" disabled=${salvando || semPreco.length > 0 || (lancar && canal === 'direta' && !conta_id)} onClick=${finalizar}>
+        <button class=${`btn btn-pri btn-larga ${salvando ? 'carregando' : ''}`} style="margin-top:14px" disabled=${salvando || semPreco.length > 0 || (lancar && canal === 'direta' && !conta_id)} onClick=${finalizar}>
           ${salvando ? 'Salvando…' : `Finalizar venda · ${brl(t.bruto)}`}</button>
         <button class="link" style="margin-top:8px" onClick=${() => { setCarrinho({}); setPrecos({}); setQtdTexto({}); }}>Esvaziar carrinho</button>`}
     </section>

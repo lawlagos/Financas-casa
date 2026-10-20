@@ -815,3 +815,60 @@ test('consolidar mercado do pudim: mostra e põe no estoque de ingredientes o qu
   assert.notEqual(await emCasa('Leite condensado'), antes);
   assert.deepEqual(erros, []);
 });
+
+test('vários lançamentos numa frase: "248,55 dizimo - 51,45 oferta" vira dois, salvos de uma vez', async () => {
+  await novo();
+  await page.locator('.folha textarea').fill('248,55 dizimo - 51,45 oferta no itaú');
+  await page.getByRole('button', { name: 'Preencher' }).click();
+  await folha().getByText('Entendi 2 lançamentos').waitFor();
+  assert.equal(await folha().getByLabel('Valor do lançamento 1').inputValue(), '248,55');
+  assert.equal(await folha().getByLabel('Valor do lançamento 2').inputValue(), '51,45');
+  assert.equal(await folha().getByLabel('Categoria do lançamento 1').inputValue(), 'cat-dizimo');
+  await page.getByRole('button', { name: 'Salvar 2 lançamentos' }).click();
+  await toast().filter({ hasText: '2 lançamentos salvos' }).waitFor();
+  await page.goto(`${base}/?demo#/lancamentos`);
+  await page.locator('.item', { hasText: 'Oferta' }).first().waitFor();
+  await page.locator('.item', { hasText: 'Dizimo' }).first().waitFor();
+  assert.deepEqual(erros, []);
+});
+
+test('extrato do mês: entrou, saiu, o que vai sair e filtro', async () => {
+  await page.goto(`${base}/?demo#/inicio`);
+  await page.getByRole('link', { name: 'Dinheiro' }).click();
+  const resumo = page.getByLabel('Resumo do mês');
+  await resumo.getByText('Entrou').waitFor();
+  await resumo.getByText(/vai sair/).waitFor();
+  await page.getByRole('region', { name: 'Vai acontecer' }).locator('.item').first().waitFor();
+  await page.getByText('Fecha o mês em').waitFor();
+  // só saídas: as entradas somem da lista
+  await page.getByRole('group', { name: 'Mostrar' }).getByRole('button', { name: 'Só saídas' }).click();
+  assert.equal(await page.locator('main .valor.pos').count(), 0);
+  assert.ok(await page.locator('main .valor.neg').count() > 0);
+  // mês passado: sem o que vai acontecer
+  await page.getByRole('button', { name: 'Mês anterior' }).click();
+  assert.equal(await page.getByRole('region', { name: 'Vai acontecer' }).count(), 0);
+  assert.deepEqual(erros, []);
+});
+
+test('dízimo: pagar o da semana zera o que falta; dízimo lançado à mão também conta', async () => {
+  const semana = page.getByLabel('Dízimo dos negócios desta semana');
+  const antes = reais(await semana.locator('.num').innerText());
+  assert.ok(antes > 0);
+  await semana.getByRole('button', { name: 'Pagar' }).click();
+  await folha().getByLabel('Saiu de').selectOption({ label: 'Itaú' });
+  await folha().getByRole('button', { name: 'Marcar como pago' }).click();
+  await toast().filter({ hasText: 'pago' }).waitFor();
+  await semana.locator('.num', { hasText: 'R$ 0,00' }).waitFor();
+  await semana.getByText(/^Pago R\$/).waitFor();
+  assert.equal(await semana.getByRole('button', { name: 'Pagar' }).count(), 0);
+  // a semana fechada que estava a pagar: lançar "dízimo" à mão conta para ela
+  const fechada = page.locator('.dizimo-card', { hasText: 'A pagar, semana' });
+  const valor = (await fechada.locator('.num').innerText()).replace('R$', '').trim();
+  await novo();
+  await page.locator('.folha textarea').fill(`${valor} dizimo no itaú`);
+  await page.getByRole('button', { name: 'Preencher' }).click();
+  await page.getByRole('button', { name: 'Salvar lançamento' }).click();
+  await toast().filter({ hasText: 'contado como dízimo pago' }).waitFor();
+  assert.equal(await page.locator('.dizimo-card', { hasText: 'A pagar, semana' }).count(), 0);
+  assert.deepEqual(erros, []);
+});

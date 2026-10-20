@@ -66,3 +66,26 @@ test('valor falado com centavos separados: "54 e 96" é 54,96', async () => {
   assert.equal(v('mercado 87,50'), 87.5);
   assert.equal(v('recebi 2 mil e 50'), 2000);
 });
+
+test('vários lançamentos numa frase: separados por " - ", ";", vírgula, " e " ou linha', async () => {
+  const { parseVarios } = await import('../../app/core/quickparse.js');
+  const t = demoTables('2026-10-20');
+  const ctx = { contas: t.contas, categorias: t.categorias, hoje: '2026-10-20' };
+  const r = parseVarios('248,55 dizimo - 51,45 oferta', ctx);
+  assert.deepEqual(r.map((x) => [x.valor, x.descricao, x.tipo]), [[248.55, 'Dizimo', 'saida'], [51.45, 'Oferta', 'saida']]);
+  assert.equal(r[0].categoria_id, 'cat-dizimo');
+  // conta e dia ditos uma vez valem para todos
+  const r2 = parseVarios('ontem padaria 87,50; farmácia 30 no itaú', ctx);
+  assert.deepEqual(r2.map((x) => [x.valor, x.conta_id, x.data]), [[87.5, 'itau', '2026-10-19'], [30, 'itau', '2026-10-19']]);
+  assert.equal(parseVarios('uber 25 e padaria 12', ctx).length, 2);
+  assert.equal(parseVarios('padaria 12\nuber 25\nfarmácia 40', ctx).length, 3);
+  // um valor só, ou centavos falados, não viram vários
+  assert.equal(parseVarios('gastei 54 e 96 no mercado', ctx), null);
+  assert.equal(parseVarios('Assaí - pudim 87,50', ctx), null);
+  assert.equal(parseVarios('mercado 87,50', ctx), null);
+});
+
+test('"2 mil e 50" continua um valor só', async () => {
+  const { parseVarios } = await import('../../app/core/quickparse.js');
+  assert.equal(parseVarios('recebi 2 mil e 50', { contas: [], categorias: [], hoje: '2026-10-20' }), null);
+});

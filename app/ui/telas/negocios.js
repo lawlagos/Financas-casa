@@ -50,6 +50,7 @@ export function TelaNegocios() {
   const semanas = businessWeeks(s.tables.lancamentos, s.hoje);
   const atual = semanas[semanas.length - 1];
   const ultimas = semanas.slice(-12);
+  const faltaSemana = Math.max(0, atual.dizimo - (atual.pago?.valor || 0));
   const pagarSemana = (w) => abrirFolha('dizimo', { referencia: refSemana(w.inicio), valor: w.dizimo, titulo: `Dízimo dos negócios, semana de ${fmtDay(w.inicio)} a ${fmtDay(w.fim)}` });
   const mes = monthKey(s.hoje);
   const meses = [0, -1, -2].map((n) => monthlyTithe(s.tables.lancamentos, addMonthsKey(mes, n)));
@@ -74,6 +75,10 @@ export function TelaNegocios() {
       <div style="display:flex;justify-content:space-between;margin-top:6px"><span>Base do dízimo</span><strong>${brl(Math.max(0, atual.base))}</strong></div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
         <span style="font-weight:700">Dízimo até agora</span><span style="font:700 26px var(--display)">${brl(atual.dizimo)}</span></div>
+      ${atual.pago && html`<div style="display:flex;justify-content:space-between;margin-top:6px"><span>Já pago</span><span class="pos">− ${brl(atual.pago.valor)}</span></div>`}
+      ${faltaSemana > 0
+        ? html`<button class="btn btn-pri btn-larga" style="margin-top:12px" onClick=${() => abrirFolha('dizimo', { referencia: refSemana(atual.inicio), valor: faltaSemana, titulo: `Dízimo dos negócios, semana de ${fmtDay(atual.inicio)} a ${fmtDay(atual.fim)}` })}>Pagar ${brl(faltaSemana)}</button>`
+        : atual.dizimo > 0 && html`<p class="pos" style="margin:10px 0 0;font-weight:700">Dízimo desta semana pago.</p>`}
       ${atual.base < 0 && html`<p class="muted" style="font-size:13px;margin:8px 0 0">Se a semana fechar assim, ${brl(-atual.base)} de prejuízo passam para a próxima semana.</p>`}
     </div>
 

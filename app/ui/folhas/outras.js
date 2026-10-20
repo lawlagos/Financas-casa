@@ -71,16 +71,23 @@ export function FolhaDizimo({ referencia, valor, titulo }) {
   const [f, setF] = useState({ valor: (valor / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 }), conta_id: ultimo?.conta_id || '', data: s.hoje });
   const set = (p) => setF((x) => ({ ...x, ...p }));
   const v = parseBRL(f.valor);
+  const [salvando, setSalvando] = useState(false);
   const pagar = async () => {
     if (!(v > 0) || !f.conta_id) return;
-    await salvar('lancamentos', {
+    setSalvando(true);
+    try {
+      await salvar('lancamentos', {
       tipo: 'saida', valor: v, descricao: titulo, data: f.data, conta_id: f.conta_id, conta_destino_id: '', categoria_id: CATEGORIA_DIZIMO,
       origem: 'Casa', canal: 'manual', id_externo: referencia, previsto_id: '',
-    });
+      });
+    } catch {
+      setSalvando(false);
+      return;
+    }
     fecharFolha();
     toast(`${titulo} pago: ${brl(Math.round(v * 100))}`);
   };
-  return html`<${Folha} titulo="Pagar dízimo" rodape=${html`<button class="btn btn-pri" disabled=${!(v > 0) || !f.conta_id} onClick=${pagar}><${Icone} n="check" />Marcar como pago</button>`}>
+  return html`<${Folha} titulo="Pagar dízimo" rodape=${html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${!(v > 0) || !f.conta_id || salvando} onClick=${pagar}><${Icone} n="check" />Marcar como pago</button>`}>
     <p style="margin:0;color:var(--ink-2)">${titulo}</p>
     <div class="linha2">
       <${Campo} rotulo="Valor"><input inputmode="decimal" value=${f.valor} onInput=${(e) => set({ valor: e.target.value })} /><//>

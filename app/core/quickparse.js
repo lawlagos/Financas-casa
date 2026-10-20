@@ -116,3 +116,26 @@ function descricao(texto, nomesContas) {
   const limpo = palavras.join(' ').trim();
   return limpo ? limpo[0].toUpperCase() + limpo.slice(1) : '';
 }
+
+// Vários lançamentos na mesma frase: "248,55 dízimo - 51,45 oferta", "mercado 87,50; farmácia 30",
+// "uber 25 e padaria 12" (um por linha também vale). Devolve null quando há só um valor.
+// O que vale para a frase toda (conta, dia) e só foi dito num trecho vale para os outros.
+export function parseVarios(texto, ctx) {
+  const pedacos = String(texto || '')
+    // " e " separa "dízimo e 51,45" e "uber 25 e padaria", mas não "54 e 96" (centavos falados).
+    .split(/\n|;|\s+[-–—+]\s+|,\s+(?=(?:r\$\s*)?\d)|(?<=[a-zA-ZÀ-ú])(?<!mil)\s+e\s+(?=(?:r\$\s*)?\d)|(?<=\d)\s+e\s+(?=[a-zA-ZÀ-ú])/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  // Trecho sem valor ("Assaí - pudim") volta a fazer parte do anterior.
+  const trechos = [];
+  for (const p of pedacos) {
+    const temValor = parseQuick(p, ctx).valor !== null;
+    if (!temValor && trechos.length) trechos[trechos.length - 1] += ` ${p}`;
+    else trechos.push(p);
+  }
+  const itens = trechos.map((p) => ({ trecho: p, ...parseQuick(p, ctx) })).filter((x) => x.valor !== null);
+  if (itens.length < 2) return null;
+  const conta = itens.find((x) => x.conta_id)?.conta_id || null;
+  const dia = itens.find((x) => x.data !== ctx.hoje)?.data || null;
+  return itens.map((x) => ({ ...x, conta_id: x.conta_id || conta, data: x.data !== ctx.hoje ? x.data : dia || x.data }));
+}
