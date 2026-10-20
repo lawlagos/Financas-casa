@@ -57,31 +57,47 @@ function interpretar_(dados) {
     }],
     generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
   };
-  var modelo = modeloGemini_(chave);
-  var resp = chamarGemini_(modelo, chave, corpo);
-  if (resp.getResponseCode() === 404) {
-    // Modelo aposentado: descobre outro na lista e tenta de novo uma vez.
-    modelo = modeloGemini_(chave, true);
+  // Tenta o modelo de sempre; se ele foi aposentado, está sem cota ou fora do ar, tenta outros (cada modelo tem a sua cota).
+  var props = PropertiesService.getScriptProperties();
+  var fila = [modeloGemini_(chave)];
+  var redescoberto = false;
+  var tentados = {};
+  var resp = null, codigo = 0, modelo = '', motivo = '';
+  while (fila.length) {
+    modelo = fila.shift();
+    if (!modelo || tentados[modelo]) continue;
+    tentados[modelo] = true;
     resp = chamarGemini_(modelo, chave, corpo);
-  }
-  var codigo = resp.getResponseCode();
-  if (codigo === 429) throw erro_('ia-limite', 'O limite gratuito do Gemini acabou por agora. Tente de novo em alguns minutos ou lance pelo formulário.');
-  if (codigo === 404) throw erro_('ia-modelo', 'Não achei um modelo do Gemini disponível para a sua chave (tentei ' + modelo + '). Apague a propriedade GEMINI_MODELO, se existir, e tente de novo.');
-  if (codigo === 400 || codigo === 403) {
-    // 400 também vem de imagem ilegível ou grande demais: só culpa a chave quando o Gemini diz que é a chave.
+    codigo = resp.getResponseCode();
+    if (codigo === 200) break;
     var detalhe = {};
     try { detalhe = JSON.parse(resp.getContentText()).error || {}; } catch (e) { detalhe = {}; }
+    motivo = String(detalhe.message || '').slice(0, 200);
     var texto = String(detalhe.status || '') + ' ' + String(detalhe.message || '') + ' ' + JSON.stringify(detalhe.details || '');
-    if (codigo === 403 || /API_KEY|PERMISSION_DENIED|api key/i.test(texto)) throw erro_('ia-chave', 'O Gemini recusou a chave. Confira a propriedade GEMINI_API_KEY no Apps Script.');
-    throw erro_('ia', 'O Gemini não conseguiu ler esta imagem. Tente um print mais nítido ou menor, ou lance pelo formulário.');
+    if (codigo === 403 || (codigo === 400 && /API_KEY|PERMISSION_DENIED|api key/i.test(texto))) throw erro_('ia-chave', 'O Gemini recusou a chave. Confira a propriedade GEMINI_API_KEY no Apps Script.' + (motivo ? ' (' + motivo + ')' : ''));
+    // 400 de imagem ruim não melhora trocando de modelo; 400 que fala do modelo, sim.
+    if (codigo === 400 && !/model|not supported|unsupported|mime|response_mime/i.test(texto)) break;
+    if (!redescoberto) {
+      redescoberto = true;
+      fila.push(modeloGemini_(chave, true));
+    }
+    fila.push('gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite');
   }
-  if (codigo !== 200) throw erro_('ia', 'O Gemini não respondeu (erro ' + codigo + '). Tente de novo.');
+  var extra = motivo ? ' Detalhe: ' + motivo : '';
+  if (codigo === 200 && !props.getProperty('GEMINI_MODELO')) props.setProperty('GEMINI_MODELO_AUTO', modelo);
+  if (codigo === 429) throw erro_('ia-limite', 'O limite gratuito do Gemini acabou por agora. Tente de novo em alguns minutos ou lance pelo formulário.' + extra);
+  if (codigo === 404) throw erro_('ia-modelo', 'Não achei um modelo do Gemini disponível para a sua chave (tentei ' + Object.keys(tentados).join(', ') + '). Apague a propriedade GEMINI_MODELO, se existir, e tente de novo.');
+  if (codigo === 400) throw erro_('ia', 'O Gemini não conseguiu ler esta imagem. Tente um print mais nítido ou menor, ou lance pelo formulário.' + extra);
+  if (codigo !== 200) throw erro_('ia', 'O Gemini não respondeu (erro ' + codigo + '). Tente de novo.' + extra);
   var json = JSON.parse(resp.getContentText());
-  var texto = json.candidates && json.candidates[0] && json.candidates[0].content && json.candidates[0].content.parts &&
-    json.candidates[0].content.parts.map(function (p) { return p.text || ''; }).join('');
-  if (!texto) throw erro_('ia', 'O Gemini não conseguiu ler a imagem. Tente um print mais nítido.');
+  // Modelos que "pensam" mandam partes com thought: true antes da resposta; só vale o texto final.
+  var partes = (json.candidates && json.candidates[0] && json.candidates[0].content && json.candidates[0].content.parts) || [];
+  var resposta = partes.filter(function (p) { return !p.thought; }).map(function (p) { return p.text || ''; }).join('').trim();
+  if (!resposta) throw erro_('ia', 'O Gemini não conseguiu ler a imagem' + (json.candidates && json.candidates[0] && json.candidates[0].finishReason ? ' (' + json.candidates[0].finishReason + ')' : '') + '. Tente um print mais nítido.');
   try {
-    return JSON.parse(texto.replace(/^```(json)?/, '').replace(/```$/, ''));
+    var inicio = resposta.indexOf('{');
+    var fim = resposta.lastIndexOf('}');
+    return JSON.parse(inicio >= 0 && fim > inicio ? resposta.slice(inicio, fim + 1) : resposta);
   } catch (e) {
     throw erro_('ia', 'A resposta do Gemini veio num formato inesperado. Tente de novo.');
   }

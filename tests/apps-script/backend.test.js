@@ -175,6 +175,26 @@ test('interpretar: modelo aposentado (404) faz o servidor escolher outro e tenta
   assert.equal(props.GEMINI_MODELO_AUTO, 'gemini-3.6-flash');
 });
 
+test('interpretar: modelo sem cota (429) ou fora do ar tenta outros modelos; resposta com "pensamento" é ignorada', () => {
+  const props = { ...PROPS, GEMINI_API_KEY: 'k', GEMINI_MODELO_AUTO: 'gemini-3.6-flash' };
+  const e = ambiente({
+    props,
+    tokeninfo: tokenOk('marido@gmail.com'),
+    gemini: (url) => {
+      if (url.includes('/models?')) return { code: 200, body: JSON.stringify(LISTA_MODELOS) };
+      if (url.includes('gemini-3.6-flash:')) return { code: 429, body: JSON.stringify({ error: { message: 'Quota exceeded' } }) };
+      if (url.includes('gemini-flash-latest:')) return { code: 503, body: '{}' };
+      return { code: 200, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: 'pensando...', thought: true }, { text: 'Aqui está: {"lancamentos":[{"valor":10}]}' }] } }] }) };
+    },
+  });
+  e.ctx.configurar();
+  const { sessao } = e.post({ acao: 'entrar', dados: { idToken: 'x' } }).dados;
+  const r = e.post({ acao: 'interpretar', sessao, dados: { imagem: 'x' } });
+  assert.equal(r.ok, true, r.erro);
+  assert.deepEqual(r.dados, { lancamentos: [{ valor: 10 }] });
+  assert.equal(props.GEMINI_MODELO_AUTO, 'gemini-2.5-flash');
+});
+
 test('interpretar: sem sessão, sem chave, limite e modelo inexistente dão mensagens claras', () => {
   const base = { props: { ...PROPS }, tokeninfo: tokenOk('marido@gmail.com') };
   let e = ambiente(base);
