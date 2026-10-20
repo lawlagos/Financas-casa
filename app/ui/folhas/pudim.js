@@ -5,9 +5,9 @@ import { Folha, Segmento, Chips, Campo } from '../componentes.js';
 import { useStore, salvar, salvarVarias, fecharFolha, toast, config, abrirFolha } from '../../data/store.js';
 import { brl, parseBRL, toCents } from '../../core/money.js';
 import { addDays, fmtDay } from '../../core/dates.js';
-import { custoReceita, custoInsumo, ingredientesDe, VALIDADE_PADRAO, precoNoCanal, totaisCarrinho, CANAIS, MARKUP_PADRAO, lerCustos, valorMinuto, ehSabor, ehPreparo, idPreparo, produtosDoSabor, TAMANHOS_PADRAO } from '../../core/pudim.js';
+import { lotesNaGeladeira, custoReceita, custoInsumo, ingredientesDe, VALIDADE_PADRAO, precoNoCanal, totaisCarrinho, CANAIS, MARKUP_PADRAO, lerCustos, valorMinuto, ehSabor, ehPreparo, idPreparo, produtosDoSabor, TAMANHOS_PADRAO } from '../../core/pudim.js';
 import { interpretarEstoque } from '../../core/vozestoque.js';
-import { registrarFala, taxaIfood, registrarLote, registrarEnvio, editarMovimento, apagarMovimento, itensDaVenda, itensDoLote } from '../../data/pudim-acoes.js';
+import { registrarFala, registrarEntradas, pagamentosIfood, lancarPagamentoIfood, taxaIfood, contasDaVenda, CONTA_VENDAS_DIRETAS, registrarLote, registrarEnvio, editarMovimento, apagarMovimento, itensDaVenda, itensDoLote } from '../../data/pudim-acoes.js';
 import { CampoFala } from '../voz.js';
 import { chaveProduto, produtoDoItem, produtos } from '../../core/mercado.js';
 import { contasAtivas } from '../derivados.js';
@@ -122,6 +122,207 @@ export function FolhaMovimento({ tipo = 'producao', receita_id: receitaPedida, q
   <//>`;
 }
 
+// Pôr no estoque um pudim: "+3, vence dia tal"; tem outro lote? "+3" com outra validade. Sem amarrar à receita
+// (o rendimento varia): entra o que saiu de verdade. Cada linha vira um lote com a sua validade.
+export function FolhaEntrada({ receita_id: receitaPedida, local: localPedido, quantidade: qtdPedida }) {
+  const s = useStore();
+  const d = dadosPudim(s);
+  const [local, setLocal] = useState(d.locaisPorId[localPedido] ? localPedido : d.locais[0].id);
+  const doLocal = produtosDoLocal(d, local);
+  const [receita_id, setReceita] = useState((receitaPedida && d.receitasPorId[receitaPedida]?.id) || doLocal[0]?.id || '');
+  const [data, setData] = useState(s.hoje);
+  // validade '' = automática (dia + validade do pudim), até a pessoa mudar.
+  const [lotes, setLotes] = useState([{ quantidade: qtdPedida ? virgula(qtdPedida) : '', validade: '' }]);
+  const [salvando, setSalvando] = useState(false);
+  const r = d.receitasPorId[receita_id];
+  const c = d.custos[receita_id] || { porUnidade: 0, fixoUnidade: 0 };
+  const auto = addDays(data, Number(r?.validade_dias) || VALIDADE_PADRAO);
+  const setLote = (k, p) => setLotes((x) => x.map((l, j) => (j === k ? { ...l, ...p } : l)));
+  const somar = (k, n) => setLote(k, { quantidade: virgula(Math.max(0, numero(lotes[k].quantidade) + n)) });
+  const validos = lotes.map((l) => ({ quantidade: numero(l.quantidade), validade: l.validade || auto })).filter((l) => l.quantidade > 0);
+  const total = validos.reduce((t, l) => t + l.quantidade, 0);
+  const tem = d.prontos[local]?.[receita_id] || 0;
+  const ok = r && validos.length > 0 && doLocal.some((x) => x.id === receita_id);
+  const trocaLocal = (l) => {
+    setLocal(l);
+    if (!produtosDoLocal(d, l).some((x) => x.id === receita_id)) setReceita(produtosDoLocal(d, l)[0]?.id || '');
+  };
+  const guardar = async () => {
+    if (!ok) return;
+    setSalvando(true);
+    try {
+      await registrarEntradas({ receita: r, custo: c.porUnidade, fixo: c.fixoUnidade, local, data, lotes: validos });
+      fecharFolha();
+      toast(`${virgula(total)} ${r.nome} no estoque${validos.length > 1 ? ` em ${validos.length} lotes` : `, vence ${fmtDay(validos[0].validade)}`}`);
+    } catch {
+      setSalvando(false);
+    }
+  };
+  if (!d.receitas.length) return html`<${Folha} titulo="Pôr no estoque"><p class="muted">Cadastre ou importe as receitas primeiro.</p><//>`;
+  return html`<${Folha} titulo="Pôr no estoque" rodape=${html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''} ${!ok ? 'inativo' : ''}`} disabled=${salvando} onClick=${guardar}>${salvando ? 'Salvando…' : total ? `Pôr ${virgula(total)} no estoque` : 'Pôr no estoque'}</button>`}>
+    <${EscolheLocal} locais=${d.locais} valor=${local} onChange=${trocaLocal} />
+    <${Campo} rotulo="Qual pudim" ajuda=${r ? `Tem ${tem} pronto${tem === 1 ? '' : 's'}${d.locais.length > 1 ? ` em ${d.locaisPorId[local].nome}` : ''}. Vale ${r.validade_dias || VALIDADE_PADRAO} dias.` : ''}>
+      <select aria-label="Qual pudim" value=${receita_id} onChange=${(e) => setReceita(e.target.value)}>
+        ${doLocal.map((x) => html`<option value=${x.id}>${x.nome}</option>`)}
+      </select>
+    <//>
+    <${Campo} rotulo="Feito no dia"><input type="date" value=${data} onInput=${(e) => setData(e.target.value)} /><//>
+    <ul class="lista painel entrada-lotes" aria-label="Lotes">
+      ${lotes.map((l, k) => html`<li class="item entrada-lote">
+        <div class="entrada-cab"><strong>${lotes.length > 1 ? `Lote ${k + 1}` : 'Quantos'}</strong>
+          ${lotes.length > 1 && html`<button class="icone-btn" aria-label=${`Tirar lote ${k + 1}`} onClick=${() => setLotes((x) => x.filter((_, j) => j !== k))}><${Icone} n="fechar" /></button>`}</div>
+        <div class="entrada-linha">
+          <div class="pdv-contador">
+            <button class="icone-btn" aria-label=${`Menos no lote ${k + 1}`} disabled=${!(numero(l.quantidade) > 0)} onClick=${() => somar(k, -1)}>−</button>
+            <input aria-label=${`Quantidade do lote ${k + 1}`} inputmode="decimal" placeholder="0" value=${l.quantidade} onInput=${(e) => setLote(k, { quantidade: e.target.value })} />
+            <button class="icone-btn" aria-label=${`Mais no lote ${k + 1}`} onClick=${() => somar(k, 1)}>+</button>
+          </div>
+          <label class="entrada-vence"><span>vence</span><input type="date" aria-label=${`Validade do lote ${k + 1}`} value=${l.validade || auto} onInput=${(e) => setLote(k, { validade: e.target.value })} /></label>
+        </div>
+        <div class="chips entrada-rapido">${[3, 6, 12].map((n) => html`<button class="chip" onClick=${() => somar(k, n)}>+${n}</button>`)}</div>
+      </li>`)}
+    </ul>
+    <button class="btn btn-sec btn-larga" style="margin-top:10px" onClick=${() => setLotes((x) => [...x, { quantidade: '', validade: '' }])}><${Icone} n="mais" />Outro lote</button>
+    ${total > 0 && html`<p class="muted" style="font-size:13px;margin:10px 2px 0">${virgula(total)} ${r?.nome}, ≈ ${brl(Math.round(c.porUnidade * total))} em ingredientes e embalagens (sai do estoque de ingredientes).</p>`}
+  <//>`;
+}
+
+// Lote na geladeira: o que tem nele, quanto de cada e a validade. Dá para corrigir a quantidade de cada pudim,
+// a validade e o local do lote todo, ou tirar um pudim do lote.
+export function FolhaVerLote({ lote, local: localLote }) {
+  const s = useStore();
+  const d = dadosPudim(s);
+  const movs = d.movimentos.filter((m) => m.tipo === 'producao' && (m.lote_id || m.id) === lote);
+  const primeiro = movs[0];
+  const [f, setF] = useState(() => ({
+    validade: primeiro?.validade || '', data: primeiro?.data || s.hoje, local: primeiro ? primeiro.local || d.locais[0].id : '',
+    qtds: Object.fromEntries(movs.map((m) => [m.id, virgula(m.quantidade)])),
+  }));
+  const [salvando, setSalvando] = useState(false);
+  if (!primeiro) return html`<${Folha} titulo="Lote"><p class="muted">Esse lote não existe mais.</p><//>`;
+  const set = (p) => setF((x) => ({ ...x, ...p }));
+  // O que ainda resta de cada pudim do lote (onde ele está agora, inclusive o que foi enviado).
+  const resta = {};
+  for (const lt of d.lotes) if (lt.lote === lote) resta[lt.receita_id] = (resta[lt.receita_id] || 0) + lt.restante;
+  const nome = (id) => d.locaisPorId[id]?.nome || id;
+  const mudou = (m) => numero(f.qtds[m.id]) !== Number(m.quantidade) || f.validade !== m.validade || f.data !== m.data || f.local !== (m.local || d.locais[0].id);
+  const alterados = movs.filter(mudou);
+  const ok = f.validade && f.data && movs.every((m) => numero(f.qtds[m.id]) >= 0);
+  const guardar = async () => {
+    if (!ok) return;
+    setSalvando(true);
+    try {
+      for (const m of alterados) {
+        const q = numero(f.qtds[m.id]);
+        if (q === 0) await apagarMovimento(m);
+        else await editarMovimento(m, { quantidade: q, validade: f.validade, data: f.data, local: f.local });
+      }
+      fecharFolha();
+      toast(alterados.length ? 'Lote corrigido' : 'Nada mudou');
+    } catch {
+      setSalvando(false);
+    }
+  };
+  const apagarLote = async () => {
+    for (const m of movs) await apagarMovimento(m);
+    fecharFolha();
+    toast('Lote apagado');
+  };
+  const total = movs.reduce((t, m) => t + numero(f.qtds[m.id]), 0);
+  return html`<${Folha} titulo=${`Lote de ${fmtDay(primeiro.data)}`} rodape=${html`<button class="btn btn-sec" onClick=${apagarLote}>Apagar lote</button><button class=${`btn btn-pri ${salvando ? 'carregando' : ''}`} disabled=${!ok || salvando} onClick=${guardar}>${salvando ? 'Salvando…' : 'Salvar'}</button>`}>
+    <p class="muted" style="font-size:13px;margin:0 0 6px">${virgula(total)} pudins${localLote && localLote !== f.local ? ` (parte está em ${nome(localLote)})` : ''}. Mude a quantidade de cada um, a validade ou o local. Zero tira o pudim do lote.</p>
+    <${EscolheLocal} locais=${d.locais} valor=${f.local} onChange=${(v) => set({ local: v })} rotulo="Está em" />
+    <div class="linha2">
+      <${Campo} rotulo="Feito no dia"><input type="date" value=${f.data} onInput=${(e) => set({ data: e.target.value })} /><//>
+      <${Campo} rotulo="Vence em"><input type="date" aria-label="Vence em" value=${f.validade} onInput=${(e) => set({ validade: e.target.value })} /><//>
+    </div>
+    <ul class="lista painel" style="margin-top:12px" aria-label="Pudins do lote">
+      ${movs.map((m) => {
+        const q = numero(f.qtds[m.id]);
+        const r = d.receitasPorId[m.receita_id];
+        const saiu = Number(m.quantidade) - (resta[m.receita_id] || 0);
+        return html`<li class="item"><div class="corpo"><div class="tit">${r?.nome || 'receita apagada'}</div>
+          <div class="meta">${saiu > 0 ? `já saíram ${virgula(saiu)}, restam ${virgula(resta[m.receita_id] || 0)}` : 'nenhum saiu ainda'}</div></div>
+          <div class="pdv-contador">
+            <button class="icone-btn" aria-label=${`Menos ${r?.nome || ''}`} disabled=${!(q > 0)} onClick=${() => set({ qtds: { ...f.qtds, [m.id]: virgula(Math.max(0, q - 1)) } })}>−</button>
+            <input aria-label=${`Quantos ${r?.nome || ''}`} inputmode="decimal" value=${f.qtds[m.id]} onInput=${(e) => set({ qtds: { ...f.qtds, [m.id]: e.target.value } })} />
+            <button class="icone-btn" aria-label=${`Mais ${r?.nome || ''}`} onClick=${() => set({ qtds: { ...f.qtds, [m.id]: virgula(q + 1) } })}>+</button>
+          </div></li>`;
+      })}
+    </ul>
+  <//>`;
+}
+
+// Todos os lotes na geladeira, do que vence primeiro. Toque abre o lote.
+export function FolhaLotes({ local = '' }) {
+  const s = useStore();
+  const d = dadosPudim(s);
+  const lotes = lotesNaGeladeira(d.lotes, s.hoje, local || null);
+  const amanha = addDays(s.hoje, 1);
+  const nome = (id) => d.locaisPorId[id]?.nome || id;
+  const resumo = (g) => Object.entries(g.itens).filter(([, q]) => q > 0).map(([id, q]) => `${virgula(q)} ${d.receitasPorId[id]?.nome || '?'}`).sort((a, b) => a.replace(/^[\d,]+ /, '').localeCompare(b.replace(/^[\d,]+ /, ''))).join(', ');
+  return html`<${Folha} titulo="Validade dos lotes">
+    ${lotes.length
+      ? html`<ul class="lista painel" aria-label="Lotes">
+        ${lotes.map((g) => html`<li><button class="item item-btn" onClick=${() => abrirFolha('ver-lote', { lote: g.lote, local: g.local })}><div class="corpo">
+          <div class="tit">Lote de ${fmtDay(g.produzidoEm)}${d.locais.length > 1 ? ` · ${nome(g.local)}` : ''}</div>
+          <div class="meta quebra">${resumo(g)}</div></div>
+          <div class=${`valor ${g.vencido ? 'neg' : g.validade <= amanha ? 'atencao' : ''}`}>${g.vencido ? 'venceu' : 'vence'}<small>${fmtDay(g.validade)}</small></div>
+        </button></li>`)}
+      </ul>
+      <p class="muted" style="font-size:12.5px;margin:8px 2px 0">Toque num lote para corrigir quantidades, validade ou local.</p>`
+      : html`<p class="muted">Nenhum lote na geladeira.</p>`}
+  <//>`;
+}
+
+// Quarta-feira mais recente (hoje, se hoje for quarta).
+export const ultimaQuarta = (hoje) => addDays(hoje, -((new Date(`${hoje}T12:00:00Z`).getUTCDay() + 4) % 7));
+
+// O iFood pagou (toda quarta): lança à mão na conta iFood. Mostra as vendas do iFood da semana que ele paga,
+// para conferir, e os pagamentos já lançados.
+export function FolhaPagamentoIfood() {
+  const s = useStore();
+  const [data, setData] = useState(ultimaQuarta(s.hoje));
+  const [valor, setValor] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const quarta = new Date(`${data}T12:00:00Z`).getUTCDay() === 3;
+  const segunda = addDays(data, -9);
+  const domingo = addDays(data, -3);
+  const vendas = (s.tables.estoque || []).filter((m) => m.tipo === 'venda' && m.canal === 'ifood' && m.data >= segunda && m.data <= domingo);
+  const qtd = vendas.reduce((t, m) => t + (Number(m.quantidade) || 0), 0);
+  const bruto = vendas.reduce((t, m) => t + Math.round((Number(m.quantidade) || 0) * toCents(m.preco_unitario || 0)), 0);
+  const taxa = vendas.reduce((t, m) => t + Math.round((Number(m.quantidade) || 0) * toCents(m.taxa_unitaria || 0)), 0);
+  const v = parseBRL(valor);
+  const historico = pagamentosIfood(s.tables.lancamentos).slice(0, 10);
+  const guardar = async () => {
+    if (!(v > 0) || !data) return;
+    setSalvando(true);
+    try {
+      await lancarPagamentoIfood({ data, valor: v });
+      fecharFolha();
+      toast(`Pagamento do iFood de ${brl(Math.round(v * 100))} lançado na conta iFood`);
+    } catch {
+      setSalvando(false);
+    }
+  };
+  return html`<${Folha} titulo="Pagamento do iFood" rodape=${html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''} ${!(v > 0) ? 'inativo' : ''}`} disabled=${salvando} onClick=${guardar}>${salvando ? 'Salvando…' : v > 0 ? `Lançar ${brl(Math.round(v * 100))}` : 'Lançar'}</button>`}>
+    <p class="muted" style="font-size:13px;margin:0 0 6px">As vendas do iFood só tiram do estoque. O dinheiro entra aqui, quando o iFood paga (na quarta), na conta iFood.</p>
+    <div class="linha2">
+      <${Campo} rotulo="Dia que pagou"><input type="date" value=${data} onInput=${(e) => setData(e.target.value)} /><//>
+      <${Campo} rotulo="Valor que caiu"><input id="pagamento-ifood-valor" inputmode="decimal" placeholder="0,00" value=${valor} onInput=${(e) => setValor(e.target.value)} /><//>
+    </div>
+    ${quarta && html`<div class="painel painel-pad" style="margin-top:10px" aria-label="Vendas da semana paga">
+      <div class="rot-mercado">Vendas no iFood de ${fmtDay(segunda)} a ${fmtDay(domingo)}</div>
+      ${qtd ? html`<div style="display:flex;justify-content:space-between;margin-top:6px"><span>${virgula(qtd)} pudins</span><strong>${brl(bruto)}</strong></div>
+        <div class="muted" style="display:flex;justify-content:space-between;margin-top:4px;font-size:13.5px"><span>Depois da taxa, deve vir ≈</span><span>${brl(bruto - taxa)}</span></div>`
+        : html`<div class="muted" style="font-size:13.5px;margin-top:4px">Nenhuma venda do iFood registrada nessa semana.</div>`}
+    </div>`}
+    ${historico.length > 0 && html`<div class="rot-mercado" style="margin:16px 0 6px">Pagamentos já lançados</div>
+      <ul class="lista painel" aria-label="Pagamentos do iFood">${historico.map((l) => html`<li class="item"><div class="corpo"><div class="tit">${fmtDay(l.data)}</div>
+        <div class="meta">${l.descricao}</div></div><div class="valor pos">${brl(toCents(l.valor))}</div></li>`)}</ul>`}
+  <//>`;
+}
+
 // Lista de pudins com um campo de quantidade cada (lote e envio).
 function Quantidades({ lista, qtds, setQtd, extra }) {
   return html`<ul class="lista painel" style="margin-top:12px">
@@ -231,15 +432,17 @@ export function FolhaEstoqueProduto({ receita_id, local: localTela = '' }) {
   const liquidoIfood = ifood.preco - Math.round((ifood.preco * taxaPct) / 100);
   const amanha = addDays(s.hoje, 1);
   const locais = locaisDoProduto(r, d.locais);
+  // Por lote (cada entrada com a sua validade), do que vence primeiro.
   const porLocal = locais.map((l) => {
-    const porValidade = {};
+    const grupos = {};
     let investido = 0;
     for (const lt of d.lotes) {
       if (lt.receita_id !== r.id || lt.local !== l.id) continue;
-      porValidade[lt.validade] = (porValidade[lt.validade] || 0) + lt.restante;
+      const k = `${lt.lote}|${lt.validade}`;
+      (grupos[k] ||= { lote: lt.lote, validade: lt.validade, produzidoEm: lt.produzidoEm, quantidade: 0, vencido: lt.validade < s.hoje }).quantidade += lt.restante;
       if (lt.validade >= s.hoje) investido += lt.restante * lt.custo;
     }
-    const linhas = Object.entries(porValidade).sort(([a], [b]) => (a < b ? -1 : 1)).map(([validade, quantidade]) => ({ validade, quantidade, vencido: validade < s.hoje }));
+    const linhas = Object.values(grupos).sort((a, b) => (a.validade < b.validade ? -1 : a.validade > b.validade ? 1 : 0));
     const minimo = Math.ceil((Number(r.estoque_minimo) || 0) * (Number(r.rendimento) || 1) * (Number(l.fator) || 0));
     return { local: l, linhas, prontos: linhas.filter((x) => !x.vencido).reduce((t, x) => t + x.quantidade, 0), minimo, investido };
   });
@@ -256,13 +459,14 @@ export function FolhaEstoqueProduto({ receita_id, local: localTela = '' }) {
     ${porLocal.map((x) => html`<div class="estoque-local">
       <h4><span>${x.local.nome}</span><span class=${x.minimo > 0 && x.prontos < x.minimo ? 'neg' : ''}>${x.prontos} pronto${x.prontos === 1 ? '' : 's'}${x.minimo ? ` · mín. ${x.minimo}` : ''}</span></h4>
       ${x.linhas.length
-        ? html`<ul class="lista painel">${x.linhas.map((l) => html`<li class="item"><div class="corpo"><div class="tit">${l.quantidade} ${l.quantidade === 1 ? 'unidade' : 'unidades'}</div></div>
-            <div class=${`valor ${l.vencido ? 'neg' : l.validade <= amanha ? 'atencao' : ''}`} style="font-size:14px">${quando(l.validade)}</div></li>`)}</ul>`
+        ? html`<ul class="lista painel" aria-label=${`Lotes em ${x.local.nome}`}>${x.linhas.map((l) => html`<li><button class="item item-btn" onClick=${() => ir('ver-lote', { lote: l.lote, local: x.local.id })}>
+            <div class="corpo"><div class="tit">${virgula(l.quantidade)} ${l.quantidade === 1 ? 'unidade' : 'unidades'}</div><div class="meta">feito ${fmtDay(l.produzidoEm)} · toque para corrigir</div></div>
+            <div class=${`valor ${l.vencido ? 'neg' : l.validade <= amanha ? 'atencao' : ''}`} style="font-size:14px">${quando(l.validade)}</div></button></li>`)}</ul>`
         : html`<p class="muted" style="margin:2px 0 0;font-size:13.5px">Nenhum.</p>`}
       ${x.prontos > 0 && html`<p class="muted" style="margin:6px 2px 0;font-size:13px">Custaram ${brl(x.investido)} em ingredientes e embalagem (${brl(Math.round(x.investido / x.prontos))} cada). Se perder um, perde isso.</p>`}
     </div>`)}
     <div class="acoes acoes-pudim" style="margin-top:16px">
-      <button class="btn btn-pri" onClick=${() => ir('movimento', { tipo: 'producao', receita_id: r.id, quantidade: Number(r.rendimento) || 1, local: opLocal })}>Produzi</button>
+      <button class="btn btn-pri" onClick=${() => ir('entrada', { receita_id: r.id, local: opLocal })}>Pôr no estoque</button>
       <a class="btn btn-sec" href=${`#/pudim/vender?local=${opLocal}`} onClick=${() => fecharFolha()}>Vender</a>
       <button class="btn btn-sec" onClick=${() => ir('movimento', { tipo: 'perda', receita_id: r.id, local: opLocal })}>Perdi</button>
     </div>
@@ -614,12 +818,11 @@ export function FolhaVozEstoque({ local: localPedido = '' }) {
   const d = dadosPudim(s);
   // Onde aconteceu (e de onde saem os envios). A frase pode dizer ("em Ibiúna"); senão, o local escolhido na tela.
   const [onde, setOnde] = useState(d.locaisPorId[localPedido] ? localPedido : d.locais[0].id);
-  const contas = contasAtivas(s);
-  const ultimaDireta = [...s.tables.lancamentos].reverse().find((l) => l.categoria_id === 'cat-venda-pudim' && l.conta_id !== 'ifood');
+  const contas = contasDaVenda(contasAtivas(s));
   const naGeladeira = Object.fromEntries(d.estoque.lista.map((x) => [x.receita_id, x.quantidade]));
   const [frase, setFrase] = useState('');
   const [r, setR] = useState(null);
-  const [conta_id, setConta] = useState(ultimaDireta?.conta_id || (contas.find((c) => c.id === 'nubank-pj') ? 'nubank-pj' : ''));
+  const [conta_id, setConta] = useState(CONTA_VENDAS_DIRETAS);
   const [lancar, setLancar] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const taxaPct = taxaIfood();
@@ -652,7 +855,7 @@ export function FolhaVozEstoque({ local: localPedido = '' }) {
       const n = res.movimentos;
       const v = res.venda;
       fecharFolha();
-      toast([n ? `${n} movimento${n > 1 ? 's' : ''} no estoque` : '', v ? `venda de ${brl(v.bruto)}${v.lancado ? ' lançada no caixa' : ''}${v.repasse ? ` (o iFood paga na quarta ${fmtDay(v.repasse)})` : ''}` : ''].filter(Boolean).join(' e ').replace(/^./, (c) => c.toUpperCase()));
+      toast([n ? `${n} movimento${n > 1 ? 's' : ''} no estoque` : '', v ? `venda de ${brl(v.bruto)}${v.lancado ? ' lançada no caixa' : r.canal === 'ifood' ? ' do iFood (só no estoque)' : ''}` : ''].filter(Boolean).join(' e ').replace(/^./, (c) => c.toUpperCase()));
     } catch {
       setSalvando(false);
     }
@@ -693,10 +896,10 @@ export function FolhaVozEstoque({ local: localPedido = '' }) {
         <div class="campo"><span>Venda</span><${Segmento} rotulo="Canal" valor=${r.canal} onChange=${(v) => setR({ ...r, canal: v })} opcoes=${[['direta', CANAIS.direta], ['ifood', CANAIS.ifood]]} /></div>
         <div class="painel painel-pad" style="margin-top:10px">
           <div style="display:flex;justify-content:space-between"><span>Total da venda</span><strong>${brl(t.bruto)}</strong></div>
-          ${r.canal === 'ifood' && html`<div style="display:flex;justify-content:space-between;margin-top:6px"><span>Taxa iFood</span><span class="neg">− ${brl(t.taxa)}</span></div>`}
+          ${r.canal === 'ifood' && html`<div class="muted" style="font-size:12.5px;margin-top:6px">iFood só tira do estoque; o dinheiro entra quando o iFood pagar, na quarta.</div>`}
           ${linhasVenda.some((l) => !l.preco) && html`<div class="duvida" style="margin-top:8px"><${Icone} n="alerta" /><span>Pudim sem preço de venda: cadastre na receita ou use a tela Vender.</span></div>`}
         </div>
-        <label class="interruptor"><span>Lançar a venda no caixa</span><input type="checkbox" checked=${lancar} onChange=${(e) => setLancar(e.target.checked)} /></label>
+        ${r.canal === 'direta' && html`<label class="interruptor"><span>Lançar a venda no caixa</span><input type="checkbox" checked=${lancar} onChange=${(e) => setLancar(e.target.checked)} /></label>`}
         ${lancar && r.canal === 'direta' && html`<${SelectConta} rotulo="Entrou em" valor=${conta_id} onChange=${setConta} contas=${contas} />`}`}
       ${pendente > 0 && html`<p class="muted" style="font-size:13px;margin:10px 0 0">Responda os ❓ para confirmar.</p>`}`}
   <//>`;

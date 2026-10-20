@@ -3,8 +3,8 @@ import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Topo, Secao, Segmento, Vazio, Arrastavel } from '../componentes.js';
 import { useStore, abrirFolha, salvarVarias, toast, config } from '../../data/store.js';
-import { apagarMovimento, taxaIfood } from '../../data/pudim-acoes.js';
-import { brl, brlSigned } from '../../core/money.js';
+import { apagarMovimento, taxaIfood, pagamentosIfood } from '../../data/pudim-acoes.js';
+import { brl, brlSigned, toCents } from '../../core/money.js';
 import { fmtDay, addDays, businessWeekStart } from '../../core/dates.js';
 import { precoNoCanal, VALIDADE_PADRAO, ingredientesDe, custoReceita, processarEstoque, estoqueAtual, lotesNaGeladeira, lerLocais, localDe, semanaPudim, custoInsumo, lerCustos, valorMinuto, ehSabor, ehPreparo } from '../../core/pudim.js';
 import { saldos, minimos, faltas, pudinsAbaixo, baseDe, embalagemBase, reposicao, custoDasFaltas } from '../../core/estoqueinsumos.js';
@@ -35,7 +35,7 @@ export function dadosPudim(s) {
   // Locais do estoque (São Roque e Ibiúna, a não ser que a config diga outros).
   const locais = lerLocais(config('locais_estoque', ''));
   const locaisPorId = porId(locais);
-  const { lotes, saidas } = processarEstoque(movimentos, (id) => ({ direto: custos[id]?.porUnidade || 0, fixo: custos[id]?.fixoUnidade || 0 }), locais);
+  const { lotes, saidas, devendo } = processarEstoque(movimentos, (id) => ({ direto: custos[id]?.porUnidade || 0, fixo: custos[id]?.fixoUnidade || 0 }), locais);
   const estoque = estoqueAtual(lotes, receitasPorId, s.hoje);
   // Pronto (na validade) em cada local: { local: { receita_id: unidades } }.
   const prontos = Object.fromEntries(locais.map((l) => [l.id, {}]));
@@ -47,7 +47,7 @@ export function dadosPudim(s) {
   const abaixo = pudinsAbaixo(receitas, prontos, locais);
   return {
     repor: reposicao(abaixo, custos), compra: custoDasFaltas(listaFaltas, itens),
-    insumosPorId, receitas, sabores, preparos, receitasPorId, custos, custosFixos, movimentos, saidas, estoque, itens, lotes, locais, locaisPorId, prontos,
+    insumosPorId, receitas, sabores, preparos, receitasPorId, custos, custosFixos, movimentos, saidas, devendo, estoque, itens, lotes, locais, locaisPorId, prontos,
     saldo, contadoEm, minimo, faltas: listaFaltas, abaixo,
   };
 }
@@ -65,7 +65,6 @@ export const embalagensTxt = (q, insumo) => {
   return e > 1 ? `${(Math.round((q / e) * 10) / 10).toLocaleString('pt-BR')} emb. de ${fmtQtd(e, insumo)}` : '';
 };
 
-const ROTULO_MOV = { producao: 'Produziu', venda: 'Vendeu', perda: 'Perdeu', transferencia: 'Enviou' };
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
 function Linha({ rot, valor, classe = '', forte }) {
@@ -128,18 +127,15 @@ function AbaEstoque({ s, d }) {
     toast(`Baixa de ${plural(e.vencidos, 'pudim vencido', 'pudins vencidos')}`);
   };
   const doLocal = (m) => !local || localDe(m, d.locais) === local || (m.tipo === 'transferencia' && (m.local_destino || d.locais[0].id) === local);
-  const recentes = d.movimentos.filter(doLocal).sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : String(b.criado_em) < String(a.criado_em) ? -1 : 1)).slice(0, 30);
+  const recentes = d.movimentos.filter(doLocal).sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : String(b.criado_em) < String(a.criado_em) ? -1 : 1)).slice(0, 150);
   const apagarMov = async (m) => {
     const r = await apagarMovimento(m);
     toast(r.lancamentos ? `Venda apagada${r.itens > 1 ? ` (${r.itens} itens)` : ''}, e o lançamento no caixa também` : 'Movimento apagado');
   };
   const ondeMov = (m) => (m.tipo === 'transferencia' ? `${nomeLocal(m.local)} → ${nomeLocal(m.local_destino)}` : nomeLocal(m.local));
-  // Lote na geladeira → abre a produção dele para corrigir validade ou local.
-  const abrirLote = (g) => {
-    const m = d.movimentos.find((x) => x.tipo === 'producao' && (x.lote_id || x.id) === g.lote);
-    if (m) abrirFolha('editar-movimento', { id: m.id });
-  };
-  const resumoLote = (g) => Object.entries(g.itens).filter(([, q]) => q > 0).map(([id, q]) => `${q} ${d.receitasPorId[id]?.nome || '?'}`).sort((a, b) => a.replace(/^\d+ /, '').localeCompare(b.replace(/^\d+ /, ''))).join(', ');
+  // Saiu mais do que tinha (venda ou perda antes de registrar a entrada): fica "devendo" até a próxima entrada.
+  const devendo = Object.entries(d.devendo || {}).filter(([k, q]) => q > 0 && (!local || k.split('|')[1] === local))
+    .map(([k, q]) => ({ quantidade: q, nome: d.receitasPorId[k.split('|')[0]]?.nome || '?', local: nomeLocal(k.split('|')[1]) }));
   const opLocal = local || d.locais[0].id;
 
   return html`
@@ -160,15 +156,19 @@ function AbaEstoque({ s, d }) {
     </div>`}
 
     <div class="acoes acoes-pudim">
-      <button class="btn btn-pri" onClick=${() => abrirFolha('movimento', { tipo: 'producao', local: opLocal })}>Produzi</button>
+      <button class="btn btn-pri" onClick=${() => abrirFolha('entrada', { local: opLocal })}>Pôr no estoque</button>
       <a class="btn btn-sec" href=${`#/pudim/vender${local ? `?local=${local}` : ''}`}>Vender</a>
       <button class="btn btn-sec" onClick=${() => abrirFolha('movimento', { tipo: 'perda', local: opLocal })}>Perdi</button>
     </div>
     <div class="acoes acoes-pudim" style="margin-top:8px">
-      <button class="btn btn-sec" onClick=${() => abrirFolha('lote', { local: opLocal })}>Novo lote</button>
+      <button class="btn btn-sec" onClick=${() => abrirFolha('lote', { local: opLocal })}>Vários sabores</button>
       ${d.locais.length > 1 && html`<button class="btn btn-sec" onClick=${() => abrirFolha('envio', { de: local && local !== d.locais[0].id ? local : d.locais[0].id })}>Enviar</button>`}
       <button class="btn btn-sec" onClick=${() => abrirFolha('voz-estoque', { local })}><${Icone} n="mic" />Falar</button>
     </div>
+    ${lotes.length > 0 && html`<button class="btn btn-sec btn-larga botao-lotes" style="margin-top:8px" onClick=${() => abrirFolha('lotes', { local })}>
+      <${Icone} n="calendario" /><span>Validade dos lotes (${lotes.length})</span>
+      <span class=${`proxima ${lotes[0].vencido ? 'neg' : lotes[0].validade <= addDays(s.hoje, 1) ? 'atencao' : ''}`}>${lotes[0].vencido ? 'venceu' : 'próximo vence'} ${fmtDay(lotes[0].validade)}</span></button>`}
+    ${devendo.length > 0 && html`<div class="duvida" style="margin-top:10px"><${Icone} n="info" /><span>Saiu mais do que estava registrado: ${devendo.map((x) => `${x.quantidade} ${x.nome}${d.locais.length > 1 ? ` (${x.local})` : ''}`).join(', ')}. A próxima entrada desses já vem descontada. Se não for isso, confira os movimentos abaixo.</span></div>`}
 
 
     <${GradeEstoque} d=${d} s=${s} local=${local} />
@@ -190,7 +190,7 @@ function AbaEstoque({ s, d }) {
             ${!x.enviarDe && html`<div class="muted" style="font-size:12px">1 fornada rende ${rende} e custa ≈ ${brl(fornada)}</div>`}</div>
           ${x.enviarDe
             ? html`<button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('envio', { de: x.enviarDe.local.id, para: x.local.id, quantidades: { [x.receita.id]: x.enviarDe.quantidade } })}>Enviar ${x.enviarDe.quantidade} de ${x.enviarDe.local.nome}</button>`
-            : html`<button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('movimento', { tipo: 'producao', receita_id: x.receita.id, quantidade: x.fornadas * rende, local: x.local.id })}>Produzir</button>`}
+            : html`<button class="btn btn-pri btn-mini" onClick=${() => abrirFolha('entrada', { receita_id: x.receita.id, quantidade: x.falta, local: x.local.id })}>Pôr no estoque</button>`}
         </li>`;
         })}</ul>`}
       ${d.faltas.length > 0 && html`<a class="link" href="#/pudim?aba=ingredientes" style="display:block;margin-top:10px">Faltam ${d.faltas.length} ingrediente${d.faltas.length > 1 ? 's' : ''} para o estoque mínimo →</a>`}
@@ -221,27 +221,54 @@ function AbaEstoque({ s, d }) {
       </div>
     <//>
 
-    ${lotes.length > 0 && html`<${Secao} titulo="Validade dos lotes">
-      <ul class="lista painel" aria-label="Lotes">
-        ${lotes.map((g) => html`<li><button class="item item-btn" onClick=${() => abrirLote(g)}><div class="corpo">
-          <div class="tit">Lote de ${fmtDay(g.produzidoEm)}${d.locais.length > 1 ? ` · ${nomeLocal(g.local)}` : ''}</div>
-          <div class="meta">${resumoLote(g)}</div></div>
-          <div class=${`valor ${g.vencido ? 'neg' : g.validade <= addDays(s.hoje, 1) ? 'atencao' : ''}`}>${g.vencido ? 'venceu' : 'vence'}<small>${fmtDay(g.validade)}</small></div>
-        </button></li>`)}
-      </ul>
-    <//>`}
+    <${CaixasMovimentos} d=${d} lista=${recentes} nomeLocal=${nomeLocal} ondeMov=${ondeMov} apagarMov=${apagarMov} />`;
+}
 
-    <${Secao} titulo="Movimentos">
-      <ul class="lista painel">
-        ${recentes.map((m) => html`<li><${Arrastavel} onApagar=${() => apagarMov(m)}><button class="item item-btn" onClick=${() => abrirFolha('editar-movimento', { id: m.id })}>
-          <div class="corpo"><div class="tit">${ROTULO_MOV[m.tipo] || m.tipo} ${m.quantidade} ${d.receitasPorId[m.receita_id]?.nome || 'receita apagada'}</div>
-            <div class="meta">${fmtDay(m.data)}${m.tipo === 'producao' && Number(m.quantidade) > 1 ? `, ${String(m.quantidade).replace('.', ',')} × ${brl(Math.round(Number(m.custo_unitario || 0) * 100))}` : ''}${d.locais.length > 1 ? `, ${ondeMov(m)}` : ''}${m.tipo === 'producao' && m.validade ? `, vence ${fmtDay(m.validade)}` : ''}${m.canal === 'ifood' ? ', iFood' : ''}${m.obs ? `, ${m.obs}` : ''}${m.lancamento_id ? ', lançado no caixa' : ''}</div></div>
-          <div class=${`valor ${m.tipo === 'venda' ? 'pos' : m.tipo === 'perda' ? 'neg' : ''}`}>${m.tipo === 'venda' ? brl(Math.round(Number(m.quantidade) * Math.round(Number(m.preco_unitario || 0) * 100))) : m.tipo === 'producao' ? brl(Math.round(Number(m.quantidade) * Math.round(Number(m.custo_unitario || 0) * 100))) : m.tipo === 'transferencia' ? brl(d.saidas[m.id]?.transferido || 0) : brl(d.saidas[m.id]?.custo || 0)}
-            <small>${m.tipo === 'venda' ? 'venda' : 'custo'}</small></div>
-        </button><//></li>`)}
-        ${!recentes.length && html`<li class="item muted">Registre o que produzir, vender ou perder pelos botões acima. Toque num movimento para corrigir; arraste para a esquerda para apagar.</li>`}
-      </ul>
-    <//>`;
+// Movimentos em três caixas: vendas (com o canal: iFood ou direta), perdas, e entradas e envios.
+const valorMov = (m, d) => (m.tipo === 'venda' ? Math.round(Number(m.quantidade) * Math.round(Number(m.preco_unitario || 0) * 100))
+  : m.tipo === 'producao' ? Math.round(Number(m.quantidade) * Math.round(Number(m.custo_unitario || 0) * 100))
+    : m.tipo === 'transferencia' ? d.saidas[m.id]?.transferido || 0 : d.saidas[m.id]?.custo || 0);
+const qtdTxt = (n) => String(n).replace('.', ',');
+const MOTIVO_TXT = { vencido: 'venceu', quebrou: 'quebrou ou estragou', consumo: 'consumo ou brinde' };
+
+function CaixaMov({ titulo, icone, lista, d, linha, vazio, apagarMov }) {
+  const [todos, setTodos] = useState(false);
+  const total = lista.reduce((t, m) => t + valorMov(m, d), 0);
+  const qtd = lista.reduce((t, m) => t + (Number(m.quantidade) || 0), 0);
+  const vistos = todos ? lista : lista.slice(0, 6);
+  return html`<section class="caixa-mov" aria-label=${titulo}>
+    <div class="caixa-mov-cab"><span class="marca suave"><${Icone} n=${icone} /></span><strong>${titulo}</strong>
+      <span class="muted">${lista.length ? `${qtdTxt(qtd)} · ${brl(total)}` : ''}</span></div>
+    <ul class="lista painel">
+      ${vistos.map((m) => html`<li><${Arrastavel} onApagar=${() => apagarMov(m)}><button class="item item-btn" onClick=${() => abrirFolha('editar-movimento', { id: m.id })}>${linha(m)}</button><//></li>`)}
+      ${!lista.length && html`<li class="item muted" style="font-size:13.5px">${vazio}</li>`}
+    </ul>
+    ${lista.length > 6 && html`<button class="link" style="margin-top:6px" onClick=${() => setTodos(!todos)}>${todos ? 'Mostrar menos' : `Ver todos (${lista.length})`}</button>`}
+  </section>`;
+}
+
+function CaixasMovimentos({ d, lista, nomeLocal, ondeMov, apagarMov }) {
+  const nome = (m) => d.receitasPorId[m.receita_id]?.nome || 'receita apagada';
+  const onde = (m) => (d.locais.length > 1 ? `, ${ondeMov(m)}` : '');
+  const vendas = lista.filter((m) => m.tipo === 'venda');
+  const perdas = lista.filter((m) => m.tipo === 'perda');
+  const entradas = lista.filter((m) => m.tipo === 'producao' || m.tipo === 'transferencia');
+  const linhaVenda = (m) => html`<span class=${`canal-mov ${m.canal === 'ifood' ? 'ifood' : 'direta'}`} aria-label=${m.canal === 'ifood' ? 'iFood' : 'Venda direta'}>${m.canal === 'ifood' ? 'iFood' : 'Direta'}</span>
+    <div class="corpo"><div class="tit">${qtdTxt(m.quantidade)} ${nome(m)}</div>
+      <div class="meta">${fmtDay(m.data)}${onde(m)}${m.lancamento_id ? ', no caixa' : m.canal === 'ifood' ? ', só estoque' : ''}</div></div>
+    <div class="valor pos">${brl(valorMov(m, d))}</div>`;
+  const linhaPerda = (m) => html`<div class="corpo"><div class="tit">${qtdTxt(m.quantidade)} ${nome(m)}</div>
+      <div class="meta">${fmtDay(m.data)}${onde(m)}${m.obs ? `, ${MOTIVO_TXT[m.obs] || m.obs}` : ''}</div></div>
+    <div class="valor neg">− ${brl(valorMov(m, d))}<small>custo</small></div>`;
+  const linhaEntrada = (m) => html`<div class="corpo"><div class="tit">${m.tipo === 'transferencia' ? 'Enviou' : '+'} ${qtdTxt(m.quantidade)} ${nome(m)}</div>
+      <div class="meta">${fmtDay(m.data)}${onde(m)}${m.tipo === 'producao' && m.validade ? `, vence ${fmtDay(m.validade)}` : ''}</div></div>
+    <div class="valor">${brl(valorMov(m, d))}<small>custo</small></div>`;
+  return html`<${Secao} titulo="Movimentos">
+    <${CaixaMov} titulo="Vendas" icone="carrinho" lista=${vendas} d=${d} linha=${linhaVenda} apagarMov=${apagarMov} vazio="Nenhuma venda registrada." />
+    <${CaixaMov} titulo="Perdas" icone="alerta" lista=${perdas} d=${d} linha=${linhaPerda} apagarMov=${apagarMov} vazio="Nenhuma perda. Boa!" />
+    <${CaixaMov} titulo="Entradas e envios" icone="pilha" lista=${entradas} d=${d} linha=${linhaEntrada} apagarMov=${apagarMov} vazio="Use Pôr no estoque quando fizer pudim." />
+    <p class="muted" style="font-size:12.5px;margin:8px 2px 0">Toque num movimento para corrigir; arraste para a esquerda para apagar.</p>
+  <//>`;
 }
 
 // Desativados ficam escondidos, mas dá para abrir e reativar.
@@ -410,6 +437,7 @@ function InicioPudim({ s, d }) {
   const lista = (s.tables.lista || []).filter((x) => x.origem === 'Pudim' && !x.comprado);
   const estimadoLista = lista.reduce((t, x) => t + (x.preco_estimado ? Math.round(Number(x.preco_estimado) * 100) : 0), 0);
   const alerta = d.abaixo.length > 0 || e.vencidos > 0;
+  const ultimoIfood = pagamentosIfood(s.tables.lancamentos)[0];
   const modulo = (href, icone, titulo, linha, classe = '') => html`<a class=${`modulo-pudim ${classe}`} href=${href}>
     <span class="marca suave"><${Icone} n=${icone} /></span>
     <span class="modulo-tit">${titulo}</span>
@@ -425,9 +453,15 @@ function InicioPudim({ s, d }) {
     </div>
     <div class="acoes acoes-pudim">
       <a class="btn btn-pri" href="#/pudim/vender">Vender</a>
-      <button class="btn btn-sec" onClick=${() => abrirFolha('movimento', { tipo: 'producao' })}>Produzi</button>
+      <button class="btn btn-sec" onClick=${() => abrirFolha('entrada', {})}>Pôr no estoque</button>
       <button class="btn btn-sec" onClick=${() => abrirFolha('voz-estoque', {})}><${Icone} n="mic" />Falar</button>
     </div>
+    <button class="painel painel-pad cartao-ifood" onClick=${() => abrirFolha('pagamento-ifood', {})}>
+      <span class="canal-mov ifood">iFood</span>
+      <span class="corpo"><strong>Pagamento do iFood</strong>
+        <span class="muted">${ultimoIfood ? `último: ${brl(toCents(ultimoIfood.valor))} em ${fmtDay(ultimoIfood.data)}` : 'lance o que o iFood pagar na quarta'}</span></span>
+      <span style="width:18px;color:var(--ink-3)"><${Icone} n="seta" /></span>
+    </button>
     <div class="grade-modulos" role="navigation" aria-label="Módulos do pudim">
       ${modulo('#/pudim?aba=estoque', 'pilha', 'Estoque', alerta
         ? [d.abaixo.length ? `${d.abaixo.length} abaixo do mínimo` : '', e.vencidos ? `${e.vencidos} vencido${e.vencidos > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')

@@ -2,7 +2,7 @@
 import { state, salvar, salvarVarias, apagar, config } from './store.js';
 import { uid } from '../core/schema.js';
 import { addDays, fmtDay } from '../core/dates.js';
-import { totaisCarrinho, taxaUnitaria, TAXA_IFOOD_PADRAO, CATEGORIA_TAXA_IFOOD, CONTA_IFOOD, VALIDADE_PADRAO, quartaDoRepasse, idRepasseIfood } from '../core/pudim.js';
+import { totaisCarrinho, taxaUnitaria, TAXA_IFOOD_PADRAO, CONTA_IFOOD, VALIDADE_PADRAO } from '../core/pudim.js';
 import { gastoDaProducao, entradasDeItens } from '../core/estoqueinsumos.js';
 
 const porIdDe = (lista) => Object.fromEntries((lista || []).map((x) => [x.id, x]));
@@ -41,46 +41,59 @@ export function taxaIfood() {
   return Number.isFinite(v) && v >= 0 && v < 100 ? v : TAXA_IFOOD_PADRAO;
 }
 
-// A conta iFood (onde o dinheiro fica até o repasse) e a categoria da taxa nascem na primeira venda pelo iFood.
-async function garantirIfood(data) {
-  if (!state.tables.contas.some((c) => c.id === CONTA_IFOOD)) {
-    await salvar('contas', { id: CONTA_IFOOD, nome: 'iFood', dono: 'Esposa', grupo: 'Pudim', saldo_inicial: 0, data_saldo_inicial: '2000-01-01', cor: '#ea1d2c', ativa: true });
-  }
-  if (!state.tables.categorias.some((c) => c.id === CATEGORIA_TAXA_IFOOD)) {
-    await salvar('categorias', { id: CATEGORIA_TAXA_IFOOD, nome: 'Taxa iFood', tipo: 'saida', origem_padrao: 'Pudim', ativa: true });
-  }
+// Contas do pudim: "Vendas diretas" recebe as vendas do PDV; "iFood" só recebe o pagamento que o iFood faz na quarta,
+// lançado à mão (as vendas do iFood mexem só no estoque). As outras entradas da empresa vão para a Nubank PJ.
+export const CONTA_VENDAS_DIRETAS = 'vendas-diretas';
+const CONTAS_PUDIM = {
+  [CONTA_VENDAS_DIRETAS]: { nome: 'Vendas diretas', cor: '#c10118' },
+  [CONTA_IFOOD]: { nome: 'iFood', cor: '#ea1d2c' },
+};
+export async function garantirConta(id) {
+  if (state.tables.contas.some((c) => c.id === id) || !CONTAS_PUDIM[id]) return;
+  await salvar('contas', { id, ...CONTAS_PUDIM[id], dono: 'Esposa', grupo: 'Pudim', saldo_inicial: 0, data_saldo_inicial: '2000-01-01', ativa: true });
 }
 
-// Conta onde o iFood deposita o repasse: a dos ajustes, senão a Nubank PJ, senão a primeira conta do Pudim ou da Empresa.
-export function contaRepasseIfood() {
-  const contas = state.tables.contas.filter((c) => c.ativa !== false && c.id !== CONTA_IFOOD);
-  const escolhida = config('conta_repasse_ifood', '');
-  return (contas.find((c) => c.id === escolhida) || contas.find((c) => c.id === 'nubank-pj') || contas.find((c) => c.grupo === 'Pudim') || contas.find((c) => c.grupo === 'Empresa') || contas[0])?.id || '';
+// Contas para escolher na venda direta: as ativas, com a "Vendas diretas" no topo (ela nasce na primeira venda).
+export function contasDaVenda(contas) {
+  const sem = contas.filter((c) => c.id !== CONTA_VENDAS_DIRETAS && c.id !== CONTA_IFOOD);
+  return [contas.find((c) => c.id === CONTA_VENDAS_DIRETAS) || { id: CONTA_VENDAS_DIRETAS, ...CONTAS_PUDIM[CONTA_VENDAS_DIRETAS], grupo: 'Pudim', dono: 'Esposa' }, ...sem];
 }
 
-// O dinheiro do iFood fica na conta iFood até a quarta-feira seguinte à semana da venda: soma o líquido (venda menos taxa)
-// no repasse daquela quarta, um previsto de transferência da conta iFood para a conta do banco. `delta` em centavos.
-async function somarNoRepasse(data, delta) {
-  const quarta = quartaDoRepasse(data);
-  const id = idRepasseIfood(quarta);
-  const atual = state.tables.previstos.find((p) => p.id === id);
-  const valor = Math.round(((atual ? Math.round(Number(atual.valor) * 100) : 0) + delta)) / 100;
-  if (valor <= 0) {
-    if (atual) await apagar('previstos', id);
-    return null;
-  }
-  const segunda = addDays(quarta, -9);
-  return salvar('previstos', {
-    ...(atual || {}),
-    id, descricao: `Repasse iFood (vendas de ${fmtDay(segunda)} a ${fmtDay(addDays(segunda, 6))})`, natureza: 'unico', tipo: 'transferencia', valor,
-    conta_id: CONTA_IFOOD, conta_destino_id: atual?.conta_destino_id || contaRepasseIfood(), categoria_id: '', origem: 'Pudim',
-    recorrencia: '', a_cada: '', mes_ancora: '', dia_inicio: '', dia_fim: '', dia_semana: '', data_unica: quarta, inicio: '',
-    parcelas_total: '', parcela_no_inicio: '', confianca: 'certo', renovacao: false, pessoa: '', ativo: true,
+// Pagamentos do iFood já lançados (entradas na conta iFood), do mais novo para o mais antigo.
+export const pagamentosIfood = (lancs) => (lancs || []).filter((l) => l.conta_id === CONTA_IFOOD && l.tipo === 'entrada' && l.canal !== 'pdv')
+  .sort((a, b) => (a.data < b.data ? 1 : -1));
+
+// Lança o pagamento de quarta do iFood na conta iFood.
+export async function lancarPagamentoIfood({ data, valor, obs = '' }) {
+  await garantirConta(CONTA_IFOOD);
+  // Na quarta, o iFood paga as vendas de segunda a domingo da semana anterior.
+  const segunda = new Date(`${data}T12:00:00Z`).getUTCDay() === 3 ? addDays(data, -9) : '';
+  return salvar('lancamentos', {
+    tipo: 'entrada', valor, data, descricao: (segunda ? `Pagamento iFood (vendas de ${fmtDay(segunda)} a ${fmtDay(addDays(segunda, 6))})` : 'Pagamento iFood') + (obs ? ` · ${obs}` : ''),
+    conta_id: CONTA_IFOOD, conta_destino_id: '', categoria_id: 'cat-venda-pudim', origem: 'Pudim', canal: 'ifood', grupo_id: '', previsto_id: '',
   });
 }
 
+// Limpeza única: vendas do iFood lançadas no caixa pelo jeito antigo (entrada, taxa e repasse previsto) saem do saldo.
+// O estoque continua com as vendas; só perdem a ligação com o lançamento.
+export function ifoodAntigoNoSaldo(tables) {
+  const lancs = (tables.lancamentos || []).filter((l) => l.conta_id === CONTA_IFOOD && l.canal === 'pdv');
+  const recebidos = new Set((tables.baixas || []).map((b) => b.previsto_id));
+  const repasses = (tables.previstos || []).filter((p) => String(p.id).startsWith('repasse-ifood-') && !recebidos.has(p.id));
+  return { lancs, repasses };
+}
+export async function tirarIfoodAntigoDoSaldo() {
+  const { lancs, repasses } = ifoodAntigoNoSaldo(state.tables);
+  const ids = new Set(lancs.map((l) => l.id));
+  for (const m of state.tables.estoque.filter((x) => ids.has(x.lancamento_id))) await salvar('estoque', { ...m, lancamento_id: '' });
+  for (const l of lancs) await apagar('lancamentos', l.id);
+  for (const p of repasses) await apagar('previstos', p.id);
+  return { lancamentos: lancs.length, repasses: repasses.length };
+}
+
 // Venda de um carrinho. linhas: [{ receita, quantidade, preco (centavos), custo (centavos por unidade) }].
-// No iFood a entrada é o valor cheio na conta iFood e a taxa sai como gasto do Pudim, ligadas pelo mesmo grupo.
+// Venda direta lança a entrada no caixa (conta Vendas diretas). Venda do iFood mexe só no estoque: o dinheiro entra
+// quando o iFood paga, na quarta, lançado à mão na conta iFood.
 // Tudo ou nada: se uma das gravações falhar, as que já foram são desfeitas, para não sobrar venda pela metade.
 export async function tudoOuNada(fn) {
   const feitos = [];
@@ -103,34 +116,24 @@ async function gravarVenda({ linhas, canal, data, conta_id, lancar, local = '' }
   const t = totaisCarrinho(itens, canal, taxaPct);
   const agora = new Date().toISOString();
   let lancamento_id = '';
-  if (lancar) {
+  if (lancar && canal !== 'ifood') {
     const grupo_id = uid('ven');
-    const conta = canal === 'ifood' ? CONTA_IFOOD : conta_id;
-    if (canal === 'ifood') await garantirIfood(data);
+    const conta = conta_id || CONTA_VENDAS_DIRETAS;
+    await garantirConta(conta);
     const resumo = itens.map((l) => `${qtdTxt(l.quantidade)} ${l.receita.nome}`).join(', ');
     const entrada = await salvar('lancamentos', {
-      tipo: 'entrada', valor: reais(t.bruto), data, descricao: `${canal === 'ifood' ? 'iFood' : 'Venda direta'}: ${resumo}`.slice(0, 120),
+      tipo: 'entrada', valor: reais(t.bruto), data, descricao: `Venda direta: ${resumo}`.slice(0, 120),
       conta_id: conta, conta_destino_id: '', categoria_id: 'cat-venda-pudim', origem: 'Pudim', canal: 'pdv', grupo_id, previsto_id: '',
     });
     lancamento_id = entrada.id;
     feitos.push({ tabela: 'lancamentos', id: entrada.id });
-    if (canal === 'ifood' && t.taxa > 0) {
-      const taxa = await salvar('lancamentos', {
-        tipo: 'saida', valor: reais(t.taxa), data, descricao: `Taxa iFood (${qtdTxt(taxaPct)}%)`, conta_id: CONTA_IFOOD, conta_destino_id: '',
-        categoria_id: CATEGORIA_TAXA_IFOOD, origem: 'Pudim', canal: 'pdv', grupo_id, previsto_id: '',
-      });
-      feitos.push({ tabela: 'lancamentos', id: taxa.id });
-    }
   }
   const salvos = await salvarVarias('estoque', itens.map((l) => ({
     data, local: l.local || local, receita_id: l.receita.id, tipo: 'venda', quantidade: l.quantidade, custo_unitario: '', preco_unitario: reais(l.preco),
     taxa_unitaria: canal === 'ifood' ? Math.round(taxaUnitaria(l.preco, taxaPct) * 100) / 10000 : '', canal, validade: '', lancamento_id, obs: '', criado_em: agora,
   })));
   for (const x of salvos) feitos.push({ tabela: 'estoque', id: x.id });
-  // Por último, para não precisar desfazer: o líquido do iFood entra no repasse da quarta-feira.
-  let repasse = null;
-  if (lancamento_id && canal === 'ifood') repasse = await somarNoRepasse(data, t.bruto - t.taxa);
-  return { ...t, lancado: !!lancamento_id, repasse: repasse?.data_unica || '' };
+  return { ...t, lancado: !!lancamento_id };
 }
 
 // Produção, perda e envio entre locais (vários de uma vez, como vêm da fala).
@@ -166,6 +169,18 @@ export function registrarFala({ movimentos, venda, data, motivo, local = '' }) {
 export function registrarLote({ itens, data, validade, local }) {
   const lote_id = uid('lote');
   return tudoOuNada((feitos) => registrarMovimentos(itens.map((i) => ({ ...i, tipo: 'producao', validade })), { data, local, lote_id }, feitos));
+}
+
+// Entrada de um pudim em um ou mais lotes, cada um com a sua quantidade e validade (o rendimento varia,
+// então é o que saiu de verdade). lotes: [{ quantidade, validade }]. Cada lote ganha o seu lote_id.
+export function registrarEntradas({ receita, custo = 0, fixo = 0, local, data, lotes }) {
+  return tudoOuNada(async (feitos) => {
+    const salvos = [];
+    for (const l of lotes.filter((x) => x.quantidade > 0)) {
+      salvos.push(...(await registrarMovimentos([{ tipo: 'producao', receita, quantidade: l.quantidade, custo, fixo, validade: l.validade }], { data, local, lote_id: uid('lote') }, feitos)));
+    }
+    return salvos;
+  });
 }
 
 // Envio de pudins de um local para outro (levam a validade e o custo dos lotes de onde saíram).
@@ -240,13 +255,6 @@ export async function apagarMovimento(m) {
   const lancs = state.tables.lancamentos.filter((l) => l.id === m.lancamento_id || (entrada?.grupo_id && l.grupo_id === entrada.grupo_id));
   for (const x of irmaos) await apagar('estoque', x.id);
   for (const l of lancs) await apagar('lancamentos', l.id);
-  // Venda do iFood apagada sai do repasse da quarta (se ele ainda não foi recebido).
-  if (entrada?.conta_id === CONTA_IFOOD) {
-    const liquido = lancs.reduce((t, l) => t + (l.tipo === 'entrada' ? 1 : -1) * Math.round(Number(l.valor) * 100), 0);
-    const quarta = quartaDoRepasse(entrada.data);
-    const recebido = (state.tables.baixas || []).some((b) => b.previsto_id === idRepasseIfood(quarta));
-    if (!recebido && liquido > 0) await somarNoRepasse(entrada.data, -liquido);
-  }
   return { itens: irmaos.length, lancamentos: lancs.length };
 }
 

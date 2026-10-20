@@ -73,6 +73,8 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
     }
     setVarios(null);
     const r = parseQuick(texto, ctx);
+    // Entrada da empresa ou do pudim sem conta dita: vai para a Nubank PJ (venda é pelo PDV, iFood pela conta iFood).
+    if (r.tipo === 'entrada' && !r.conta_id && (r.origem === 'Pudim' || r.origem === 'Empresa') && contas.some((c) => c.id === 'nubank-pj')) r.conta_id = 'nubank-pj';
     setF((x) => ({
       ...x,
       tipo: r.tipo || x.tipo,

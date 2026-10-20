@@ -203,32 +203,30 @@ test('pudim na planilha: receita com ingredientes em texto, produção e venda c
   await page.goto(`${base}/pudim/#/pudim?aba=estoque`);
   await page.getByRole('button', { name: 'Entrar com Google' }).click();
   await page.getByText('Pronto para vender').waitFor();
-  await page.getByRole('button', { name: 'Produzi', exact: true }).click();
-  await page.locator('.folha').getByText('R$ 3,20').first().waitFor();
-  await page.getByRole('button', { name: 'Pôr no estoque' }).click();
+  await page.locator('.acoes-pudim').getByRole('button', { name: 'Pôr no estoque', exact: true }).click();
+  await page.locator('.folha').getByLabel('Quantidade do lote 1').fill('2');
+  await page.locator('.folha').getByText('≈ R$ 6,40').first().waitFor();
+  await page.getByRole('button', { name: 'Pôr 2 no estoque' }).click();
   await page.locator('.toast', { hasText: 'no estoque' }).waitFor();
   await page.getByRole('link', { name: 'Vender', exact: true }).first().click();
   await page.getByRole('group', { name: 'Canal' }).getByRole('button', { name: 'iFood' }).click();
   await page.getByLabel('Buscar pudim').fill('teste');
   await page.getByRole('button', { name: 'Adicionar Pudim teste' }).click();
   await page.getByRole('button', { name: 'Finalizar venda · R$ 27,20' }).click();
-  await page.locator('.toast', { hasText: 'na conta iFood' }).waitFor();
+  await page.locator('.toast', { hasText: 'tirada do estoque' }).waitFor();
 
   const est = env.abas['Estoque'].linhas;
   assert.deepEqual(est[0], SCHEMA_ESTOQUE);
   assert.deepEqual([est[1][3], est[1][4], est[1][5], est[1][7]], ['producao', 2, 3.2, addDias(est[1][1], 4)]);
   // 20 / (1 - 0,262) = 27,10 → 27,20 no iFood; taxa 7,13
   assert.deepEqual([est[2][3], est[2][4], est[2][6], est[2][11], est[2][12]], ['venda', 1, 27.2, 'ifood', 7.1264]);
-  const [l, taxa] = env.abas['Lançamentos'].linhas.slice(antes);
-  assert.deepEqual([l[2], l[3], l[5], l[7], l[8], l[9]], ['entrada', 27.2, 'ifood', 'cat-venda-pudim', 'Pudim', 'pdv']);
-  assert.deepEqual([taxa[2], taxa[3], taxa[5], taxa[7], taxa[12]], ['saida', 7.13, 'ifood', 'cat-taxa-ifood', l[12]]);
-  assert.equal(est[2][8], l[0]);
-  assert.ok(env.abas['Contas'].linhas.some((c) => c[0] === 'ifood' && c[3] === 'Pudim'));
+  // iFood só mexe no estoque: nada no caixa (nem entrada, nem taxa)
+  assert.equal(env.abas['Lançamentos'].linhas.length, antes);
+  assert.equal(est[2][8], '');
   // a produção deu saída dos ingredientes na aba nova (2 unidades = 1 receita = 395 g de leite condensado)
   const ei = env.abas['Estoque de ingredientes'].linhas;
   assert.deepEqual(ei[0], SCHEMA.estoque_insumos);
   assert.deepEqual([ei[1][2], ei[1][3], ei[1][4], ei[1][5], ei[1][6]], ['ins-lc', 'saida', 395, 'producao', est[1][0]]);
-  assert.ok(env.abas['Categorias'].linhas.some((c) => c[0] === 'cat-taxa-ifood'));
   await page.goto(`${base}/pudim/#/pudim?aba=estoque`);
   await page.reload();
   await page.getByText('Pronto para vender').waitFor();

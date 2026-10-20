@@ -282,7 +282,7 @@ test('mercado: previsão, lista sugerida marcável, juntar produtos e trocar par
   assert.deepEqual(erros, []);
 });
 
-test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar a venda e ajustar receita', async () => {
+test('pudim: pôr no estoque em dois lotes, vender lançando em Vendas diretas, dar baixa, apagar a venda e ajustar receita', async () => {
   // no Finanças, Negócios leva ao app Pudins; lá o módulo Estoque abre o estoque
   await page.goto(`${base}/?demo#/negocios`);
   await page.getByRole('link', { name: 'Abrir o app Pudins' }).click();
@@ -291,23 +291,34 @@ test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar
   const pudins = async () => Number((await page.locator('.hero-pudim .num-mercado').innerText()).match(/\d+/)[0]);
   const antes = await pudins();
 
-  await page.getByRole('button', { name: 'Produzi', exact: true }).click();
+  // "+6, vence dia tal; outro lote, +3 com outra validade" (sem amarrar ao rendimento da receita)
+  await page.locator('.acoes-pudim').getByRole('button', { name: 'Pôr no estoque', exact: true }).click();
   await folha().getByLabel('Qual pudim').selectOption({ label: 'Pudim tradicional 150' });
-  assert.equal(await page.locator('#mov-quantidade').inputValue(), '6');
-  await page.getByRole('button', { name: 'Pôr no estoque' }).click();
-  await toast().filter({ hasText: '6 Pudim tradicional 150 no estoque' }).waitFor();
-  assert.equal(await pudins(), antes + 6);
+  await folha().getByRole('button', { name: '+6' }).click();
+  assert.equal(await folha().getByLabel('Quantidade do lote 1').inputValue(), '6');
+  await folha().getByRole('button', { name: 'Outro lote' }).click();
+  await folha().getByRole('button', { name: '+3' }).nth(1).click();
+  await folha().getByRole('button', { name: 'Mais no lote 2' }).click();
+  await folha().getByRole('button', { name: 'Menos no lote 2' }).click();
+  await folha().getByLabel('Validade do lote 2').fill('2099-02-10');
+  await page.getByRole('button', { name: 'Pôr 9 no estoque' }).click();
+  await toast().filter({ hasText: '9 Pudim tradicional 150 no estoque em 2 lotes' }).waitFor();
+  assert.equal(await pudins(), antes + 9);
+  // os dois lotes aparecem no pudim, cada um com a sua validade
+  await page.getByRole('region', { name: 'Pudim no copo' }).getByRole('button', { name: /^Pudim tradicional 150:/ }).click();
+  await folha().getByRole('list', { name: 'Lotes em São Roque' }).locator('.item', { hasText: '3 unidades' }).filter({ hasText: '10/02' }).waitFor();
+  await page.keyboard.press('Escape');
 
-  // venda direta pelo PDV: 3 toques no mini pudim
-  const nubankPj = await saldoConta('Nubank PJ');
+  // venda direta pelo PDV: 3 toques no mini pudim; entra na conta "Vendas diretas"
   await page.goto(`${base}/pudim/?demo#/pudim/vender`);
   for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Adicionar Pudim tradicional 150' }).click();
   await page.locator('#carrinho').getByText('R$ 36,00').first().waitFor();
+  assert.equal(await page.locator('#carrinho').getByLabel('Entrou em').inputValue(), 'vendas-diretas');
   await page.getByRole('button', { name: 'Finalizar venda · R$ 36,00' }).click();
   await toast().filter({ hasText: 'Venda de R$ 36,00 registrada e lançada no caixa' }).waitFor();
-  assert.equal(reais(await saldoConta('Nubank PJ')), Math.round((reais(nubankPj) + 36) * 100) / 100);
+  assert.equal(reais(await saldoConta('Vendas diretas')), 36);
   await page.goto(`${base}/pudim/?demo#/pudim?aba=estoque`);
-  assert.equal(await pudins(), antes + 3);
+  assert.equal(await pudins(), antes + 6);
   await page.goto(`${base}/pudim/?demo#/pudim?aba=estoque`);
   await page.getByRole('alert').filter({ hasText: /venc/ }).getByRole('button', { name: 'Dar baixa' }).click();
   await toast().filter({ hasText: /Baixa de \d+ pudi(m|ns) vencidos?/ }).waitFor();
@@ -315,7 +326,8 @@ test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar
 
   // apagar a venda tira a entrada do caixa junto
   await page.goto(`${base}/pudim/?demo#/pudim?aba=estoque`);
-  const venda = page.locator('.arrastavel', { hasText: 'Vendeu 3 Pudim tradicional 150' }).first();
+  const venda = page.getByRole('region', { name: 'Vendas' }).locator('.arrastavel', { hasText: '3 Pudim tradicional 150' }).first();
+  await venda.locator('.canal-mov', { hasText: 'Direta' }).waitFor();
   await venda.scrollIntoViewIfNeeded();
   const caixa = await venda.boundingBox();
   await page.mouse.move(caixa.x + caixa.width - 20, caixa.y + caixa.height / 2);
@@ -323,7 +335,7 @@ test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar
   await page.mouse.move(caixa.x + 40, caixa.y + caixa.height / 2, { steps: 8 });
   await page.mouse.up();
   await toast().filter({ hasText: 'Venda apagada, e o lançamento no caixa também' }).waitFor();
-  assert.equal(reais(await saldoConta('Nubank PJ')), reais(nubankPj));
+  assert.equal(reais(await saldoConta('Vendas diretas')), 0);
 
   await page.goto(`${base}/pudim/?demo#/pudim?aba=custos`);
   await page.locator('.item-btn', { hasText: 'Pudim tradicional 150' }).click();
@@ -333,38 +345,39 @@ test('pudim: produzir, vender lançando no caixa, dar baixa nos vencidos, apagar
   assert.deepEqual(erros, []);
 });
 
-test('pdv no iFood: preço calculado, taxa de 26,2% como gasto, conta iFood criada; apagar tira os dois lançamentos', async () => {
+test('pdv no iFood: só tira do estoque, não mexe no saldo; o pagamento de quarta é lançado à mão na conta iFood', async () => {
   await page.goto(`${base}/pudim/?demo#/pudim/vender`);
   await page.getByRole('group', { name: 'Canal' }).getByRole('button', { name: 'iFood' }).click();
+  await page.getByText('Venda do iFood só tira do estoque, não mexe no saldo.').waitFor();
   await page.getByRole('button', { name: 'Adicionar Pudim tradicional 1100' }).click();
   await page.getByRole('button', { name: 'Mais Pudim tradicional 1100' }).click();
-  // 65 / (1 - 0,262) = 88,08 → 88,10 cada; taxa 23,08 cada
-  await page.locator('#carrinho').getByText('− R$ 46,16').waitFor();
+  // 65 / (1 - 0,262) = 88,08 → 88,10 cada; a taxa é só uma estimativa
   await page.locator('#carrinho').getByText('R$ 130,04').waitFor();
+  assert.equal(await page.locator('#carrinho').getByText('Lançar no caixa').count(), 0);
   await page.getByRole('button', { name: 'Finalizar venda · R$ 176,20' }).click();
-  await toast().filter({ hasText: /líquido R\$ 130,04 na conta iFood, cai no banco na quarta \d\d\/\d\d/ }).waitFor();
-  assert.match(await saldoConta('iFood'), /130,04/);
-  // o líquido vira um repasse previsto para a quarta-feira, da conta iFood para o banco
-  await page.goto(`${base}/?demo#/mais/previstos`);
-  assert.match(await page.locator('.item', { hasText: 'Repasse iFood' }).first().innerText(), /130,04/);
+  await toast().filter({ hasText: 'Venda do iFood de R$ 176,20 tirada do estoque' }).waitFor();
+  // nada no caixa: nem entrada, nem taxa, nem repasse previsto
   await page.goto(`${base}/?demo#/lancamentos`);
-  await page.locator('.item', { hasText: 'Taxa iFood (26,2%)' }).first().waitFor();
-  await page.goto(`${base}/pudim/?demo#/pudim?aba=estoque`);
-  await page.getByText('Taxa do iFood').waitFor();
-  const venda = page.locator('.arrastavel', { hasText: 'Vendeu 2 Pudim tradicional 1100' }).first();
-  await venda.scrollIntoViewIfNeeded();
-  const caixa = await venda.boundingBox();
-  await page.mouse.move(caixa.x + caixa.width - 20, caixa.y + caixa.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(caixa.x + 40, caixa.y + caixa.height / 2, { steps: 8 });
-  await page.mouse.up();
-  await toast().filter({ hasText: 'Venda apagada' }).waitFor();
-  assert.match(await saldoConta('iFood'), /0,00/);
-  await page.goto(`${base}/?demo#/lancamentos`);
-  assert.equal(await page.locator('.item', { hasText: 'Taxa iFood' }).count(), 0);
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('.item', { hasText: /Taxa iFood|iFood:/ }).count(), 0);
   await page.goto(`${base}/?demo#/mais/previstos`);
   await page.waitForTimeout(300);
-  assert.equal(await page.locator('.item', { hasText: 'Repasse iFood' }).count(), 0, 'venda apagada sai do repasse');
+  assert.equal(await page.locator('.item', { hasText: 'Repasse iFood' }).count(), 0);
+  // a venda aparece na caixa de vendas com a marca do iFood
+  await page.goto(`${base}/pudim/?demo#/pudim?aba=estoque`);
+  await page.getByRole('region', { name: 'Vendas' }).locator('.item', { hasText: '2 Pudim tradicional 1100' }).locator('.canal-mov', { hasText: 'iFood' }).waitFor();
+
+  // quarta-feira: o iFood pagou; lança à mão e fica o registro
+  await page.goto(`${base}/pudim/?demo#/inicio`);
+  await page.getByRole('button', { name: /Pagamento do iFood/ }).click();
+  await folha().locator('#pagamento-ifood-valor').fill('130,04');
+  await page.getByRole('button', { name: 'Lançar R$ 130,04' }).click();
+  await toast().filter({ hasText: 'Pagamento do iFood de R$ 130,04 lançado na conta iFood' }).waitFor();
+  assert.match(await saldoConta('iFood'), /130,04/);
+  await page.goto(`${base}/pudim/?demo#/inicio`);
+  await page.getByRole('button', { name: /Pagamento do iFood/ }).getByText(/último: R\$ 130,04/).waitFor();
+  await page.getByRole('button', { name: /Pagamento do iFood/ }).click();
+  await folha().getByRole('list', { name: 'Pagamentos do iFood' }).locator('.item', { hasText: '130,04' }).waitFor();
   assert.deepEqual(erros, []);
 });
 
@@ -583,16 +596,17 @@ test('estoque de ingredientes: produção desconta pela receita, apagar devolve,
   await linha.getByText('faltam 8').waitFor();
   await linha.getByText(/1 fornada rende 6 e custa ≈ R\$ [\d,]+/).waitFor();
   await aviso.getByText(/Para repor o mínimo: faltam \d+ pudins/).waitFor();
-  await linha.getByRole('button', { name: 'Produzir' }).click();
-  assert.equal(await page.locator('#mov-quantidade').inputValue(), '12');
-  await page.getByRole('button', { name: 'Pôr no estoque' }).click();
+  await linha.getByRole('button', { name: 'Pôr no estoque' }).click();
+  assert.equal(await folha().getByLabel('Quantidade do lote 1').inputValue(), '8');
+  await folha().getByLabel('Quantidade do lote 1').fill('12');
+  await page.getByRole('button', { name: 'Pôr 12 no estoque' }).click();
   await toast().filter({ hasText: '12 Pudim tradicional 150 no estoque' }).waitFor();
   await page.goto(`${base}/pudim/?demo#/pudim?aba=ingredientes`);
   assert.equal(await emCasa('Leite condensado'), '1,58 kg'); // 6 latas − 2 fornadas × 395 g
 
   // apagar a produção devolve os ingredientes
   await page.goto(`${base}/pudim/?demo#/pudim?aba=estoque`);
-  const mov = page.locator('.arrastavel', { hasText: 'Produziu 12 Pudim tradicional 150' }).first();
+  const mov = page.getByRole('region', { name: 'Entradas e envios' }).locator('.arrastavel', { hasText: '+ 12 Pudim tradicional 150' }).first();
   await mov.scrollIntoViewIfNeeded();
   const caixa = await mov.boundingBox();
   await page.mouse.move(caixa.x + caixa.width - 20, caixa.y + caixa.height / 2);
@@ -654,13 +668,15 @@ test('dois locais: lote com vários sabores, envio para Ibiúna, perda lançada 
   await local('Todos');
 
   // lote: 12 tradicionais 150 e 2 ninho 1100, mesma validade
-  await page.getByRole('button', { name: 'Novo lote' }).click();
+  await page.getByRole('button', { name: 'Vários sabores' }).click();
   await folha().getByLabel('Quantos Pudim tradicional 150').fill('12');
   await folha().getByLabel('Quantos Pudim ninho com Nutella 1100').fill('2');
   await folha().getByLabel('Vence em').fill('2099-01-05');
   await page.getByRole('button', { name: 'Pôr 14 no estoque' }).click();
   await toast().filter({ hasText: 'Lote com 14 pudins no estoque de São Roque, vence 05/01' }).waitFor();
+  await page.getByRole('button', { name: /Validade dos lotes/ }).click();
   await page.getByRole('list', { name: 'Lotes' }).locator('.item', { hasText: '2 Pudim ninho com Nutella 1100, 12 Pudim tradicional 150' }).waitFor();
+  await page.keyboard.press('Escape');
 
   // envio de 6 para Ibiúna
   await page.getByRole('button', { name: 'Enviar', exact: true }).click();
@@ -682,7 +698,7 @@ test('dois locais: lote com vários sabores, envio para Ibiúna, perda lançada 
   await page.getByRole('button', { name: 'Registrar perda' }).click();
   await toast().filter({ hasText: 'Perda registrada' }).waitFor();
   await temPudins(3);
-  await page.locator('.item-btn', { hasText: 'Perdeu 3 Pudim tradicional 150' }).click();
+  await page.getByRole('region', { name: 'Perdas' }).locator('.item-btn', { hasText: '3 Pudim tradicional 150' }).first().click();
   await folha().getByRole('group', { name: 'Saiu de' }).getByRole('button', { name: 'São Roque' }).click();
   await folha().getByText('Voltam 3 para Ibiúna e saem 3 de São Roque.').waitFor();
   await page.getByRole('button', { name: 'Salvar' }).click();
@@ -692,16 +708,21 @@ test('dois locais: lote com vários sabores, envio para Ibiúna, perda lançada 
   await temPudins(sr0 + 14 - 6 - 3);
 
   // validade corrigida no lote inteiro (os dois sabores, e o que foi para Ibiúna vai junto)
+  // e dentro do lote dá para mudar a quantidade de cada pudim
   await local('Todos');
+  await page.getByRole('button', { name: /Validade dos lotes/ }).click();
   await page.getByRole('list', { name: 'Lotes' }).locator('.item', { hasText: '2 Pudim ninho com Nutella 1100' }).filter({ hasText: '05/01' }).click();
-  await folha().getByText('Local, dia e validade valem para o lote inteiro (2 sabores)').waitFor();
+  await folha().getByRole('list', { name: 'Pudins do lote' }).locator('.item', { hasText: 'Pudim tradicional 150' }).waitFor();
   await folha().getByLabel('Vence em').fill('2099-01-03');
+  await folha().getByRole('button', { name: 'Mais Pudim ninho com Nutella 1100' }).click();
   await page.getByRole('button', { name: 'Salvar' }).click();
-  await toast().filter({ hasText: 'Movimento corrigido' }).waitFor();
+  await toast().filter({ hasText: 'Lote corrigido' }).waitFor();
+  await page.getByRole('button', { name: /Validade dos lotes/ }).click();
   const lotes = page.getByRole('list', { name: 'Lotes' });
-  await lotes.locator('.item', { hasText: '2 Pudim ninho com Nutella 1100' }).filter({ hasText: '03/01' }).waitFor();
+  await lotes.locator('.item', { hasText: '3 Pudim ninho com Nutella 1100' }).filter({ hasText: '03/01' }).waitFor();
   await lotes.locator('.item', { hasText: 'Ibiúna' }).filter({ hasText: '03/01' }).waitFor();
   assert.equal(await lotes.locator('.item', { hasText: '05/01' }).count(), 0);
+  await page.keyboard.press('Escape');
 
   // cartões do estoque como o cardápio: tocar abre o pudim com o que tem em cada local
   await local('Todos');
@@ -718,23 +739,23 @@ test('dois locais: lote com vários sabores, envio para Ibiúna, perda lançada 
 
 test('produção lançada no pudim errado: trocar o pudim refaz o custo de cada e o gasto de ingredientes', async () => {
   await page.goto(`${base}/pudim/?demo#/pudim?aba=estoque`);
-  await page.getByRole('button', { name: 'Produzi', exact: true }).click();
+  await page.locator('.acoes-pudim').getByRole('button', { name: 'Pôr no estoque', exact: true }).click();
   await folha().getByLabel('Qual pudim').selectOption({ label: 'Pudim tradicional 1100' });
-  await page.locator('#mov-quantidade').fill('4');
-  await page.getByRole('button', { name: 'Pôr no estoque' }).click();
+  await folha().getByLabel('Quantidade do lote 1').fill('4');
+  await page.getByRole('button', { name: 'Pôr 4 no estoque' }).click();
   await toast().filter({ hasText: '4 Pudim tradicional 1100 no estoque' }).waitFor();
-  const mov = page.locator('.item-btn', { hasText: 'Produziu 4 Pudim tradicional 1100' }).first();
+  const entradas = page.getByRole('region', { name: 'Entradas e envios' });
+  const mov = entradas.locator('.item-btn', { hasText: '+ 4 Pudim tradicional 1100' }).first();
   const antes = await mov.locator('.valor').innerText();
   await mov.click();
   await folha().getByLabel('Qual pudim').selectOption({ label: 'Pudim tradicional 150' });
   await folha().getByText(/Passa a custar R\$ [\d,]+ cada/).waitFor();
   await page.getByRole('button', { name: 'Salvar' }).click();
   await toast().filter({ hasText: 'Movimento corrigido' }).waitFor();
-  const depois = page.locator('.item-btn', { hasText: 'Produziu 4 Pudim tradicional 150' }).first();
+  const depois = entradas.locator('.item-btn', { hasText: '+ 4 Pudim tradicional 150' }).first();
   await depois.waitFor();
-  assert.match(await depois.innerText(), /4 × R\$ [\d,]+/);
   assert.ok(reais(await depois.locator('.valor').innerText()) < reais(antes));
-  assert.equal(await page.locator('.item-btn', { hasText: 'Produziu 4 Pudim tradicional 1100' }).count(), 0);
+  assert.equal(await entradas.locator('.item-btn', { hasText: '+ 4 Pudim tradicional 1100' }).count(), 0);
   assert.deepEqual(erros, []);
 });
 

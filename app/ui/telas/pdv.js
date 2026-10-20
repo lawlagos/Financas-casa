@@ -1,15 +1,15 @@
 // Mini PDV do pudim: toca no pudim para pôr no carrinho, escolhe venda direta ou iFood, e a venda
-// já soma, desconta a taxa do iFood, lança no caixa e tira do estoque.
+// tira do estoque. Só a venda direta entra no caixa (conta Vendas diretas); o iFood é lançado à mão quando paga, na quarta.
 import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
 import { Topo, Segmento, Campo } from '../componentes.js';
 import { useStore, toast } from '../../data/store.js';
 import { brl, parseBRL, toCents } from '../../core/money.js';
-import { addDays, fmtDay } from '../../core/dates.js';
-import { precoNoCanal, totaisCarrinho, CANAIS, quartaDoRepasse } from '../../core/pudim.js';
+import { addDays } from '../../core/dates.js';
+import { precoNoCanal, totaisCarrinho, CANAIS } from '../../core/pudim.js';
 import { interpretarEstoque } from '../../core/vozestoque.js';
-import { registrarVenda, taxaIfood } from '../../data/pudim-acoes.js';
+import { registrarVenda, taxaIfood, contasDaVenda, CONTA_VENDAS_DIRETAS } from '../../data/pudim-acoes.js';
 import { contasAtivas } from '../derivados.js';
 import { SelectConta } from '../folhas/lancamento.js';
 import { CampoFala } from '../voz.js';
@@ -25,13 +25,12 @@ export function TelaPdv({ params = {} }) {
   const d = dadosPudim(s);
   // De onde sai a venda (São Roque ou Ibiúna). Ibiúna não tem geladinho.
   const [local, setLocal] = useState(d.locaisPorId[params.local] ? params.local : d.locais[0].id);
-  const contas = contasAtivas(s);
-  const ultimaDireta = [...s.tables.lancamentos].reverse().find((l) => l.categoria_id === 'cat-venda-pudim' && l.conta_id !== 'ifood');
+  const contas = contasDaVenda(contasAtivas(s));
   const [canal, setCanal] = useState('direta');
   const [carrinho, setCarrinho] = useState({}); // receita_id → quantidade
   const [precos, setPrecos] = useState({}); // receita_id|canal → texto digitado
   const [qtdTexto, setQtdTexto] = useState({}); // receita_id → quantidade enquanto é digitada ("1," a caminho de "1,5")
-  const [conta_id, setConta] = useState(ultimaDireta?.conta_id || (contas.find((c) => c.id === 'nubank-pj') ? 'nubank-pj' : ''));
+  const [conta_id, setConta] = useState(CONTA_VENDAS_DIRETAS);
   const [data, setData] = useState(s.hoje);
   const [lancar, setLancar] = useState(true);
   const [busca, setBusca] = useState('');
@@ -126,7 +125,7 @@ export function TelaPdv({ params = {} }) {
       setCarrinho({});
       setPrecos({});
       setQtdTexto({});
-      toast(`Venda de ${brl(r.bruto)} registrada${r.lancado ? (canal === 'ifood' ? `, líquido ${brl(r.liquido)} na conta iFood${r.repasse ? `, cai no banco na quarta ${fmtDay(r.repasse)}` : ''}` : ' e lançada no caixa') : ''}`);
+      toast(canal === 'ifood' ? `Venda do iFood de ${brl(r.bruto)} tirada do estoque` : `Venda de ${brl(r.bruto)} registrada${r.lancado ? ' e lançada no caixa' : ''}`);
     } catch {
       // o aviso de erro já apareceu; o carrinho continua para tentar de novo
     } finally {
@@ -139,7 +138,7 @@ export function TelaPdv({ params = {} }) {
     <${FaixaDemo} />
     ${d.locais.length > 1 && html`<${Segmento} rotulo="Local" classe="pdv-local" opcoes=${d.locais.map((l) => [l.id, l.nome])} valor=${local} onChange=${trocarLocal} />`}
     <${Segmento} rotulo="Canal" classe=${d.locais.length > 1 ? 'mt8' : ''} opcoes=${[['direta', CANAIS.direta], ['ifood', CANAIS.ifood]]} valor=${canal} onChange=${setCanal} />
-    ${canal === 'ifood' && html`<p class="muted" style="font-size:12.5px;margin:6px 2px 0">Preços do iFood; a taxa de ${qtdTxt(taxaPct)}% sai do valor da venda e o resto cai no banco na quarta-feira ${fmtDay(quartaDoRepasse(data))} (o iFood paga na quarta as vendas de segunda a domingo).</p>`}
+    ${canal === 'ifood' && html`<p class="muted" style="font-size:12.5px;margin:6px 2px 0">Venda do iFood só tira do estoque, não mexe no saldo. O dinheiro entra quando o iFood pagar, na quarta: lance em <a href="#/inicio">Início › Pagamento do iFood</a>.</p>`}
     ${falando && html`<div style="margin-top:10px"><${CampoFala} id="pdv-frase" rotulo="O que vendeu" frase=${frase} setFrase=${setFrase} onPronto=${ouvido} placeholder="Ex.: 3 tradicionais no copo e 2 geladinhos de ninho com nutella" />
       <div class="acoes" style="margin-top:8px;justify-content:flex-end"><button class="btn btn-sec btn-mini" disabled=${!frase.trim()} onClick=${() => ouvido(frase)}>Pôr no carrinho</button></div></div>`}
 
@@ -184,16 +183,16 @@ export function TelaPdv({ params = {} }) {
         </ul>
         <div class="pdv-totais">
           <div><span>${t.quantidade} ${t.quantidade === 1 ? 'pudim' : 'pudins'}</span><strong>${brl(t.bruto)}</strong></div>
-          ${canal === 'ifood' && html`<div><span>Taxa iFood ${qtdTxt(taxaPct)}%</span><span class="neg">− ${brl(t.taxa)}</span></div>
-            <div><span>Fica com vocês</span><strong>${brl(t.liquido)}</strong></div>`}
+          ${canal === 'ifood' && html`<div class="muted"><span>Taxa iFood ≈ ${qtdTxt(taxaPct)}%</span><span>− ${brl(t.taxa)}</span></div>
+            <div class="muted"><span>Deve ficar com vocês</span><span>${brl(t.liquido)}</span></div>`}
           <div class="muted"><span>Lucro (tirando ingredientes e embalagens)</span><span>${brl(t.lucro)}</span></div>
           ${t.fixo > 0 && html`<div class="muted"><span>Lucro livre (tirando também mão de obra e despesas)</span><span>${brl(t.lucroLivre)}</span></div>`}
         </div>
         <div class="linha2">
           <${Campo} rotulo="Dia"><input type="date" value=${data} onInput=${(e) => setData(e.target.value)} /><//>
-          ${canal === 'direta' && lancar ? html`<${SelectConta} rotulo="Entrou em" valor=${conta_id} onChange=${setConta} contas=${contas} />` : html`<div class="campo"><span>Entra em</span><div style="padding:12px 0">${canal === 'ifood' ? 'Conta iFood' : '—'}</div></div>`}
+          ${canal === 'direta' && lancar ? html`<${SelectConta} rotulo="Entrou em" valor=${conta_id} onChange=${setConta} contas=${contas} />` : html`<div class="campo"><span>Saldo</span><div style="padding:12px 0">${canal === 'ifood' ? 'Não mexe (só estoque)' : '—'}</div></div>`}
         </div>
-        <label class="interruptor"><span>Lançar no caixa</span><input type="checkbox" checked=${lancar} onChange=${(e) => setLancar(e.target.checked)} /></label>
+        ${canal === 'direta' && html`<label class="interruptor"><span>Lançar no caixa</span><input type="checkbox" checked=${lancar} onChange=${(e) => setLancar(e.target.checked)} /></label>`}
         ${semPreco.length > 0 && html`<div class="duvida" style="margin-top:10px"><${Icone} n="alerta" /><span>Digite o preço de ${semPreco.map((l) => l.receita.nome).join(', ')}.</span></div>`}
         <button class=${`btn btn-pri btn-larga ${salvando ? 'carregando' : ''}`} style="margin-top:14px" disabled=${salvando || semPreco.length > 0 || (lancar && canal === 'direta' && !conta_id)} onClick=${finalizar}>
           ${salvando ? 'Salvando…' : `Finalizar venda · ${brl(t.bruto)}`}</button>

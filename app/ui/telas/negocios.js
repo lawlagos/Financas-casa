@@ -12,15 +12,13 @@ import { semanaPudim } from '../../core/pudim.js';
 import { Icone } from '../icones.js';
 import { urlDoApp } from '../apps.js';
 import { toCents } from '../../core/money.js';
+import { pagamentosIfood } from '../../data/pudim-acoes.js';
 
 // Resumo do pudim no Finanças: só ganhos, perdas, lucro e compras. O pudim é gerenciado no app Pudins.
 function ResumoPudim({ s }) {
   const d = dadosPudim(s);
   const sem = semanaPudim({ movimentos: d.movimentos, saidas: d.saidas, lancamentos: s.tables.lancamentos, data: s.hoje });
-  const recebidos = new Set((s.tables.baixas || []).map((b) => b.previsto_id));
-  const repasses = (s.tables.previstos || []).filter((p) => String(p.id).startsWith('repasse-ifood-') && p.ativo !== false && !recebidos.has(p.id))
-    .sort((a, b) => (a.data_unica < b.data_unica ? -1 : 1));
-  const aReceber = repasses.reduce((t, p) => t + toCents(p.valor), 0);
+  const ultimoIfood = pagamentosIfood(s.tables.lancamentos)[0];
   const linha = (rot, valor, classe = '') => html`<div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px"><span>${rot}</span><span class=${classe} style="white-space:nowrap">${valor}</span></div>`;
   const e = d.estoque;
   return html`<div class="painel painel-pad" style="margin-top:10px" aria-label="Resumo do pudim">
@@ -32,7 +30,7 @@ function ResumoPudim({ s }) {
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
       <strong>Lucro</strong><span class=${sem.ganho < 0 ? 'neg' : 'pos'} style="font:700 22px var(--display)">${brlSigned(sem.ganho)}</span></div>
     ${linha('Compras do pudim (saiu do caixa)', brl(sem.comprasCaixa))}
-    ${aReceber > 0 && linha(`A receber do iFood (quarta ${fmtDay(repasses[0].data_unica)})`, brl(aReceber), 'pos')}
+    ${ultimoIfood && linha(`Último pagamento do iFood (${fmtDay(ultimoIfood.data)})`, brl(toCents(ultimoIfood.valor)), 'pos')}
     <div class="muted" style="font-size:12.5px;margin-top:8px">${e.quantidade} prontos no estoque (${brl(e.potencial)} se vender tudo)${d.abaixo.length ? ` · ${d.abaixo.length} abaixo do mínimo` : ''}${e.vencidos ? ` · ${e.vencidos} vencidos` : ''}</div>
     <a class="btn btn-sec btn-larga" style="margin-top:12px" href=${urlDoApp('pudim', '/inicio')}><${Icone} n="pudim" />Abrir o app Pudins</a>
   </div>`;

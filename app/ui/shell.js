@@ -12,7 +12,7 @@ import { FolhaPrevisto, FolhaOcorrencia } from './folhas/previsto.js';
 import { FolhaConta, FolhaCategoria, FolhaDizimo } from './folhas/outras.js';
 import { FolhaLeitura } from './folhas/leitura.js';
 import { FolhaProduto } from './telas/mercado.js';
-import { FolhaMovimento, FolhaReceita, FolhaInsumo, FolhaVozEstoque, FolhaCustosPudim, FolhaContagem, FolhaLote, FolhaEnvio, FolhaEditarMovimento, FolhaEstoqueProduto } from './folhas/pudim.js';
+import { FolhaMovimento, FolhaReceita, FolhaInsumo, FolhaVozEstoque, FolhaCustosPudim, FolhaContagem, FolhaLote, FolhaEnvio, FolhaEditarMovimento, FolhaEstoqueProduto, FolhaEntrada, FolhaVerLote, FolhaLotes, FolhaPagamentoIfood } from './folhas/pudim.js';
 
 const FOLHAS = {
   lancamento: FolhaLancamento,
@@ -34,6 +34,10 @@ const FOLHAS = {
   envio: FolhaEnvio,
   'editar-movimento': FolhaEditarMovimento,
   'estoque-produto': FolhaEstoqueProduto,
+  entrada: FolhaEntrada,
+  'ver-lote': FolhaVerLote,
+  lotes: FolhaLotes,
+  'pagamento-ifood': FolhaPagamentoIfood,
 };
 
 let TELAS = {};
@@ -121,6 +125,11 @@ export function montarApp({ titulo, telas, inicio = '/inicio', Nav, sw = './sw.j
   TELAS = telas;
   INICIO = inicio;
   aplicarTema();
+  // iPhone: depois que o teclado fecha, a página às vezes fica deslocada e o menu de baixo "solta".
+  // Um empurrãozinho na rolagem faz o navegador recolocar o que é fixo.
+  addEventListener('focusout', () => setTimeout(() => {
+    if (!document.activeElement?.matches?.('input, textarea, select')) window.scrollTo(window.scrollX, window.scrollY);
+  }, 60));
   render(html`<${App} Nav=${Nav} />`, document.getElementById('raiz'));
   init();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register(sw).catch(() => {});

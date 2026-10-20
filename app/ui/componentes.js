@@ -56,7 +56,7 @@ export function Folha({ titulo, children, rodape, onFechar = fecharFolha }) {
     const esc = (e) => e.key === 'Escape' && onFechar();
     document.addEventListener('keydown', esc);
     document.body.style.overflow = 'hidden';
-    ref.current?.focus();
+    ref.current?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener('keydown', esc);
       document.body.style.overflow = '';

@@ -6,6 +6,7 @@ import { Topo, Secao, Campo } from '../componentes.js';
 import { useStore, salvar, config, reiniciarDemo, sair, toast } from '../../data/store.js';
 import { parseBRL } from '../../core/money.js';
 import { TAXA_IFOOD_PADRAO } from '../../core/pudim.js';
+import { ifoodAntigoNoSaldo, tirarIfoodAntigoDoSaldo } from '../../data/pudim-acoes.js';
 import { Importar, lerTema, aplicarTema } from './mais.js';
 import { urlDoApp } from '../apps.js';
 import { FaixaDemo } from './inicio.js';
@@ -34,6 +35,18 @@ export function TelaAjustesPudim() {
   const s = useStore();
   const [taxa, setTaxa] = useState(String(config('taxa_ifood', TAXA_IFOOD_PADRAO)).replace('.', ','));
   const [tema, setTema] = useState(lerTema());
+  const [limpando, setLimpando] = useState(false);
+  const antigo = ifoodAntigoNoSaldo(s.tables);
+  const limpar = async () => {
+    if (!confirm(`Tirar do saldo ${antigo.lancs.length} lançamentos de vendas do iFood (e ${antigo.repasses.length} repasses previstos)? As vendas continuam no estoque.`)) return;
+    setLimpando(true);
+    try {
+      const r = await tirarIfoodAntigoDoSaldo();
+      toast(`${r.lancamentos} lançamentos e ${r.repasses} repasses tirados do saldo`);
+    } finally {
+      setLimpando(false);
+    }
+  };
   const guardar = async () => {
     const t = parseBRL(taxa);
     if (!(t >= 0 && t < 100)) return toast('Taxa inválida', { tom: 'erro' });
@@ -59,6 +72,11 @@ export function TelaAjustesPudim() {
       <button class="btn btn-pri btn-larga" style="margin-top:16px" onClick=${guardar}>Salvar</button>
       <button class="btn btn-sec btn-larga" style="margin-top:8px" onClick=${() => (location.hash = '#/pudim?aba=receitas')}>Mão de obra e despesas fixas: em Receitas</button>
     </div>
+    ${(antigo.lancs.length > 0 || antigo.repasses.length > 0) && html`<div class="painel painel-pad aviso-minimo" style="margin-top:12px" aria-label="iFood antigo no saldo">
+      <strong>Vendas do iFood ainda no saldo</strong>
+      <p class="muted" style="font-size:13px;margin:4px 0 10px">Antes, cada venda do iFood entrava na conta iFood (com a taxa) e virava um repasse previsto. Agora o iFood só mexe no estoque e o dinheiro entra quando você lança o pagamento de quarta. Há ${antigo.lancs.length} lançamentos e ${antigo.repasses.length} repasses do jeito antigo.</p>
+      <button class=${`btn btn-sec btn-larga ${limpando ? 'carregando' : ''}`} disabled=${limpando} onClick=${limpar}>Tirar do saldo (o estoque fica igual)</button>
+    </div>`}
     <${Importar} />
     <${Secao} titulo="Tema">
       <div class="segmento" role="group" aria-label="Tema">
