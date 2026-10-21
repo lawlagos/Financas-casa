@@ -718,6 +718,13 @@ function instrucoesLeitura_(ctx) {
     '  Casa para o resto; use null quando puder ser os dois. Em "categoria_id" escolha a categoria de saída que melhor descreve o item',
     '  (ex.: limpeza, construção, mercado), seguindo como o casal já classifica; null se nenhuma servir.',
     '- Extrato com vários movimentos: um item em "lancamentos" para cada movimento.',
+    '- Print de notificações do celular (ex.: "Compra aprovada", "Pix recebido", "Pix enviado", "Transferência recebida"): um item em "lancamentos"',
+    '  para CADA notificação, sem juntar nem pular nenhuma (inclusive as cortadas, se o valor aparecer). Compra/pagamento/Pix enviado = saida;',
+    '  Pix ou transferência recebida = entrada. "descricao": o nome do estabelecimento ou da pessoa, legível (ex.: "Super Mercado São Roque").',
+    '  Data pelo tempo da notificação, contando de hoje: "agora", "há X min" ou "há Xh" = hoje (ou ontem, se as horas passarem da meia-noite de hoje);',
+    '  "ontem" = ontem; "há Xd" = X dias antes de hoje; dia da semana = o mais recente antes de hoje. Sempre preencha "data".',
+    '  Conta: pelo app da notificação (nome ou ícone): ícone de chama laranja = Hotmart (cartão Hotmart); roxo = Nubank; laranja com "C6" = C6; etc.',
+    '  Se o app for de uma conta da lista, use o id dela em TODAS as notificações daquele app.',
     '- "confianca" de 0 a 1. Use "duvida" para dizer em português curto o que não deu para ler ou decidir.',
     '- Não invente valores: se não estiver legível, use null e explique em "duvida".'
   ].join('\n');
@@ -975,7 +982,7 @@ function avisosDaCasa() {
 // Ponto de entrada do Web App. O app manda POST com {acao, sessao, dados}.
 
 // Mude a cada atualização do servidor: abrir o endereço /exec no navegador mostra este número.
-var VERSAO_SERVIDOR = '2026-10-20.1';
+var VERSAO_SERVIDOR = '2026-10-21.1';
 
 function doPost(e) {
   var resposta;

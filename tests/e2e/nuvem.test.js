@@ -140,6 +140,24 @@ test('print de comprovante: pergunta a conta, salva com canal foto', async () =>
   await ctx.close();
 });
 
+test('print de notificações: uma saída por notificação, conta e origem para todos de uma vez', async () => {
+  const antes = env.abas['Lançamentos'].linhas.length;
+  const n = (valor, descricao) => ({ tipo: 'saida', valor, descricao, data: '2026-10-16', conta_id: null, categoria_id: null, origem: null, confianca: 0.9 });
+  const { ctx, page, erros } = await entrarELer({
+    tipo_documento: 'outro', lancamentos: [n(40, 'Sergio Yukio'), n(75, 'Tatiana Lima'), n(32.9, 'Super Mercado São Roque')],
+  });
+  const todos = page.getByRole('region', { name: 'Para todos' });
+  await todos.getByText('Para todos os 3').waitFor();
+  await todos.getByLabel('Conta de todos').selectOption({ label: 'Nubank PJ (dela)' });
+  await todos.getByRole('group', { name: 'Origem de todos' }).getByRole('button', { name: 'Casa' }).click();
+  await page.getByRole('button', { name: 'Salvar 3 lançamentos' }).click();
+  await page.locator('.toast', { hasText: '3 lançamentos salvos' }).waitFor();
+  const novas = env.abas['Lançamentos'].linhas.slice(antes);
+  assert.deepEqual(novas.map((l) => [l[1], l[3], l[5], l[8]]), [['2026-10-16', 40, 'nubank-pj', 'Casa'], ['2026-10-16', 75, 'nubank-pj', 'Casa'], ['2026-10-16', 32.9, 'nubank-pj', 'Casa']]);
+  assert.deepEqual(erros, []);
+  await ctx.close();
+});
+
 test('print de nota de mercado: categoria por item, categoria nova na hora, diferença do total, 1 lançamento por categoria', async () => {
   const antes = env.abas['Lançamentos'].linhas.length;
   const { ctx, page } = await entrarELer({

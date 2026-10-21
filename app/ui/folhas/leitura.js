@@ -205,7 +205,7 @@ export function FolhaLeitura() {
     ${etapa === 'escolher' && html`<label class="painel" style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:28px 16px;text-align:center;cursor:pointer;border-style:dashed">
       <span style="width:40px;height:40px;color:var(--caramel)"><${Icone} n="camera" /></span>
       <strong>Tirar foto ou escolher um print</strong>
-      <span class="muted" style="font-size:13.5px">Comprovante de Pix, nota de mercado ou extrato. No computador, você também pode colar o print aqui (Ctrl+V).</span>
+      <span class="muted" style="font-size:13.5px">Comprovante de Pix, nota de mercado, extrato ou print das notificações do banco. No computador, você também pode colar o print aqui (Ctrl+V).</span>
       <input id="leitura-arquivo" type="file" accept="image/*" class="sr" onChange=${(e) => ler(e.target.files?.[0])} />
     </label>`}
     ${etapa === 'lendo' && html`<div class="vazio">${previa && html`<img src=${previa} alt="Print enviado" style="max-height:180px;border-radius:12px;margin-bottom:12px" />`}<strong>Lendo o print…</strong>Isso leva uns segundos.</div>`}
@@ -220,8 +220,14 @@ export function FolhaLeitura() {
       ${previa && html`<details><summary class="muted" style="font-size:13px;cursor:pointer">Ver o print</summary><img src=${previa} alt="Print lido" style="max-width:100%;border-radius:12px;margin-top:8px" /></details>`}
       ${nota
         ? html`<${RevisarNota} nota=${nota} setNota=${setNota} contas=${contas} tables=${s.tables} />`
-        : lancs.map((l, i) => html`<${EditorLancamento} key=${l.chave} l=${l} contas=${contas} categorias=${s.tables.categorias}
-            set=${(patch) => setLancs((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)))} />`)}
+        : html`${lancs.length > 1 && html`<section class="painel painel-pad" style="margin-bottom:10px" aria-label="Para todos">
+            <strong>Para todos os ${lancs.length}</strong>
+            <${SelectConta} rotulo="Conta de todos" valor=${lancs.every((x) => x.conta_id === lancs[0].conta_id) ? lancs[0].conta_id : ''} contas=${contas} onChange=${(c) => setLancs((xs) => xs.map((x) => ({ ...x, conta_id: c })))} />
+            <div class="campo"><span>Origem de todos</span><${Chips} rotulo="Origem de todos" valor=${lancs.every((x) => x.origem === lancs[0].origem) ? lancs[0].origem : ''} onChange=${(o) => setLancs((xs) => xs.map((x) => (x.tipo === 'transferencia' ? x : { ...x, origem: o })))} opcoes=${ORIGENS.map((o) => [o, origemLabel(o)])} /></div>
+            <${Campo} rotulo="Data de todos"><input type="date" aria-label="Data de todos" value=${lancs.every((x) => x.data === lancs[0].data) ? lancs[0].data : ''} onInput=${(e) => e.target.value && setLancs((xs) => xs.map((x) => ({ ...x, data: e.target.value, dataLida: true })))} /><//>
+          </section>`}
+        ${lancs.map((l, i) => html`<${EditorLancamento} key=${l.chave} l=${l} contas=${contas} categorias=${s.tables.categorias}
+            set=${(patch) => setLancs((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)))} />`)}`}
       ${pendencias.length > 0 && html`<p class="muted" style="font-size:13px;margin:12px 2px 0">Para salvar, responda: ${[...new Set(pendencias)].join(', ')}.</p>`}
     </div>`}
   <//>`;
