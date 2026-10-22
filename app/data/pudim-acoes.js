@@ -41,37 +41,70 @@ export function taxaIfood() {
   return Number.isFinite(v) && v >= 0 && v < 100 ? v : TAXA_IFOOD_PADRAO;
 }
 
-// Contas do pudim: "Vendas diretas" recebe as vendas do PDV; "iFood" só recebe o pagamento que o iFood faz na quarta,
-// lançado à mão (as vendas do iFood mexem só no estoque). As outras entradas da empresa vão para a Nubank PJ.
-export const CONTA_VENDAS_DIRETAS = 'vendas-diretas';
-const CONTAS_PUDIM = {
-  [CONTA_VENDAS_DIRETAS]: { nome: 'Vendas diretas', cor: '#c10118' },
-  [CONTA_IFOOD]: { nome: 'iFood', cor: '#ea1d2c' },
-};
-export async function garantirConta(id) {
-  if (state.tables.contas.some((c) => c.id === id) || !CONTAS_PUDIM[id]) return;
-  await salvar('contas', { id, ...CONTAS_PUDIM[id], dono: 'Esposa', grupo: 'Pudim', saldo_inicial: 0, data_saldo_inicial: '2000-01-01', ativa: true });
+// Todo o dinheiro do pudim fica na conta PJ dela (Nubank PJ): venda direta e o pagamento de quarta do iFood entram lá,
+// separados pela categoria ("Venda de pudim" e "Pagamento iFood"). As vendas do iFood em si mexem só no estoque.
+export const CATEGORIA_PAGAMENTO_IFOOD = 'cat-pagamento-ifood';
+// Contas que existiram por um tempo para o pudim; o que tem nelas pode ser juntado na PJ (Ajustes do Pudins).
+const CONTAS_SEPARADAS = ['vendas-diretas', CONTA_IFOOD];
+
+// Conta PJ: a escolhida nos ajustes, senão a Nubank PJ (pelo id ou pelo nome), senão a primeira do Pudim.
+export function contaDoPudim(contas = state.tables.contas) {
+  const ativas = (contas || []).filter((c) => c.ativa !== false && c.ativa !== 'FALSE' && !CONTAS_SEPARADAS.includes(c.id));
+  const escolhida = config('conta_pudim', '');
+  return (ativas.find((c) => c.id === escolhida) || ativas.find((c) => c.id === 'nubank-pj') || ativas.find((c) => /nubank.*pj/i.test(c.nome))
+    || ativas.find((c) => c.grupo === 'Pudim') || ativas[0])?.id || '';
 }
 
-// Contas para escolher na venda direta: as ativas, com a "Vendas diretas" no topo (ela nasce na primeira venda).
-export function contasDaVenda(contas) {
-  const sem = contas.filter((c) => c.id !== CONTA_VENDAS_DIRETAS && c.id !== CONTA_IFOOD);
-  return [contas.find((c) => c.id === CONTA_VENDAS_DIRETAS) || { id: CONTA_VENDAS_DIRETAS, ...CONTAS_PUDIM[CONTA_VENDAS_DIRETAS], grupo: 'Pudim', dono: 'Esposa' }, ...sem];
+// Contas para escolher na venda direta (sem as contas separadas antigas).
+export const contasDaVenda = (contas) => contas.filter((c) => !CONTAS_SEPARADAS.includes(c.id));
+
+async function garantirCategoriaIfood() {
+  if (state.tables.categorias.some((c) => c.id === CATEGORIA_PAGAMENTO_IFOOD)) return;
+  await salvar('categorias', { id: CATEGORIA_PAGAMENTO_IFOOD, nome: 'Pagamento iFood', tipo: 'entrada', origem_padrao: 'Pudim', ativa: true });
 }
 
-// Pagamentos do iFood já lançados (entradas na conta iFood), do mais novo para o mais antigo.
-export const pagamentosIfood = (lancs) => (lancs || []).filter((l) => l.conta_id === CONTA_IFOOD && l.tipo === 'entrada' && l.canal !== 'pdv')
+// Pagamentos do iFood já lançados (pela categoria, ou na conta iFood antiga), do mais novo para o mais antigo.
+export const pagamentosIfood = (lancs) => (lancs || []).filter((l) => l.tipo === 'entrada' && l.canal !== 'pdv'
+  && (l.categoria_id === CATEGORIA_PAGAMENTO_IFOOD || l.conta_id === CONTA_IFOOD))
   .sort((a, b) => (a.data < b.data ? 1 : -1));
 
-// Lança o pagamento de quarta do iFood na conta iFood.
+// Lança o pagamento de quarta do iFood na conta PJ, com a categoria "Pagamento iFood".
 export async function lancarPagamentoIfood({ data, valor, obs = '' }) {
-  await garantirConta(CONTA_IFOOD);
+  await garantirCategoriaIfood();
   // Na quarta, o iFood paga as vendas de segunda a domingo da semana anterior.
   const segunda = new Date(`${data}T12:00:00Z`).getUTCDay() === 3 ? addDays(data, -9) : '';
   return salvar('lancamentos', {
     tipo: 'entrada', valor, data, descricao: (segunda ? `Pagamento iFood (vendas de ${fmtDay(segunda)} a ${fmtDay(addDays(segunda, 6))})` : 'Pagamento iFood') + (obs ? ` · ${obs}` : ''),
-    conta_id: CONTA_IFOOD, conta_destino_id: '', categoria_id: 'cat-venda-pudim', origem: 'Pudim', canal: 'ifood', grupo_id: '', previsto_id: '',
+    conta_id: contaDoPudim(), conta_destino_id: '', categoria_id: CATEGORIA_PAGAMENTO_IFOOD, origem: 'Pudim', canal: 'ifood', grupo_id: '', previsto_id: '',
   });
+}
+
+// Juntar na PJ o que ficou nas contas separadas (Vendas diretas e iFood): os lançamentos passam para a PJ e as
+// transferências entre elas e a PJ (que eram só para "levar" o dinheiro) somem. As contas ficam desativadas.
+export function paraJuntarNaPj(tables) {
+  const pj = contaDoPudim(tables.contas);
+  const separadas = (tables.contas || []).filter((c) => CONTAS_SEPARADAS.includes(c.id) && c.ativa !== false && c.ativa !== 'FALSE');
+  const ids = new Set(separadas.map((c) => c.id));
+  const lancs = (tables.lancamentos || []).filter((l) => ids.has(l.conta_id) || ids.has(l.conta_destino_id));
+  const entreElas = (l) => l.tipo === 'transferencia' && [l.conta_id, l.conta_destino_id].every((c) => ids.has(c) || c === pj);
+  return { pj, contas: separadas, mover: lancs.filter((l) => !entreElas(l)), apagar: lancs.filter(entreElas) };
+}
+export async function juntarNaPj() {
+  const { pj, contas, mover, apagar: sobra } = paraJuntarNaPj(state.tables);
+  if (!pj) throw new Error('Sem conta PJ');
+  await garantirCategoriaIfood();
+  const ids = new Set(contas.map((c) => c.id));
+  const movidos = mover.map((l) => ({
+    ...l,
+    conta_id: ids.has(l.conta_id) ? pj : l.conta_id,
+    conta_destino_id: ids.has(l.conta_destino_id) ? pj : l.conta_destino_id,
+    // Pagamento do iFood fica marcado pela categoria.
+    categoria_id: l.conta_id === CONTA_IFOOD && l.tipo === 'entrada' && l.canal !== 'pdv' ? CATEGORIA_PAGAMENTO_IFOOD : l.categoria_id,
+  }));
+  if (movidos.length) await salvarVarias('lancamentos', movidos);
+  for (const l of sobra) await apagar('lancamentos', l.id);
+  for (const c of contas) await salvar('contas', { ...c, ativa: false });
+  return { movidos: movidos.length, apagados: sobra.length, contas: contas.length };
 }
 
 // Limpeza única: vendas do iFood lançadas no caixa pelo jeito antigo (entrada, taxa e repasse previsto) saem do saldo.
@@ -92,8 +125,8 @@ export async function tirarIfoodAntigoDoSaldo() {
 }
 
 // Venda de um carrinho. linhas: [{ receita, quantidade, preco (centavos), custo (centavos por unidade) }].
-// Venda direta lança a entrada no caixa (conta Vendas diretas). Venda do iFood mexe só no estoque: o dinheiro entra
-// quando o iFood paga, na quarta, lançado à mão na conta iFood.
+// Venda direta lança a entrada no caixa (conta PJ). Venda do iFood mexe só no estoque: o dinheiro entra
+// quando o iFood paga, na quarta, lançado à mão na PJ com a categoria "Pagamento iFood".
 // Tudo ou nada: se uma das gravações falhar, as que já foram são desfeitas, para não sobrar venda pela metade.
 export async function tudoOuNada(fn) {
   const feitos = [];
@@ -118,8 +151,7 @@ async function gravarVenda({ linhas, canal, data, conta_id, lancar, local = '' }
   let lancamento_id = '';
   if (lancar && canal !== 'ifood') {
     const grupo_id = uid('ven');
-    const conta = conta_id || CONTA_VENDAS_DIRETAS;
-    await garantirConta(conta);
+    const conta = conta_id || contaDoPudim();
     const resumo = itens.map((l) => `${qtdTxt(l.quantidade)} ${l.receita.nome}`).join(', ');
     const entrada = await salvar('lancamentos', {
       tipo: 'entrada', valor: reais(t.bruto), data, descricao: `Venda direta: ${resumo}`.slice(0, 120),

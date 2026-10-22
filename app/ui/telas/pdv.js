@@ -1,5 +1,5 @@
 // Mini PDV do pudim: toca no pudim para pôr no carrinho, escolhe venda direta ou iFood, e a venda
-// tira do estoque. Só a venda direta entra no caixa (conta Vendas diretas); o iFood é lançado à mão quando paga, na quarta.
+// tira do estoque. Só a venda direta entra no caixa (conta PJ); o iFood é lançado à mão quando paga, na quarta.
 import { useState } from '../../vendor/hooks.module.js';
 import { html } from '../html.js';
 import { Icone } from '../icones.js';
@@ -9,7 +9,7 @@ import { brl, parseBRL, toCents } from '../../core/money.js';
 import { addDays } from '../../core/dates.js';
 import { precoNoCanal, totaisCarrinho, CANAIS } from '../../core/pudim.js';
 import { interpretarEstoque } from '../../core/vozestoque.js';
-import { registrarVenda, taxaIfood, contasDaVenda, CONTA_VENDAS_DIRETAS } from '../../data/pudim-acoes.js';
+import { registrarVenda, taxaIfood, contasDaVenda, contaDoPudim } from '../../data/pudim-acoes.js';
 import { contasAtivas } from '../derivados.js';
 import { SelectConta } from '../folhas/lancamento.js';
 import { CampoFala } from '../voz.js';
@@ -30,7 +30,7 @@ export function TelaPdv({ params = {} }) {
   const [carrinho, setCarrinho] = useState({}); // receita_id → quantidade
   const [precos, setPrecos] = useState({}); // receita_id|canal → texto digitado
   const [qtdTexto, setQtdTexto] = useState({}); // receita_id → quantidade enquanto é digitada ("1," a caminho de "1,5")
-  const [conta_id, setConta] = useState(CONTA_VENDAS_DIRETAS);
+  const [conta_id, setConta] = useState(() => contaDoPudim());
   const [data, setData] = useState(s.hoje);
   const [lancar, setLancar] = useState(true);
   const [busca, setBusca] = useState('');

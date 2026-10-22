@@ -12,6 +12,7 @@ import { fmtDay } from '../../core/dates.js';
 import { contasAtivas, origemLabel } from '../derivados.js';
 import { GRUPOS } from '../../core/balances.js';
 import { CATEGORIA_DIZIMO, dizimoEmAberto } from '../../core/tithe.js';
+import { contaDoPudim } from '../../data/pudim-acoes.js';
 
 // Saída na categoria Dízimo sem referência conta como pagamento do dízimo mais antigo em aberto.
 const comDizimo = (linha, hoje) => {
@@ -73,8 +74,8 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
     }
     setVarios(null);
     const r = parseQuick(texto, ctx);
-    // Entrada da empresa ou do pudim sem conta dita: vai para a Nubank PJ (venda é pelo PDV, iFood pela conta iFood).
-    if (r.tipo === 'entrada' && !r.conta_id && (r.origem === 'Pudim' || r.origem === 'Empresa') && contas.some((c) => c.id === 'nubank-pj')) r.conta_id = 'nubank-pj';
+    // Entrada da empresa ou do pudim sem conta dita: vai para a conta PJ dela.
+    if (r.tipo === 'entrada' && !r.conta_id && (r.origem === 'Pudim' || r.origem === 'Empresa')) r.conta_id = contaDoPudim() || null;
     setF((x) => ({
       ...x,
       tipo: r.tipo || x.tipo,

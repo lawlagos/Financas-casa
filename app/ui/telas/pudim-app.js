@@ -6,7 +6,7 @@ import { Topo, Secao, Campo } from '../componentes.js';
 import { useStore, salvar, config, reiniciarDemo, sair, toast } from '../../data/store.js';
 import { parseBRL } from '../../core/money.js';
 import { TAXA_IFOOD_PADRAO } from '../../core/pudim.js';
-import { ifoodAntigoNoSaldo, tirarIfoodAntigoDoSaldo } from '../../data/pudim-acoes.js';
+import { ifoodAntigoNoSaldo, tirarIfoodAntigoDoSaldo, paraJuntarNaPj, juntarNaPj } from '../../data/pudim-acoes.js';
 import { Importar, lerTema, aplicarTema } from './mais.js';
 import { urlDoApp } from '../apps.js';
 import { FaixaDemo } from './inicio.js';
@@ -37,6 +37,19 @@ export function TelaAjustesPudim() {
   const [tema, setTema] = useState(lerTema());
   const [limpando, setLimpando] = useState(false);
   const antigo = ifoodAntigoNoSaldo(s.tables);
+  const juntar = paraJuntarNaPj(s.tables);
+  const nomePj = s.tables.contas.find((c) => c.id === juntar.pj)?.nome || 'conta PJ';
+  const [juntando, setJuntando] = useState(false);
+  const fazerJuntar = async () => {
+    if (!confirm(`Passar ${juntar.mover.length} lançamentos de ${juntar.contas.map((c) => c.nome).join(' e ')} para a ${nomePj}, apagar ${juntar.apagar.length} transferências entre elas e desativar essas contas?`)) return;
+    setJuntando(true);
+    try {
+      const r = await juntarNaPj();
+      toast(`${r.movidos} lançamentos passados para a ${nomePj}, ${r.apagados} transferências apagadas`);
+    } finally {
+      setJuntando(false);
+    }
+  };
   const limpar = async () => {
     if (!confirm(`Tirar do saldo ${antigo.lancs.length} lançamentos de vendas do iFood (e ${antigo.repasses.length} repasses previstos)? As vendas continuam no estoque.`)) return;
     setLimpando(true);
@@ -77,6 +90,11 @@ export function TelaAjustesPudim() {
       <p class="muted" style="font-size:13px;margin:4px 0 10px">Antes, cada venda do iFood entrava na conta iFood (com a taxa) e virava um repasse previsto. Agora o iFood só mexe no estoque e o dinheiro entra quando você lança o pagamento de quarta. Há ${antigo.lancs.length} lançamentos e ${antigo.repasses.length} repasses do jeito antigo.</p>
       <button class=${`btn btn-sec btn-larga ${limpando ? 'carregando' : ''}`} disabled=${limpando} onClick=${limpar}>Tirar do saldo (o estoque fica igual)</button>
     </div>`}
+    ${juntar.contas.length > 0 && juntar.pj && html`<section class="painel painel-pad aviso-minimo" style="margin-top:12px" aria-label="Juntar na PJ">
+      <strong>Juntar tudo na ${nomePj}</strong>
+      <p class="muted" style="font-size:13px;margin:4px 0 10px">Agora venda direta e pagamento do iFood entram direto na ${nomePj}, separados pela categoria (Venda de pudim e Pagamento iFood). As contas ${juntar.contas.map((c) => c.nome).join(' e ')} têm ${juntar.mover.length} lançamentos para passar para a ${nomePj}${juntar.apagar.length ? ` e ${juntar.apagar.length} transferências entre elas (que deixam de ser necessárias)` : ''}.</p>
+      <button class=${`btn btn-sec btn-larga ${juntando ? 'carregando' : ''}`} disabled=${juntando} onClick=${fazerJuntar}>Juntar na ${nomePj}</button>
+    </section>`}
     <${Importar} />
     <${Secao} titulo="Tema">
       <div class="segmento" role="group" aria-label="Tema">

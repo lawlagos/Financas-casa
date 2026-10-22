@@ -127,21 +127,24 @@ test('baixa automática: lançar o aluguel pergunta se é o previsto e tira do F
 });
 
 test('recebimento atrasado: "Recebi" lança e some dos atrasados', async () => {
+  // Quantos atrasados há depende do dia do mês (o exemplo tem vários compromissos); o lançado sai da lista.
+  const atrasados = await page.locator('.item', { hasText: 'Atrasado desde' }).count();
   await page.locator('.item', { hasText: 'Atrasado desde' }).first().click();
   await page.getByRole('button', { name: 'Recebi, lançar agora' }).click();
   assert.equal(await folha().getByPlaceholder('0,00').inputValue(), '1.500,00');
   await folha().getByRole('button', { name: 'Salvar lançamento' }).click();
   await toast().filter({ hasText: 'marcado como recebido' }).waitFor();
-  assert.equal(await page.locator('.item', { hasText: 'Atrasado desde' }).count(), 0);
+  assert.equal(await page.locator('.item', { hasText: 'Atrasado desde' }).count(), atrasados - 1);
 });
 
 test('adiar e pular uma ocorrência', async () => {
+  const atrasados = await page.locator('.item', { hasText: 'Atrasado desde' }).count();
   await page.locator('.item', { hasText: 'Atrasado desde' }).first().click();
   await page.getByRole('button', { name: 'Ainda vai pagar, mudar a data' }).click();
   await folha().getByLabel('Nova data').fill(`${(await hoje()).slice(0, 7)}-25`);
   await folha().getByRole('button', { name: 'Reagendar' }).click();
   await toast().filter({ hasText: 'reagendado para 25/' }).waitFor();
-  assert.equal(await page.locator('.item', { hasText: 'Atrasado desde' }).count(), 0);
+  assert.equal(await page.locator('.item', { hasText: 'Atrasado desde' }).count(), atrasados - 1);
   await page.goto(`${base}/?demo#/mais/compromissos`);
   await page.locator('.item', { hasText: 'YouTube' }).first().click();
   await page.getByRole('button', { name: 'Não vai pagar desta vez' }).click();
@@ -309,14 +312,15 @@ test('pudim: pôr no estoque em dois lotes, vender lançando em Vendas diretas, 
   await folha().getByRole('list', { name: 'Lotes em São Roque' }).locator('.item', { hasText: '3 unidades' }).filter({ hasText: '10/02' }).waitFor();
   await page.keyboard.press('Escape');
 
-  // venda direta pelo PDV: 3 toques no mini pudim; entra na conta "Vendas diretas"
+  // venda direta pelo PDV: 3 toques no mini pudim; entra na conta PJ dela
+  const pj = reais(await saldoConta('Nubank PJ'));
   await page.goto(`${base}/pudim/?demo#/pudim/vender`);
   for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Adicionar Pudim tradicional 150' }).click();
   await page.locator('#carrinho').getByText('R$ 36,00').first().waitFor();
-  assert.equal(await page.locator('#carrinho').getByLabel('Entrou em').inputValue(), 'vendas-diretas');
+  assert.equal(await page.locator('#carrinho').getByLabel('Entrou em').inputValue(), 'nubank-pj');
   await page.getByRole('button', { name: 'Finalizar venda · R$ 36,00' }).click();
   await toast().filter({ hasText: 'Venda de R$ 36,00 registrada e lançada no caixa' }).waitFor();
-  assert.equal(reais(await saldoConta('Vendas diretas')), 36);
+  assert.equal(reais(await saldoConta('Nubank PJ')), Math.round((pj + 36) * 100) / 100);
   await page.goto(`${base}/pudim/?demo#/pudim?aba=estoque`);
   assert.equal(await pudins(), antes + 6);
   await page.goto(`${base}/pudim/?demo#/pudim?aba=estoque`);
@@ -335,7 +339,7 @@ test('pudim: pôr no estoque em dois lotes, vender lançando em Vendas diretas, 
   await page.mouse.move(caixa.x + 40, caixa.y + caixa.height / 2, { steps: 8 });
   await page.mouse.up();
   await toast().filter({ hasText: 'Venda apagada, e o lançamento no caixa também' }).waitFor();
-  assert.equal(reais(await saldoConta('Vendas diretas')), 0);
+  assert.equal(reais(await saldoConta('Nubank PJ')), pj);
 
   await page.goto(`${base}/pudim/?demo#/pudim?aba=custos`);
   await page.locator('.item-btn', { hasText: 'Pudim tradicional 150' }).click();
@@ -345,7 +349,7 @@ test('pudim: pôr no estoque em dois lotes, vender lançando em Vendas diretas, 
   assert.deepEqual(erros, []);
 });
 
-test('pdv no iFood: só tira do estoque, não mexe no saldo; o pagamento de quarta é lançado à mão na conta iFood', async () => {
+test('pdv no iFood: só tira do estoque, não mexe no saldo; o pagamento de quarta é lançado à mão na PJ com categoria própria', async () => {
   await page.goto(`${base}/pudim/?demo#/pudim/vender`);
   await page.getByRole('group', { name: 'Canal' }).getByRole('button', { name: 'iFood' }).click();
   await page.getByText('Venda do iFood só tira do estoque, não mexe no saldo.').waitFor();
@@ -367,17 +371,47 @@ test('pdv no iFood: só tira do estoque, não mexe no saldo; o pagamento de quar
   await page.goto(`${base}/pudim/?demo#/pudim?aba=estoque`);
   await page.getByRole('region', { name: 'Vendas' }).locator('.item', { hasText: '2 Pudim tradicional 1100' }).locator('.canal-mov', { hasText: 'iFood' }).waitFor();
 
-  // quarta-feira: o iFood pagou; lança à mão e fica o registro
+  // quarta-feira: o iFood pagou; lança à mão na PJ e fica o registro
+  const pj = reais(await saldoConta('Nubank PJ'));
   await page.goto(`${base}/pudim/?demo#/inicio`);
   await page.getByRole('button', { name: /Pagamento do iFood/ }).click();
   await folha().locator('#pagamento-ifood-valor').fill('130,04');
   await page.getByRole('button', { name: 'Lançar R$ 130,04' }).click();
-  await toast().filter({ hasText: 'Pagamento do iFood de R$ 130,04 lançado na conta iFood' }).waitFor();
-  assert.match(await saldoConta('iFood'), /130,04/);
+  await toast().filter({ hasText: 'Pagamento do iFood de R$ 130,04 lançado na Nubank PJ' }).waitFor();
+  assert.equal(reais(await saldoConta('Nubank PJ')), Math.round((pj + 130.04) * 100) / 100);
+  await page.goto(`${base}/?demo#/lancamentos`);
+  await page.locator('.item', { hasText: 'Pagamento iFood' }).first().getByText(/Pagamento iFood ·|Pagamento iFood/).first().waitFor();
   await page.goto(`${base}/pudim/?demo#/inicio`);
   await page.getByRole('button', { name: /Pagamento do iFood/ }).getByText(/último: R\$ 130,04/).waitFor();
   await page.getByRole('button', { name: /Pagamento do iFood/ }).click();
   await folha().getByRole('list', { name: 'Pagamentos do iFood' }).locator('.item', { hasText: '130,04' }).waitFor();
+  assert.deepEqual(erros, []);
+});
+
+test('juntar na PJ: lançamentos das contas Vendas diretas e iFood passam para a PJ, transferências entre elas somem', async () => {
+  await page.goto(`${base}/pudim/?demo#/ajustes`);
+  await page.getByText('Ajustes').first().waitFor();
+  const pj = reais(await saldoConta('Nubank PJ'));
+  await page.goto(`${base}/pudim/?demo#/ajustes`);
+  await page.evaluate(async () => {
+    const { salvar } = await import('../data/store.js');
+    const conta = (id, nome) => salvar('contas', { id, nome, dono: 'Esposa', grupo: 'Pudim', saldo_inicial: 0, data_saldo_inicial: '2000-01-01', ativa: true });
+    await conta('vendas-diretas', 'Vendas diretas');
+    await conta('ifood', 'iFood');
+    const l = (x) => salvar('lancamentos', { data: '2026-10-20', descricao: 'x', categoria_id: '', origem: 'Pudim', canal: 'manual', grupo_id: '', previsto_id: '', conta_destino_id: '', ...x });
+    await l({ tipo: 'entrada', valor: 50, conta_id: 'vendas-diretas', categoria_id: 'cat-venda-pudim', descricao: 'Venda direta: 4 copos' });
+    await l({ tipo: 'entrada', valor: 130, conta_id: 'ifood', descricao: 'Pagamento iFood' });
+    await l({ tipo: 'transferencia', valor: 50, conta_id: 'vendas-diretas', conta_destino_id: 'nubank-pj', origem: '' });
+  });
+  const painel = page.getByRole('region', { name: 'Juntar na PJ' });
+  await painel.getByText(/2 lançamentos para passar para a Nubank PJ e 1 transferências/).waitFor();
+  page.once('dialog', (d) => d.accept());
+  await painel.getByRole('button', { name: 'Juntar na Nubank PJ' }).click();
+  await toast().filter({ hasText: '2 lançamentos passados para a Nubank PJ, 1 transferências apagadas' }).waitFor();
+  assert.equal(reais(await saldoConta('Nubank PJ')), pj + 180);
+  assert.equal(await page.locator('a.item', { hasText: 'Vendas diretas' }).count(), 0);
+  await page.goto(`${base}/pudim/?demo#/inicio`);
+  await page.getByRole('button', { name: /Pagamento do iFood/ }).getByText(/último: R\$ 130,00/).waitFor();
   assert.deepEqual(erros, []);
 });
 

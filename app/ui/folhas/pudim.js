@@ -7,7 +7,7 @@ import { brl, parseBRL, toCents } from '../../core/money.js';
 import { addDays, fmtDay } from '../../core/dates.js';
 import { lotesNaGeladeira, custoReceita, custoInsumo, ingredientesDe, VALIDADE_PADRAO, precoNoCanal, totaisCarrinho, CANAIS, MARKUP_PADRAO, lerCustos, valorMinuto, ehSabor, ehPreparo, idPreparo, produtosDoSabor, TAMANHOS_PADRAO } from '../../core/pudim.js';
 import { interpretarEstoque } from '../../core/vozestoque.js';
-import { registrarFala, registrarEntradas, pagamentosIfood, lancarPagamentoIfood, taxaIfood, contasDaVenda, CONTA_VENDAS_DIRETAS, registrarLote, registrarEnvio, editarMovimento, apagarMovimento, itensDaVenda, itensDoLote } from '../../data/pudim-acoes.js';
+import { registrarFala, registrarEntradas, pagamentosIfood, lancarPagamentoIfood, taxaIfood, contasDaVenda, contaDoPudim, registrarLote, registrarEnvio, editarMovimento, apagarMovimento, itensDaVenda, itensDoLote } from '../../data/pudim-acoes.js';
 import { CampoFala } from '../voz.js';
 import { chaveProduto, produtoDoItem, produtos } from '../../core/mercado.js';
 import { contasAtivas } from '../derivados.js';
@@ -278,7 +278,7 @@ export function FolhaLotes({ local = '' }) {
 // Quarta-feira mais recente (hoje, se hoje for quarta).
 export const ultimaQuarta = (hoje) => addDays(hoje, -((new Date(`${hoje}T12:00:00Z`).getUTCDay() + 4) % 7));
 
-// O iFood pagou (toda quarta): lança à mão na conta iFood. Mostra as vendas do iFood da semana que ele paga,
+// O iFood pagou (toda quarta): lança à mão na conta PJ, com a categoria "Pagamento iFood". Mostra as vendas do iFood da semana que ele paga,
 // para conferir, e os pagamentos já lançados.
 export function FolhaPagamentoIfood() {
   const s = useStore();
@@ -294,19 +294,20 @@ export function FolhaPagamentoIfood() {
   const taxa = vendas.reduce((t, m) => t + Math.round((Number(m.quantidade) || 0) * toCents(m.taxa_unitaria || 0)), 0);
   const v = parseBRL(valor);
   const historico = pagamentosIfood(s.tables.lancamentos).slice(0, 10);
+  const nomePj = s.tables.contas.find((c) => c.id === contaDoPudim())?.nome || 'conta PJ';
   const guardar = async () => {
     if (!(v > 0) || !data) return;
     setSalvando(true);
     try {
       await lancarPagamentoIfood({ data, valor: v });
       fecharFolha();
-      toast(`Pagamento do iFood de ${brl(Math.round(v * 100))} lançado na conta iFood`);
+      toast(`Pagamento do iFood de ${brl(Math.round(v * 100))} lançado na ${nomePj}`);
     } catch {
       setSalvando(false);
     }
   };
   return html`<${Folha} titulo="Pagamento do iFood" rodape=${html`<button class=${`btn btn-pri ${salvando ? 'carregando' : ''} ${!(v > 0) ? 'inativo' : ''}`} disabled=${salvando} onClick=${guardar}>${salvando ? 'Salvando…' : v > 0 ? `Lançar ${brl(Math.round(v * 100))}` : 'Lançar'}</button>`}>
-    <p class="muted" style="font-size:13px;margin:0 0 6px">As vendas do iFood só tiram do estoque. O dinheiro entra aqui, quando o iFood paga (na quarta), na conta iFood.</p>
+    <p class="muted" style="font-size:13px;margin:0 0 6px">As vendas do iFood só tiram do estoque. O dinheiro entra aqui, quando o iFood paga (na quarta), na ${nomePj} com a categoria "Pagamento iFood".</p>
     <div class="linha2">
       <${Campo} rotulo="Dia que pagou"><input type="date" value=${data} onInput=${(e) => setData(e.target.value)} /><//>
       <${Campo} rotulo="Valor que caiu"><input id="pagamento-ifood-valor" inputmode="decimal" placeholder="0,00" value=${valor} onInput=${(e) => setValor(e.target.value)} /><//>
@@ -822,7 +823,7 @@ export function FolhaVozEstoque({ local: localPedido = '' }) {
   const naGeladeira = Object.fromEntries(d.estoque.lista.map((x) => [x.receita_id, x.quantidade]));
   const [frase, setFrase] = useState('');
   const [r, setR] = useState(null);
-  const [conta_id, setConta] = useState(CONTA_VENDAS_DIRETAS);
+  const [conta_id, setConta] = useState(() => contaDoPudim());
   const [lancar, setLancar] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const taxaPct = taxaIfood();
