@@ -87,7 +87,7 @@ export function pendenciasLancamento(l) {
   if (!l.conta_id) p.push(l.tipo === 'transferencia' ? 'conta de origem' : 'conta');
   if (l.tipo === 'transferencia' && !l.conta_destino_id) p.push('conta de destino');
   if (l.tipo === 'transferencia' && l.conta_destino_id && l.conta_destino_id === l.conta_id) p.push('contas diferentes');
-  if (l.tipo !== 'transferencia' && !l.origem) p.push('origem');
+  if (l.tipo !== 'transferencia' && !l.origem) p.push('caixa');
   if (!l.dataLida) p.push('data (confira)');
   return p;
 }

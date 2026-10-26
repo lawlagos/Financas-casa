@@ -57,7 +57,7 @@ export function FolhaCategoria({ categoria }) {
   return html`<${Folha} titulo=${editando ? 'Editar categoria' : 'Nova categoria'} rodape=${html`<button class="btn btn-pri" onClick=${guardar}>Salvar categoria</button>`}>
     <${Campo} rotulo="Nome"><input value=${f.nome} onInput=${(e) => set({ nome: e.target.value })} /><//>
     ${!fixa && html`<div class="campo"><span>Tipo</span><${Segmento} classe="tipo" rotulo="Tipo" valor=${f.tipo} onChange=${(v) => set({ tipo: v })} opcoes=${[['saida', 'Saída'], ['entrada', 'Entrada']]} /></div>`}
-    <div class="campo"><span>Origem sugerida</span><${Chips} rotulo="Origem" valor=${f.origem_padrao} onChange=${(o) => set({ origem_padrao: o })} opcoes=${ORIGENS.map((o) => [o, origemLabel(o)])} />
+    <div class="campo"><span>Caixa sugerido</span><${Chips} rotulo="Caixa sugerido" valor=${f.origem_padrao} onChange=${(o) => set({ origem_padrao: o })} opcoes=${ORIGENS.map((o) => [o, origemLabel(o)])} />
       <div class="ajuda">Ao escolher esta categoria num lançamento, a origem já vem marcada.</div></div>
     ${editando && !fixa && html`<label class="interruptor"><span>Categoria em uso</span><input type="checkbox" checked=${f.ativa !== false} onChange=${(e) => set({ ativa: e.target.checked })} /></label>`}
   <//>`;

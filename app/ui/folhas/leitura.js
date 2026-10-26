@@ -9,6 +9,7 @@ import { montarContexto, conferirLeitura, pendenciasLancamento, resumoNota, lanc
 import { SeletorCategoria, NovaCategoria } from '../categorias.js';
 import { findMatch, matchCandidates } from '../../core/planning.js';
 import { contasAtivas, origemLabel } from '../derivados.js';
+import { EscolheCaixa } from '../caixa.js';
 import { prepararImagem } from '../imagem.js';
 import { CONFIG } from '../../config.js';
 import { SelectConta } from './lancamento.js';
@@ -37,7 +38,7 @@ function EditorLancamento({ l, set, contas, categorias }) {
           ? html`<${SelectConta} rotulo="Entra em" valor=${l.conta_destino_id} contas=${contas} excluir=${l.conta_id} onChange=${(v) => set({ conta_destino_id: v })} />`
           : html`<${SeletorCategoria} tipo=${l.tipo} valor=${l.categoria_id} onChange=${(id, c) => set({ categoria_id: id, ...(c?.origem_padrao ? { origem: c.origem_padrao } : {}) })} />`}
       </div>
-      ${l.tipo !== 'transferencia' && html`<div class="campo"><span>Origem</span><${Chips} rotulo="Origem" valor=${l.origem} onChange=${(o) => set({ origem: o })} opcoes=${ORIGENS.map((o) => [o, origemLabel(o)])} /></div>`}
+      ${l.tipo !== 'transferencia' && html`<${EscolheCaixa} tipo=${l.tipo} valor=${l.origem} onChange=${(o) => set({ origem: o })} explicar=${false} />`}
       ${pend.length > 0 && html`<div class="duvida" role="alert"><${Icone} n="alerta" /><span>❓ Falta: ${pend.join(', ')}.</span></div>`}
     </div>`}
   </div>`;
@@ -223,7 +224,7 @@ export function FolhaLeitura() {
         : html`${lancs.length > 1 && html`<section class="painel painel-pad" style="margin-bottom:10px" aria-label="Para todos">
             <strong>Para todos os ${lancs.length}</strong>
             <${SelectConta} rotulo="Conta de todos" valor=${lancs.every((x) => x.conta_id === lancs[0].conta_id) ? lancs[0].conta_id : ''} contas=${contas} onChange=${(c) => setLancs((xs) => xs.map((x) => ({ ...x, conta_id: c })))} />
-            <div class="campo"><span>Origem de todos</span><${Chips} rotulo="Origem de todos" valor=${lancs.every((x) => x.origem === lancs[0].origem) ? lancs[0].origem : ''} onChange=${(o) => setLancs((xs) => xs.map((x) => (x.tipo === 'transferencia' ? x : { ...x, origem: o })))} opcoes=${ORIGENS.map((o) => [o, origemLabel(o)])} /></div>
+            <${EscolheCaixa} rotulo="Caixa de todos" tipo=${lancs.find((x) => x.tipo !== 'transferencia')?.tipo || 'saida'} valor=${lancs.every((x) => x.origem === lancs[0].origem) ? lancs[0].origem : ''} onChange=${(o) => setLancs((xs) => xs.map((x) => (x.tipo === 'transferencia' ? x : { ...x, origem: o })))} />
             <${Campo} rotulo="Data de todos"><input type="date" aria-label="Data de todos" value=${lancs.every((x) => x.data === lancs[0].data) ? lancs[0].data : ''} onInput=${(e) => e.target.value && setLancs((xs) => xs.map((x) => ({ ...x, data: e.target.value, dataLida: true })))} /><//>
           </section>`}
         ${lancs.map((l, i) => html`<${EditorLancamento} key=${l.chave} l=${l} contas=${contas} categorias=${s.tables.categorias}

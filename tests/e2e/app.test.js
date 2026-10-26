@@ -141,9 +141,12 @@ test('adiar e pular uma ocorrência', async () => {
   const atrasados = await page.locator('.item', { hasText: 'Atrasado desde' }).count();
   await page.locator('.item', { hasText: 'Atrasado desde' }).first().click();
   await page.getByRole('button', { name: 'Ainda vai pagar, mudar a data' }).click();
-  await folha().getByLabel('Nova data').fill(`${(await hoje()).slice(0, 7)}-25`);
+  // Uma data daqui a 3 dias (o dia 25 fixo já passou no fim do mês).
+  const h = await hoje();
+  const nova = new Date(Date.parse(`${h}T12:00:00Z`) + 3 * 864e5).toISOString().slice(0, 10);
+  await folha().getByLabel('Nova data').fill(nova);
   await folha().getByRole('button', { name: 'Reagendar' }).click();
-  await toast().filter({ hasText: 'reagendado para 25/' }).waitFor();
+  await toast().filter({ hasText: `reagendado para ${nova.slice(8, 10)}/` }).waitFor();
   assert.equal(await page.locator('.item', { hasText: 'Atrasado desde' }).count(), atrasados - 1);
   await page.goto(`${base}/?demo#/mais/compromissos`);
   await page.locator('.item', { hasText: 'YouTube' }).first().click();

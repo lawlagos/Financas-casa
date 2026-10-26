@@ -13,6 +13,7 @@ import { contasAtivas, origemLabel } from '../derivados.js';
 import { GRUPOS } from '../../core/balances.js';
 import { CATEGORIA_DIZIMO, dizimoEmAberto } from '../../core/tithe.js';
 import { contaDoPudim } from '../../data/pudim-acoes.js';
+import { EscolheCaixa, caixaDaConta } from '../caixa.js';
 
 // Saída na categoria Dízimo sem referência conta como pagamento do dízimo mais antigo em aberto.
 const comDizimo = (linha, hoje) => {
@@ -125,7 +126,7 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
   if (!f.conta_id) faltando.push(f.tipo === 'transferencia' ? 'conta de origem' : 'conta');
   if (f.tipo === 'transferencia' && !f.conta_destino_id) faltando.push('conta de destino');
   if (f.tipo === 'transferencia' && f.conta_destino_id && f.conta_destino_id === f.conta_id) faltando.push('contas diferentes');
-  if (f.tipo !== 'transferencia' && !f.origem) faltando.push('origem');
+  if (f.tipo !== 'transferencia' && !f.origem) faltando.push('caixa');
   if (!f.data) faltando.push('data');
 
   const salvarLanc = async () => {
@@ -247,8 +248,8 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
                 const c = s.tables.categorias.find((k) => k.id === e.target.value);
                 setItem(i, { categoria_id: e.target.value, ...(c?.origem_padrao ? { origem: c.origem_padrao } : {}) });
               }}><option value="">Categoria</option>${cats.map((c) => html`<option value=${c.id}>${c.nome}</option>`)}</select>
-              <select aria-label=${`Origem do lançamento ${i + 1}`} value=${x.origem} onChange=${(e) => setItem(i, { origem: e.target.value })} aria-invalid=${tentouSalvar && !x.origem}>
-                <option value="">Origem</option>${ORIGENS.map((o) => html`<option value=${o}>${origemLabel(o)}</option>`)}</select>
+              <select aria-label=${`Caixa do lançamento ${i + 1}`} value=${x.origem} onChange=${(e) => setItem(i, { origem: e.target.value })} aria-invalid=${tentouSalvar && !x.origem}>
+                <option value="">Caixa</option>${ORIGENS.map((o) => html`<option value=${o}>${origemLabel(o)}</option>`)}</select>
             </div>
           </li>`;
         })}
@@ -257,7 +258,7 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
         <${SelectConta} rotulo="Conta (de todos)" valor=${varios.every((x) => x.conta_id === varios[0].conta_id) ? varios[0].conta_id : ''} contas=${contas} onChange=${(c) => setVarios((xs) => xs.map((x) => ({ ...x, conta_id: c })))} />
         <${Campo} rotulo="Dia (de todos)"><input type="date" value=${varios[0].data} onInput=${(e) => setVarios((xs) => xs.map((x) => ({ ...x, data: e.target.value })))} /><//>
       </div>
-      ${tentouSalvar && faltaVarios > 0 && html`<div class="duvida" role="alert"><${Icone} n="alerta" /><span>Falta valor, conta ou origem em ${faltaVarios} ${faltaVarios === 1 ? 'lançamento' : 'lançamentos'}.</span></div>`}
+      ${tentouSalvar && faltaVarios > 0 && html`<div class="duvida" role="alert"><${Icone} n="alerta" /><span>Falta valor, conta ou caixa em ${faltaVarios} ${faltaVarios === 1 ? 'lançamento' : 'lançamentos'}.</span></div>`}
     </div>`}
 
     ${!varios && (modo === 'digitar' || interpretado || editando) && html`<div>
@@ -275,7 +276,11 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
         <input value=${f.descricao} placeholder=${f.tipo === 'transferencia' ? 'Ex.: Saque para o Itaú' : 'Ex.: Assaí, pudins da semana'} onInput=${(e) => set({ descricao: e.target.value })} />
       <//>
       <div class="linha2">
-        <${SelectConta} rotulo=${f.tipo === 'transferencia' ? 'Sai de' : 'Conta'} valor=${f.conta_id} contas=${contas} onChange=${(v) => set({ conta_id: v })} />
+        <${SelectConta} rotulo=${f.tipo === 'transferencia' ? 'Sai de' : 'Conta'} valor=${f.conta_id} contas=${contas} onChange=${(v) => {
+          // A conta sugere o caixa (PJ do pudim → Pudim), enquanto a pessoa não escolheu outro.
+          const sugerida = !origemManual && f.tipo !== 'transferencia' ? caixaDaConta(contas.find((c) => c.id === v), f.tipo) : '';
+          set({ conta_id: v, ...(sugerida ? { origem: sugerida } : {}) });
+        }} />
         ${f.tipo === 'transferencia'
           ? html`<${SelectConta} rotulo="Entra em" valor=${f.conta_destino_id} contas=${contas} excluir=${f.conta_id} onChange=${(v) => set({ conta_destino_id: v })} />`
           : html`<${Campo} rotulo="Data"><input type="date" value=${f.data} onInput=${(e) => set({ data: e.target.value })} /><//>`}
@@ -283,11 +288,7 @@ export function FolhaLancamento({ lanc, inicial, ocorrencia }) {
       ${f.tipo === 'transferencia' && html`<${Campo} rotulo="Data"><input type="date" value=${f.data} onInput=${(e) => set({ data: e.target.value })} /><//>`}
       ${f.tipo !== 'transferencia' && html`<div>
         <${SeletorCategoria} tipo=${f.tipo} valor=${f.categoria_id} onChange=${(id) => escolherCategoria(id)} />
-        <div class="campo"><span>Origem</span>
-          <${Chips} rotulo="Origem" valor=${f.origem} onChange=${(o) => { set({ origem: o }); setOrigemManual(true); }}
-            opcoes=${ORIGENS.map((o) => [o, origemLabel(o)])} />
-          <div class="ajuda">A origem decide o dízimo: Pudim e Hotmart entram no lucro da semana; Salário, Consultoria e YouTube, nos 10% do mês.</div>
-        </div>
+        <${EscolheCaixa} tipo=${f.tipo} valor=${f.origem} onChange=${(o) => { set({ origem: o }); setOrigemManual(true); }} />
       </div>`}
       ${tentouSalvar && faltando.length > 0 && html`<div class="duvida" role="alert"><${Icone} n="alerta" /><span>Para salvar, preencha: ${faltando.join(', ')}.</span></div>`}
     </div>`}

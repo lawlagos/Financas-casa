@@ -7,6 +7,7 @@ import { parseBRL, brl } from '../../core/money.js';
 import { ORIGENS } from '../../core/schema.js';
 import { addDays, fmtDay, monthName } from '../../core/dates.js';
 import { contasAtivas, origemLabel, FREQUENCIAS } from '../derivados.js';
+import { EscolheCaixa } from '../caixa.js';
 import { SelectConta } from './lancamento.js';
 import { SeletorCategoria } from '../categorias.js';
 
@@ -158,7 +159,7 @@ export function FolhaPrevisto({ previsto, inicial }) {
 
     ${f.tipo !== 'transferencia' && html`<div>
       <${SeletorCategoria} tipo=${f.tipo} valor=${f.categoria_id} onChange=${(id, c) => set({ categoria_id: id, ...(c?.origem_padrao ? { origem: c.origem_padrao } : {}) })} />
-      <div class="campo"><span>Origem</span><${Chips} rotulo="Origem" valor=${f.origem} onChange=${(o) => set({ origem: o })} opcoes=${ORIGENS.map((o) => [o, origemLabel(o)])} /></div>
+      <${EscolheCaixa} tipo=${f.tipo} valor=${f.origem} onChange=${(o) => set({ origem: o })} />
     </div>`}
 
     ${f.tipo === 'entrada' && html`<div>

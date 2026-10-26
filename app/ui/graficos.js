@@ -1,9 +1,12 @@
+import { useState } from '../vendor/hooks.module.js';
 import { html } from './html.js';
 import { brlCompact, brl } from '../core/money.js';
-import { monthName, fmtDay } from '../core/dates.js';
+import { monthName, fmtDay, weekdayName, weekday } from '../core/dates.js';
 
 // Curva do saldo projetado. `cores` permite usar o mesmo gráfico no painel escuro (termômetro) e nas telas claras.
+// Passando o mouse (ou arrastando o dedo) aparece a etiqueta do dia: data, saldo e o que entra e sai.
 export function GraficoSaldo({ dias, minimo, altura = 130, comProvavel = true, cores = {}, eixo = true }) {
+  const [foco, setFoco] = useState(null);
   if (!dias || dias.length < 2) return null;
   const W = 340;
   const H = altura;
@@ -36,7 +39,16 @@ export function GraficoSaldo({ dias, minimo, altura = 130, comProvavel = true, c
   });
   const iMin = minimo ? dias.findIndex((d) => d.data === minimo.data) : -1;
   const temNeg = dias.some((d) => d.saldo < 0);
-  return html`<svg viewBox=${`0 0 ${W} ${H}`} role="img" aria-label=${`Saldo projetado até ${fmtDay(dias[dias.length - 1].data)}. Ponto mais baixo ${brl(minimo?.valor ?? 0)} em ${fmtDay(minimo?.data ?? dias[0].data)}.`}>
+  const mover = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const i = Math.round(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (dias.length - 1));
+    if (i !== foco) setFoco(i);
+  };
+  const sair = (e) => e.pointerType === 'mouse' && setFoco(null);
+  const f = foco !== null && dias[foco] ? dias[foco] : null;
+  const pct = f ? (x(foco) / W) * 100 : 0;
+  return html`<div class="grafico-area" onPointerMove=${mover} onPointerDown=${mover} onPointerLeave=${sair}>
+  <svg viewBox=${`0 0 ${W} ${H}`} role="img" aria-label=${`Saldo projetado até ${fmtDay(dias[dias.length - 1].data)}. Ponto mais baixo ${brl(minimo?.valor ?? 0)} em ${fmtDay(minimo?.data ?? dias[0].data)}.`}>
     <defs><clipPath id=${id}><rect x="0" y=${zeroY} width=${W} height=${Math.max(0, H - zeroY)} /></clipPath></defs>
     ${meses.map((m) => html`<g>
       <line x1=${x(m.i)} x2=${x(m.i)} y1=${padT - 6} y2=${H - padB} stroke=${c.grade} stroke-width="1" />
@@ -50,7 +62,20 @@ export function GraficoSaldo({ dias, minimo, altura = 130, comProvavel = true, c
       <circle cx=${x(iMin)} cy=${y(dias[iMin].saldo)} r="4.5" fill=${minimo.valor < 0 ? c.neg : c.linha} stroke=${c.fundo || 'var(--surface)'} stroke-width="2" />
       <text x=${Math.min(Math.max(x(iMin), 30), W - 30)} y=${Math.min(y(dias[iMin].saldo) + 17, H - padB - 2)} font-size="10.5" font-weight="700" text-anchor="middle" fill=${minimo.valor < 0 ? c.neg : c.texto}>${brlCompact(minimo.valor)}</text>
     </g>`}
-  </svg>`;
+    ${f && html`<g class="grafico-foco">
+      <line x1=${x(foco)} x2=${x(foco)} y1=${padT - 6} y2=${H - padB} stroke=${c.texto} stroke-width="1" stroke-dasharray="3 3" />
+      ${comProvavel && f.saldoProvavel !== f.saldo && html`<circle cx=${x(foco)} cy=${y(f.saldoProvavel)} r="3.5" fill=${c.prov} />`}
+      <circle cx=${x(foco)} cy=${y(f.saldo)} r="4.5" fill=${f.saldo < 0 ? c.neg : c.linha} stroke=${c.fundo || 'var(--surface)'} stroke-width="2" />
+    </g>`}
+  </svg>
+  ${f && html`<div class=${`grafico-etiqueta ${pct > 60 ? 'esq' : ''}`} style=${`left:${pct}%`} role="status">
+    <div class="ge-data">${weekdayName(weekday(f.data))}, ${fmtDay(f.data)}</div>
+    <div class=${`ge-saldo ${f.saldo < 0 ? 'neg' : ''}`}>${brl(f.saldo)}</div>
+    ${comProvavel && f.saldoProvavel !== f.saldo && html`<div class="ge-linha prov">com prováveis ${brl(f.saldoProvavel)}</div>`}
+    ${(f.entra > 0 || f.entraProv > 0) && html`<div class="ge-linha pos">entra ${brl(f.entra || 0)}${f.entraProv ? ` (+${brl(f.entraProv)}?)` : ''}</div>`}
+    ${f.sai > 0 && html`<div class="ge-linha neg">sai ${brl(f.sai)}</div>`}
+  </div>`}
+  </div>`;
 }
 
 // Barras do lucro semanal (positivo verde, negativo vermelho), com o rótulo do sábado de início.

@@ -149,7 +149,7 @@ test('print de notificações: uma saída por notificação, conta e origem para
   const todos = page.getByRole('region', { name: 'Para todos' });
   await todos.getByText('Para todos os 3').waitFor();
   await todos.getByLabel('Conta de todos').selectOption({ label: 'Nubank PJ (dela)' });
-  await todos.getByRole('group', { name: 'Origem de todos' }).getByRole('button', { name: 'Casa' }).click();
+  await todos.getByRole('group', { name: 'Caixa de todos' }).getByRole('button', { name: 'Casa' }).click();
   await page.getByRole('button', { name: 'Salvar 3 lançamentos' }).click();
   await page.locator('.toast', { hasText: '3 lançamentos salvos' }).waitFor();
   const novas = env.abas['Lançamentos'].linhas.slice(antes);
