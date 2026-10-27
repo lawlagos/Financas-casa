@@ -102,51 +102,99 @@ function RevisarNota({ nota, setNota, contas, tables }) {
   </div>`;
 }
 
+const MAX_PRINTS = 5;
+
 export function FolhaLeitura() {
   const s = useStore();
   const contas = contasAtivas(s);
   const [etapa, setEtapa] = useState('escolher');
-  const [previa, setPrevia] = useState(null);
+  // Prints sendo lidos: [{ previa, estado: 'espera' | 'lendo' | 'ok' | 'erro', erro }]
+  const [fila, setFila] = useState([]);
   const [erro, setErro] = useState('');
+  const [avisos, setAvisos] = useState([]);
   const [lancs, setLancs] = useState([]);
   const [nota, setNota] = useState(null);
+  // Notas de mercado que ainda vão ser revisadas (cada nota é revisada sozinha, depois dos outros prints).
+  const [notasDepois, setNotasDepois] = useState([]);
+  const [salvosAntes, setSalvosAntes] = useState(0);
   const [salvando, setSalvando] = useState(false);
+  const previas = fila.filter((x) => x.previa);
 
-  const ler = async (arquivo) => {
-    if (!arquivo || !arquivo.type?.startsWith('image/')) return;
+  const ultimaNota = [...s.tables.lancamentos].reverse().find((l) => l.canal === 'foto' && l.grupo_id);
+  const comoNota = (r) => ({ ...r, conta_id: ultimaNota?.conta_id || '', diferencaEm: null });
+
+  // Lê até MAX_PRINTS de uma vez, dois por vez, mostrando o andamento de cada um.
+  const ler = async (lista) => {
+    const imagens = [...(lista || [])].filter((f) => f?.type?.startsWith('image/'));
+    if (!imagens.length) return;
+    const arquivos = imagens.slice(0, MAX_PRINTS);
+    const extras = imagens.length - arquivos.length;
     setErro('');
     setEtapa('lendo');
-    try {
-      const img = await prepararImagem(arquivo);
-      setPrevia(img.previa);
-      const resp = await interpretarImagem({ imagem: img.imagem, mime: img.mime, contexto: montarContexto(s.tables, s.hoje) });
-      const r = conferirLeitura(resp, s.tables, s.hoje);
-      if (r.tipo === 'nota' && r.itens.length) {
-        const ultimaNota = [...s.tables.lancamentos].reverse().find((l) => l.canal === 'foto' && l.grupo_id);
-        setNota({ ...r, conta_id: ultimaNota?.conta_id || '', diferencaEm: null });
-        setLancs([]);
-      } else if (r.lancamentos.length) {
-        setLancs(r.lancamentos);
-        setNota(null);
-      } else {
-        throw new Error('Não encontrei nenhum valor nesse print. Tente uma imagem mais nítida ou lance pelo formulário.');
+    const estado = arquivos.map(() => ({ previa: '', estado: 'espera', erro: '' }));
+    const mudar = (k, p) => {
+      estado[k] = { ...estado[k], ...p };
+      setFila([...estado]);
+    };
+    setFila([...estado]);
+    const contexto = montarContexto(s.tables, s.hoje);
+    const resultados = new Array(arquivos.length).fill(null);
+    let proximo = 0;
+    const trabalhar = async () => {
+      while (proximo < arquivos.length) {
+        const k = proximo++;
+        try {
+          mudar(k, { estado: 'lendo' });
+          const img = await prepararImagem(arquivos[k]);
+          mudar(k, { previa: img.previa });
+          const resp = await interpretarImagem({ imagem: img.imagem, mime: img.mime, contexto });
+          const r = conferirLeitura(resp, s.tables, s.hoje);
+          if (!(r.tipo === 'nota' && r.itens.length) && !r.lancamentos.length) throw new Error('Não encontrei nenhum valor nesse print.');
+          resultados[k] = r;
+          mudar(k, { estado: 'ok' });
+        } catch (e) {
+          const msg = e.codigo === 'acao-invalida'
+            ? `O servidor da planilha ainda está na versão antiga. Abra ${CONFIG.apiUrl} no navegador: se não aparecer "versao", a implantação que o app usa não foi atualizada (veja o passo a passo no chat).`
+            : e.message || 'Não deu para ler o print.';
+          mudar(k, { estado: 'erro', erro: msg });
+        }
       }
-      setEtapa('revisar');
-    } catch (e) {
-      if (e.codigo === 'acao-invalida') {
-        setErro(`O servidor da planilha ainda está na versão antiga. Abra ${CONFIG.apiUrl} no navegador: se não aparecer "versao", a implantação que o app usa não foi atualizada (veja o passo a passo no chat).`);
-        setEtapa('erro');
-        return;
-      }
-      setErro(e.message || 'Não deu para ler o print.');
+    };
+    await Promise.all([trabalhar(), trabalhar()]);
+
+    const notas = [];
+    const juntos = [];
+    resultados.forEach((r, k) => {
+      if (!r) return;
+      if (r.tipo === 'nota' && r.itens.length) notas.push(comoNota(r));
+      else for (const l of r.lancamentos) juntos.push({ ...l, chave: `p${k}-${l.chave}`, print: arquivos.length > 1 ? k + 1 : 0 });
+    });
+    const falhas = estado.map((x, k) => (x.estado === 'erro' ? { k, erro: x.erro } : null)).filter(Boolean);
+    if (!juntos.length && !notas.length) {
+      setErro(falhas.length === 1 ? falhas[0].erro : `Não deu para ler ${falhas.length === arquivos.length && arquivos.length > 1 ? 'nenhum dos prints' : 'o print'}. ${falhas[0]?.erro || ''} Tente uma imagem mais nítida ou lance pelo formulário.`);
       setEtapa('erro');
+      return;
     }
+    setAvisos([
+      ...falhas.map((f) => `Print ${f.k + 1}: ${f.erro}`),
+      ...(extras > 0 ? [`Mandei só os ${MAX_PRINTS} primeiros prints (de ${imagens.length}). Mande o resto depois.`] : []),
+    ]);
+    if (juntos.length) {
+      setLancs(juntos);
+      setNota(null);
+      setNotasDepois(notas);
+    } else {
+      setNota(notas[0]);
+      setLancs([]);
+      setNotasDepois(notas.slice(1));
+    }
+    setEtapa('revisar');
   };
 
   useEffect(() => {
     const colar = (e) => {
-      const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith('image/'));
-      if (f && etapa !== 'lendo') ler(f);
+      const fs = [...(e.clipboardData?.files || [])].filter((x) => x.type.startsWith('image/'));
+      if (fs.length && etapa !== 'lendo') ler(fs);
     };
     document.addEventListener('paste', colar);
     return () => document.removeEventListener('paste', colar);
@@ -187,12 +235,24 @@ export function FolhaLeitura() {
         avisoItens = ' Os itens da nota não foram guardados: atualize o servidor no Apps Script.';
       }
     }
-    if (salvos.length === 1 && !nota) {
+    // Ainda há nota de mercado de outro print: segue para ela.
+    if (notasDepois.length) {
+      setSalvosAntes((n) => n + salvos.length);
+      setNota(notasDepois[0]);
+      setLancs([]);
+      setNotasDepois(notasDepois.slice(1));
+      setAvisos([]);
+      setSalvando(false);
+      toast(`${salvos.length === 1 ? 'Lançamento salvo' : `${salvos.length} lançamentos salvos`}. Agora a nota de mercado.${avisoItens}`, avisoItens ? { tom: 'erro', ms: 9000 } : {});
+      return;
+    }
+    const total = salvosAntes + salvos.length;
+    if (total === 1 && !nota) {
       const m = findMatch(salvos[0], matchCandidates({ ...s.tables, hoje: s.hoje, lanc: salvos[0] }));
       if (m) return abrirFolha('baixa', { lanc: salvos[0], occ: m });
     }
     fecharFolha();
-    toast((salvos.length === 1 ? 'Lançamento salvo.' : `${salvos.length} lançamentos salvos.`) + avisoItens, avisoItens ? { tom: 'erro', ms: 9000 } : {});
+    toast((total === 1 ? 'Lançamento salvo.' : `${total} lançamentos salvos.`) + avisoItens, avisoItens ? { tom: 'erro', ms: 9000 } : {});
   };
 
   const resumo = nota ? resumoNota(nota, { diferencaEm: diferencaEfetiva(nota) }) : null;
@@ -205,11 +265,23 @@ export function FolhaLeitura() {
   return html`<${Folha} titulo="Lançar por foto ou print" rodape=${rodape}>
     ${etapa === 'escolher' && html`<label class="painel" style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:28px 16px;text-align:center;cursor:pointer;border-style:dashed">
       <span style="width:40px;height:40px;color:var(--caramel)"><${Icone} n="camera" /></span>
-      <strong>Tirar foto ou escolher um print</strong>
-      <span class="muted" style="font-size:13.5px">Comprovante de Pix, nota de mercado, extrato ou print das notificações do banco. No computador, você também pode colar o print aqui (Ctrl+V).</span>
-      <input id="leitura-arquivo" type="file" accept="image/*" class="sr" onChange=${(e) => ler(e.target.files?.[0])} />
+      <strong>Tirar foto ou escolher prints</strong>
+      <span class="muted" style="font-size:13.5px">Até ${MAX_PRINTS} de uma vez: comprovante de Pix, nota de mercado, extrato ou print das notificações do banco. No computador, você também pode colar o print aqui (Ctrl+V).</span>
+      <input id="leitura-arquivo" type="file" accept="image/*" multiple class="sr" onChange=${(e) => ler(e.target.files)} />
     </label>`}
-    ${etapa === 'lendo' && html`<div class="vazio">${previa && html`<img src=${previa} alt="Print enviado" style="max-height:180px;border-radius:12px;margin-bottom:12px" />`}<strong>Lendo o print…</strong>Isso leva uns segundos.</div>`}
+    ${etapa === 'lendo' && (() => {
+      const feitos = fila.filter((x) => x.estado === 'ok' || x.estado === 'erro').length;
+      return html`<div class="leitura-andamento" role="status" aria-live="polite">
+        <div class="leitura-cab"><span class="girando" aria-hidden="true"></span>
+          <strong>${fila.length > 1 ? `Lendo os prints… ${feitos} de ${fila.length}` : 'Lendo o print…'}</strong></div>
+        <div class="muted" style="font-size:13px">Cada print leva uns segundos.</div>
+        <ul class="leitura-prints">${fila.map((x, k) => html`<li class=${`lp-${x.estado}`}>
+          ${x.previa ? html`<img src=${x.previa} alt=${`Print ${k + 1}`} />` : html`<span class="lp-vazio"></span>`}
+          <span class="lp-selo" aria-label=${`Print ${k + 1}: ${x.estado === 'ok' ? 'lido' : x.estado === 'erro' ? 'não deu' : 'lendo'}`}>
+            ${x.estado === 'ok' ? html`<${Icone} n="check" />` : x.estado === 'erro' ? html`<${Icone} n="fechar" />` : html`<span class="girando"></span>`}</span>
+        </li>`)}</ul>
+      </div>`;
+    })()}
     ${etapa === 'erro' && html`<div>
       <div class="duvida" role="alert"><${Icone} n="alerta" /><span>${erro}</span></div>
       <div class="acoes" style="margin-top:12px">
@@ -218,7 +290,10 @@ export function FolhaLeitura() {
       </div>
     </div>`}
     ${etapa === 'revisar' && html`<div>
-      ${previa && html`<details><summary class="muted" style="font-size:13px;cursor:pointer">Ver o print</summary><img src=${previa} alt="Print lido" style="max-width:100%;border-radius:12px;margin-top:8px" /></details>`}
+      ${avisos.map((a) => html`<div class="duvida" style="margin-bottom:8px"><${Icone} n="alerta" /><span>${a}</span></div>`)}
+      ${notasDepois.length > 0 && html`<p class="muted" style="font-size:13px;margin:0 0 8px">Depois destes, ${notasDepois.length === 1 ? 'vem 1 nota de mercado' : `vêm ${notasDepois.length} notas de mercado`} para conferir.</p>`}
+      ${previas.length > 0 && html`<details><summary class="muted" style="font-size:13px;cursor:pointer">${previas.length > 1 ? `Ver os ${previas.length} prints` : 'Ver o print'}</summary>
+        ${previas.map((x) => html`<img src=${x.previa} alt="Print lido" style="max-width:100%;border-radius:12px;margin-top:8px" />`)}</details>`}
       ${nota
         ? html`<${RevisarNota} nota=${nota} setNota=${setNota} contas=${contas} tables=${s.tables} />`
         : html`${lancs.length > 1 && html`<section class="painel painel-pad" style="margin-bottom:10px" aria-label="Para todos">

@@ -25,9 +25,13 @@ before(async () => {
   ({ server, base } = await servirApp({ 'config.js': `export const CONFIG = { apiUrl: '${API}', googleClientId: 'cliente-123' };` }));
   env = ambiente({
     props: { GOOGLE_CLIENT_ID: 'cliente-123', EMAILS_AUTORIZADOS: 'marido@gmail.com,esposa@gmail.com', GEMINI_API_KEY: 'k' },
-    gemini: () => (typeof respostaGemini === 'number'
-      ? { code: respostaGemini, body: '{}' }
-      : { code: 200, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(respostaGemini) }] } }] }) }),
+    gemini: () => {
+      // Uma função dá uma resposta diferente a cada print (vários de uma vez).
+      const r = typeof respostaGemini === 'function' ? respostaGemini() : respostaGemini;
+      return typeof r === 'number'
+        ? { code: r, body: '{}' }
+        : { code: 200, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(r) }] } }] }) };
+    },
     tokeninfo: () => ({ code: 200, body: JSON.stringify({ aud: 'cliente-123', email: 'esposa@gmail.com', email_verified: 'true' }) }),
   });
   env.ctx.configurar();
@@ -105,7 +109,7 @@ test('erro da planilha ao salvar desfaz na tela e avisa', async () => {
 
 const IMAGEM = new URL('../../app/icone-192.png', import.meta.url).pathname;
 
-async function entrarELer(resposta) {
+async function entrarELer(resposta, arquivos = IMAGEM) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const { page, erros } = await novaPagina(ctx);
   await page.goto(`${base}/#/inicio`);
@@ -114,7 +118,7 @@ async function entrarELer(resposta) {
   respostaGemini = resposta;
   await page.getByRole('button', { name: 'Novo lançamento' }).click();
   await page.getByRole('button', { name: 'Foto ou print' }).click();
-  await page.locator('#leitura-arquivo').setInputFiles(IMAGEM);
+  await page.locator('#leitura-arquivo').setInputFiles(arquivos);
   return { ctx, page, erros };
 }
 
@@ -198,6 +202,39 @@ test('print de nota de mercado: categoria por item, categoria nova na hora, dife
   const moca = itens.find((i) => i[13] === 'Leite condensado');
   assert.deepEqual(moca.slice(13, 17), ['Leite condensado', 'Moça', 395, 'g']);
   assert.ok(itens.every((i) => i[9] && novas.some((l) => l[0] === i[9] && l[7] === i[12])), 'cada item ligado ao lançamento da sua categoria');
+  await ctx.close();
+});
+
+test('vários prints de uma vez: lê cada um com andamento, junta os lançamentos, avisa o que falhou e depois revisa a nota', async () => {
+  const antes = env.abas['Lançamentos'].linhas.length;
+  const respostas = [
+    { tipo_documento: 'comprovante', data: '2026-10-16', lancamentos: [{ tipo: 'saida', valor: 40, descricao: 'Sergio Yukio', conta_id: 'nubank-pj', origem: 'Casa', confianca: 0.9 }] },
+    { tipo_documento: 'comprovante', data: '2026-10-16', lancamentos: [{ tipo: 'saida', valor: 75, descricao: 'Tatiana Lima', conta_id: 'nubank-pj', origem: 'Casa', confianca: 0.9 }] },
+    429,
+    { tipo_documento: 'nota_mercado', estabelecimento: 'Assaí', data: '2026-10-16', total: 10.58, lancamentos: [],
+      itens: [{ descricao: 'Leite integral', quantidade: 2, valor_total: 10.58, origem: 'Casa', categoria_id: 'cat-mercado', confianca: 0.95 }] },
+  ];
+  let n = 0;
+  // Cada chamada ao Gemini do mesmo print usa a mesma resposta (o servidor pode tentar outros modelos no 429).
+  const vistos = [];
+  const IMAGENS = [1, 2, 3, 4].map(() => IMAGEM);
+  const { ctx, page, erros } = await entrarELer(() => {
+    const r = respostas[Math.min(n, respostas.length - 1)];
+    if (r !== 429) n++;
+    else if (vistos.push(1) >= 5) n++;
+    return r;
+  }, IMAGENS);
+  await page.getByText('Para todos os 2').waitFor();
+  await page.getByText(/Print \d: O limite gratuito do Gemini/).waitFor();
+  await page.getByText('Depois destes, vem 1 nota de mercado para conferir.').waitFor();
+  await page.getByRole('button', { name: 'Salvar 2 lançamentos' }).click();
+  await page.locator('.toast', { hasText: '2 lançamentos salvos. Agora a nota de mercado.' }).waitFor();
+  await page.getByText('Itens (1)').waitFor();
+  await page.locator('.folha').getByLabel('Pago com').selectOption({ label: 'Nubank PJ (dela)' });
+  await page.getByRole('button', { name: /Salvar/ }).click();
+  await page.locator('.toast', { hasText: '3 lançamentos salvos' }).waitFor();
+  assert.equal(env.abas['Lançamentos'].linhas.length, antes + 3);
+  assert.deepEqual(erros, []);
   await ctx.close();
 });
 
