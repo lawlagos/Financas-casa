@@ -30,7 +30,7 @@ function Termometro({ s }) {
     <div class=${`saldo ${real < 0 ? 'neg' : ''}`}>${brl(real)}</div>
     ${nPendentes > 0 && html`<div class="rotulo" style="margin-top:4px">${nPendentes} ${nPendentes === 1 ? 'previsto de hoje ou atrasado ainda não lançado' : 'previstos de hoje ou atrasados ainda não lançados'}: <b style="color:var(--hero-ink)">${brlSigned(pendente)}</b></div>`}
     <div class="grafico">
-      <${GraficoSaldo} dias=${p.dias} minimo=${p.minimo} altura=${118}
+      <${GraficoSaldo} dias=${p.dias} minimo=${p.minimo} vermelho=${p.primeiroNegativo} altura=${118}
         cores=${{ linha: 'var(--hero-line)', prov: '#aab3ff', neg: 'var(--hero-neg)', grade: 'var(--hero-grid)', texto: 'var(--hero-ink-2)', fundo: 'var(--hero-bg)' }} />
     </div>
     <div class="linha-info">
@@ -39,7 +39,10 @@ function Termometro({ s }) {
     </div>
     <div class=${`alerta-meta ${negativo ? '' : 'ok'}`}>
       ${negativo
-        ? html`Você precisa fazer <strong>${brl(p.precisaFazer)}</strong> até <strong>${fmtDay(p.minimo.data)}</strong> para não ficar no vermelho.`
+        ? p.primeiroNegativo && p.primeiroNegativo.data !== p.minimo.data
+          ? html`Você entra no vermelho em <strong>${fmtDay(p.primeiroNegativo.data)}</strong>: precisa fazer <strong>${brl(p.primeiroNegativo.falta)}</strong> até lá.
+              <span class="alerta-depois">Até <strong>${fmtDay(p.minimo.data)}</strong> (ponto mais baixo) precisa de <strong>${brl(p.precisaFazer)}</strong> no total.</span>`
+          : html`Você precisa fazer <strong>${brl(p.precisaFazer)}</strong> até <strong>${fmtDay(p.minimo.data)}</strong> para não ficar no vermelho.`
         : html`Até ${fmtDay(ate)} o saldo não fica negativo. A menor folga é de <strong>${brl(p.minimo.valor)}</strong> em ${fmtDay(p.minimo.data)}.`}
     </div>
     <button class="abrir" aria-label="Abrir o Futuro" onClick=${() => (location.hash = '#/futuro')}></button>

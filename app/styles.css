@@ -723,3 +723,8 @@ a.fab { color: #fff; display: grid; place-items: center; text-decoration: none; 
 .lp-ok .lp-selo { background: var(--pos); color: #fff; }
 .lp-erro .lp-selo { background: var(--neg); color: #fff; }
 .lp-espera .lp-selo .girando { animation-play-state: paused; opacity: .5; }
+
+/* Primeiro dia no vermelho */
+.entra-vermelho { border-left: 4px solid var(--neg); }
+.entra-vermelho .num small { font-size: 13px; font-weight: 600; color: var(--ink-3); text-transform: capitalize; }
+.alerta-depois { display: block; margin-top: 4px; font-size: 13px; opacity: .85; }

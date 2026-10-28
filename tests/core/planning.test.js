@@ -79,6 +79,11 @@ test('projeção: saldo inicial, previstos, diário, dízimo previsto, provávei
   assert.equal(d25.sai, 45000); // dízimo do salário
   assert.equal(r.minimo.data, '2026-10-24');
   assert.equal(r.precisaFazer, -r.minimo.valor);
+  // primeiro dia negativo: o primeiro com saldo < 0, que pode vir antes do ponto mais baixo
+  const neg = r.dias.find((d) => d.saldo < 0);
+  assert.deepEqual(r.primeiroNegativo, neg ? { data: neg.data, valor: neg.saldo, falta: -neg.saldo } : null);
+  assert.equal(r.primeiroNegativo.data, '2026-10-20'); // o aluguel já deixa negativo, antes do ponto mais baixo (24)
+  assert.equal(r.primeiroNegativo.falta, 4000 + 200000 - 100000);
   assert.equal(r.precisaReserva, 50000 - r.minimo.valor);
 });
 

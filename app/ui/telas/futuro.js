@@ -48,16 +48,21 @@ export function TelaFuturo() {
     ${periodo === 'data' && html`<label class="campo" style="margin-top:6px"><span>Até</span><input type="date" value=${ateLivre} min=${addDays(s.hoje, 1)} onInput=${(e) => e.target.value && setAteLivre(e.target.value)} /></label>`}
     <div style="margin-top:10px"><${Segmento} rotulo="Contas" valor=${grupo} onChange=${setGrupo} opcoes=${[['Tudo', 'Tudo'], ...GRUPOS.map((g) => [g, g])]} /></div>
 
-    <div class="resumo-futuro" style="margin-top:14px">
+    ${p.primeiroNegativo && html`<div class="painel mini entra-vermelho" style="margin-top:14px" role="alert" aria-label="Entra no vermelho">
+      <div class="rot">Entra no vermelho em</div>
+      <div class="num neg">${fmtDay(p.primeiroNegativo.data)} <small>${weekdayName(weekday(p.primeiroNegativo.data))}</small></div>
+      <div class="rod">Precisa fazer <strong>${brl(p.primeiroNegativo.falta)}</strong> até ${fmtDay(p.primeiroNegativo.data)} para não ficar negativo nesse dia${p.primeiroNegativo.data !== p.minimo.data ? `, e ${brl(p.precisaFazer)} no total até ${fmtDay(p.minimo.data)}` : ''}.</div>
+    </div>`}
+    <div class="resumo-futuro" style="margin-top:${p.primeiroNegativo ? 10 : 14}px">
       <div class="painel mini"><div class="rot">Ponto mais baixo</div><div class=${`num ${p.minimo.valor < 0 ? 'neg' : ''}`}>${brl(p.minimo.valor)}</div><div class="rod">em ${fmtDay(p.minimo.data)}</div></div>
       <div class="painel mini"><div class="rot">Precisa fazer</div><div class=${`num ${p.precisaFazer ? 'neg' : 'pos'}`}>${brl(p.precisaFazer)}</div>
         <div class="rod">${p.precisaFazer ? `até ${fmtDay(p.minimo.data)} para não ficar negativo` : 'nada: o saldo não fica negativo'}</div></div>
     </div>
     ${p.reserva > 0 && html`<div class="painel mini" style="margin-top:10px">Para manter a reserva de ${brl(p.reserva)}: <strong class=${p.precisaReserva ? 'neg' : 'pos'}>${p.precisaReserva ? `faltam ${brl(p.precisaReserva)}` : 'tudo certo'}</strong></div>`}
-    ${temProv && html`<div class="painel mini" style="margin-top:10px">Se os prováveis entrarem: ponto mais baixo <strong class=${p.minimoProvavel.valor < 0 ? 'neg' : 'prov'}>${brl(p.minimoProvavel.valor)}</strong> em ${fmtDay(p.minimoProvavel.data)}${p.precisaFazerProvavel ? `, precisaria de ${brl(p.precisaFazerProvavel)}` : ''}.</div>`}
+    ${temProv && html`<div class="painel mini" style="margin-top:10px">Se os prováveis entrarem: ${p.primeiroNegativoProvavel ? html`entra no vermelho em <strong class="neg">${fmtDay(p.primeiroNegativoProvavel.data)}</strong> (faltam ${brl(p.primeiroNegativoProvavel.falta)}); ` : ''}ponto mais baixo <strong class=${p.minimoProvavel.valor < 0 ? 'neg' : 'prov'}>${brl(p.minimoProvavel.valor)}</strong> em ${fmtDay(p.minimoProvavel.data)}${p.precisaFazerProvavel ? `, precisaria de ${brl(p.precisaFazerProvavel)}` : ''}.</div>`}
 
     <div class="painel painel-pad grafico" style="margin-top:10px">
-      <${GraficoSaldo} dias=${p.dias} minimo=${p.minimo} altura=${170} comProvavel=${temProv} />
+      <${GraficoSaldo} dias=${p.dias} minimo=${p.minimo} vermelho=${p.primeiroNegativo} altura=${170} comProvavel=${temProv} />
       <div class="legenda"><span><i></i>Só o certo</span>${temProv && html`<span><i class="tr"></i>Com os prováveis</span>`}<span>Diário de ${brl(p.dias[1]?.diario ?? 0)} a partir de amanhã</span></div>
     </div>
 

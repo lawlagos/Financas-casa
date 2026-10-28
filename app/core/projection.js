@@ -109,6 +109,11 @@ export function project({ contas, lancs, previstos, baixas, config = {}, hoje, a
   const minOf = (key) => dias.reduce((m, x) => (x[key] < m.valor ? { valor: x[key], data: x.data } : m), { valor: dias[0][key], data: dias[0].data });
   const minimo = minOf('saldo');
   const minimoProvavel = minOf('saldoProvavel');
+  // Primeiro dia em que o saldo fica negativo (pode ser antes do ponto mais baixo): quanto falta para não entrar no vermelho nesse dia.
+  const negDe = (key) => {
+    const d = dias.find((x) => x[key] < 0);
+    return d ? { data: d.data, valor: d[key], falta: -d[key] } : null;
+  };
   return {
     inicial,
     dias,
@@ -117,6 +122,8 @@ export function project({ contas, lancs, previstos, baixas, config = {}, hoje, a
     final: dias[dias.length - 1].saldo,
     finalProvavel: dias[dias.length - 1].saldoProvavel,
     precisaFazer: Math.max(0, -minimo.valor),
+    primeiroNegativo: negDe('saldo'),
+    primeiroNegativoProvavel: negDe('saldoProvavel'),
     precisaFazerProvavel: Math.max(0, -minimoProvavel.valor),
     precisaReserva: Math.max(0, reserva - minimo.valor),
     reserva,

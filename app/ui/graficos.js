@@ -5,7 +5,7 @@ import { monthName, fmtDay, weekdayName, weekday } from '../core/dates.js';
 
 // Curva do saldo projetado. `cores` permite usar o mesmo gráfico no painel escuro (termômetro) e nas telas claras.
 // Passando o mouse (ou arrastando o dedo) aparece a etiqueta do dia: data, saldo e o que entra e sai.
-export function GraficoSaldo({ dias, minimo, altura = 130, comProvavel = true, cores = {}, eixo = true }) {
+export function GraficoSaldo({ dias, minimo, vermelho = null, altura = 130, comProvavel = true, cores = {}, eixo = true }) {
   const [foco, setFoco] = useState(null);
   if (!dias || dias.length < 2) return null;
   const W = 340;
@@ -62,6 +62,14 @@ export function GraficoSaldo({ dias, minimo, altura = 130, comProvavel = true, c
       <circle cx=${x(iMin)} cy=${y(dias[iMin].saldo)} r="4.5" fill=${minimo.valor < 0 ? c.neg : c.linha} stroke=${c.fundo || 'var(--surface)'} stroke-width="2" />
       <text x=${Math.min(Math.max(x(iMin), 30), W - 30)} y=${Math.min(y(dias[iMin].saldo) + 17, H - padB - 2)} font-size="10.5" font-weight="700" text-anchor="middle" fill=${minimo.valor < 0 ? c.neg : c.texto}>${brlCompact(minimo.valor)}</text>
     </g>`}
+    ${vermelho && vermelho.data !== minimo?.data && (() => {
+      const i = dias.findIndex((d) => d.data === vermelho.data);
+      if (i < 0) return null;
+      return html`<g aria-hidden="true">
+        <circle cx=${x(i)} cy=${y(dias[i].saldo)} r="4" fill=${c.neg} stroke=${c.fundo || 'var(--surface)'} stroke-width="2" />
+        ${(iMin < 0 || Math.abs(x(i) - x(iMin)) > 40) && html`<text x=${Math.min(Math.max(x(i), 24), W - 24)} y=${Math.max(y(dias[i].saldo) - 9, padT)} font-size="10" font-weight="700" text-anchor="middle" fill=${c.neg}>${fmtDay(vermelho.data)}</text>`}
+      </g>`;
+    })()}
     ${f && html`<g class="grafico-foco">
       <line x1=${x(foco)} x2=${x(foco)} y1=${padT - 6} y2=${H - padB} stroke=${c.texto} stroke-width="1" stroke-dasharray="3 3" />
       ${comProvavel && f.saldoProvavel !== f.saldo && html`<circle cx=${x(foco)} cy=${y(f.saldoProvavel)} r="3.5" fill=${c.prov} />`}
